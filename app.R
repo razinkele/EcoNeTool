@@ -1335,44 +1335,66 @@ save(net, info, file='my_foodweb.Rdata')</pre>
         tabName = "network",
 
         fluidRow(
-          box(
-            title = "Interactive Food Web Network",
-            status = "primary",
-            solidHeader = TRUE,
+          tabBox(
             width = 12,
-            collapsible = TRUE,
-            maximizable = TRUE,
-            visNetworkOutput("foodweb_visnet", height = "600px")
-          )
-        ),
+            id = "network_tabs",
 
-        fluidRow(
-          box(
-            title = "Basal Species",
-            status = "success",
-            solidHeader = TRUE,
-            width = 6,
-            icon = icon("seedling"),
-            verbatimTextOutput("basal_species")
-          ),
-          box(
-            title = "Top Predators",
-            status = "danger",
-            solidHeader = TRUE,
-            width = 6,
-            icon = icon("crown"),
-            verbatimTextOutput("top_predators")
-          )
-        ),
+            # TAB 1: Interactive Network
+            tabPanel(
+              title = "Interactive Network",
+              icon = icon("project-diagram"),
 
-        fluidRow(
-          box(
-            title = "Adjacency Matrix Heatmap",
-            status = "info",
-            solidHeader = TRUE,
-            width = 12,
-            collapsible = TRUE,
-            plotOutput("adjacency_heatmap", height = "600px")
+              br(),
+              box(
+                title = "Interactive Food Web Network",
+                status = "primary",
+                solidHeader = TRUE,
+                width = 12,
+                collapsible = TRUE,
+                maximizable = TRUE,
+                visNetworkOutput("foodweb_visnet", height = "600px")
+              ),
+
+              fluidRow(
+                column(6,
+                  box(
+                    title = "Basal Species",
+                    status = "success",
+                    solidHeader = TRUE,
+                    width = 12,
+                    icon = icon("seedling"),
+                    verbatimTextOutput("basal_species")
+                  )
+                ),
+                column(6,
+                  box(
+                    title = "Top Predators",
+                    status = "danger",
+                    solidHeader = TRUE,
+                    width = 12,
+                    icon = icon("crown"),
+                    verbatimTextOutput("top_predators")
+                  )
+                )
+              )
+            ),
+
+            # TAB 2: Adjacency Matrix
+            tabPanel(
+              title = "Adjacency Matrix",
+              icon = icon("th"),
+
+              br(),
+              box(
+                title = "Adjacency Matrix Heatmap",
+                status = "info",
+                solidHeader = TRUE,
+                width = 12,
+                collapsible = TRUE,
+                maximizable = TRUE,
+                plotOutput("adjacency_heatmap", height = "600px")
+              )
+            )
           )
         )
       ),
@@ -1491,46 +1513,73 @@ save(net, info, file='my_foodweb.Rdata')</pre>
               metabolic rates (T=3.5°C, Gulf of Riga spring conditions).</p>
               <p><strong>Units:</strong> kJ/day/km²</p>
               <p><strong>Note:</strong> Flux values span many orders of magnitude (10<sup>-10</sup> to 10<sup>-1</sup>),
-              reflecting the wide range of interaction strengths in the food web. Hover over edges to see
-              exact values in scientific notation where appropriate.</p>
+              reflecting the wide range of interaction strengths in the food web.</p>
             ")
           )
         ),
 
         fluidRow(
-          box(
-            title = "Flux-weighted Network",
-            status = "warning",
-            solidHeader = TRUE,
+          tabBox(
             width = 12,
-            collapsible = TRUE,
-            maximizable = TRUE,
-            visNetworkOutput("flux_network_plot", height = "600px")
-          )
-        ),
+            id = "fluxes_tabs",
 
-        fluidRow(
-          box(
-            title = "Flux Matrix Heatmap (Log-transformed)",
-            status = "danger",
-            solidHeader = TRUE,
-            width = 12,
-            collapsible = TRUE,
-            maximizable = TRUE,
-            plotOutput("flux_heatmap", height = "500px")
-          )
-        ),
+            # TAB 1: Flux Network
+            tabPanel(
+              title = "Flux-weighted Network",
+              icon = icon("bolt"),
 
-        fluidRow(
-          box(
-            title = "Link-weighted Flux Indicators",
-            status = "info",
-            solidHeader = TRUE,
-            width = 12,
-            HTML("
-              <p>Shannon diversity indices calculated from energy flux distributions.</p>
-            "),
-            verbatimTextOutput("flux_indicators")
+              br(),
+              box(
+                title = "Flux-weighted Network",
+                status = "warning",
+                solidHeader = TRUE,
+                width = 12,
+                collapsible = TRUE,
+                maximizable = TRUE,
+                HTML("<p>Edge widths proportional to energy flux magnitude. Hover over edges to see exact values.</p>"),
+                visNetworkOutput("flux_network_plot", height = "600px")
+              )
+            ),
+
+            # TAB 2: Flux Heatmap
+            tabPanel(
+              title = "Flux Matrix Heatmap",
+              icon = icon("fire"),
+
+              br(),
+              box(
+                title = "Flux Matrix Heatmap (Log-transformed)",
+                status = "danger",
+                solidHeader = TRUE,
+                width = 12,
+                collapsible = TRUE,
+                maximizable = TRUE,
+                HTML("<p>Color intensity shows log-transformed flux values. Darker colors indicate stronger energy flows.</p>"),
+                plotOutput("flux_heatmap", height = "500px")
+              )
+            ),
+
+            # TAB 3: Flux Indicators
+            tabPanel(
+              title = "Flux Indicators",
+              icon = icon("chart-bar"),
+
+              br(),
+              box(
+                title = "Link-weighted Flux Indicators",
+                status = "info",
+                solidHeader = TRUE,
+                width = 12,
+                HTML("
+                  <p>Shannon diversity indices calculated from energy flux distributions.</p>
+                  <ul>
+                    <li><strong>Flux diversity:</strong> Distribution evenness of energy flows</li>
+                    <li><strong>Effective number of fluxes:</strong> Equivalent number of equally strong flows</li>
+                  </ul>
+                "),
+                verbatimTextOutput("flux_indicators")
+              )
+            )
           )
         )
       ),
