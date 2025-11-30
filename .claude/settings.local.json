@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Rscript:*)",
+      "Bash(chmod:*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(./deploy.sh:*)",
+      "Bash(pgrep:*)",
+      "Bash(sudo systemctl restart:*)",
+      "Bash(gh auth:*)",
+      "Bash(git --version:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,12 @@
+[2025-11-28 12:51:20] [INFO] Deployment started
+[2025-11-28 12:51:20] [INFO] Target: razinka@laguna.ku.lt:/srv/shiny-server/EcoNeTool
+[2025-11-28 12:51:20] [INFO] Log file: /home/razinka/OneDrive/HORIZON_EUROPE/MARBEFES/Traits/Networks/EcoNeTool/deployment_logs/deploy_20251128_125119.log
+[2025-11-28 12:51:20] [INFO] rsync is installed
+[2025-11-28 12:51:20] [INFO] SSH is installed
+[2025-11-28 12:51:20] [INFO] Server user: razinka
+[2025-11-28 12:51:20] [INFO] Checking required files...
+[2025-11-28 12:51:20] [INFO] All required files present
+[2025-11-28 12:51:20] [INFO] Testing SSH connection to razinka@laguna.ku.lt...
+[2025-11-28 12:51:20] [ERROR] Cannot connect to server. Please check SSH configuration.
+[2025-11-28 12:51:20] [ERROR] Make sure you have:
+[2025-11-28 12:51:20] [ERROR] Pre-deployment checks failed. Use --force to override.

@@ -1,0 +1,54 @@
+[2025-11-27 22:48:59] INFO: Deployment started
+[2025-11-27 22:48:59] INFO: Target: razinka@laguna.ku.lt
+[2025-11-27 22:48:59] INFO: Configuration validated
+[2025-11-27 22:48:59] INFO: Testing SSH connection
+[2025-11-27 22:49:00] ERROR: SSH connection failed
+[2025-11-27 23:33:46] INFO: Deployment started
+[2025-11-27 23:33:46] INFO: Target: razinka@laguna.ku.lt
+[2025-11-27 23:33:46] INFO: Configuration validated
+[2025-11-27 23:33:46] INFO: Testing SSH connection
+[2025-11-27 23:33:48] INFO: SSH connection successful
+[2025-11-27 23:33:48] INFO: Creating backup on server
+[2025-11-27 23:33:51] INFO: No existing application to backup
+[2025-11-27 23:33:51] INFO: Deploying files with rsync
+[2025-11-27 23:33:51] WARN: rsync not available, falling back to manual copy
+[2025-11-27 23:33:51] INFO: Using manual file copy (SCP)
+[2025-11-27 23:33:53] INFO: Files deployed using SCP
+[2025-11-27 23:33:53] INFO: Files deployed
+[2025-11-27 23:33:53] INFO: Installing R packages on server
+[2025-11-27 23:38:08] INFO: Deployment started
+[2025-11-27 23:38:08] INFO: Target: razinka@laguna.ku.lt
+[2025-11-27 23:38:08] INFO: Configuration validated
+[2025-11-27 23:38:08] INFO: Testing SSH connection
+[2025-11-27 23:38:09] INFO: SSH connection successful
+[2025-11-27 23:38:09] INFO: Creating backup on server
+[2025-11-27 23:38:12] INFO: Backing up existing application
+[2025-11-27 23:38:14] INFO: Backup created: EcoNeTool_20251127_233809.tar.gz
+[2025-11-27 23:38:16] INFO: Deploying files with rsync
+[2025-11-27 23:38:16] WARN: rsync not available, falling back to manual copy
+[2025-11-27 23:38:16] INFO: Using manual file copy (SCP)
+[2025-11-27 23:38:17] INFO: Files deployed using SCP
+[2025-11-27 23:38:17] INFO: Files deployed
+[2025-11-27 23:38:17] INFO: Installing R packages on server
+[2025-11-27 23:38:31] INFO: Packages installed successfully
+[2025-11-27 23:38:31] INFO: Restarting Shiny Server
+[2025-11-27 23:38:34] WARN: Could not restart server automatically
+[2025-11-27 23:38:39] INFO: Deployment completed successfully
+[2025-11-27 23:42:06] INFO: Deployment started
+[2025-11-27 23:42:06] INFO: Target: razinka@laguna.ku.lt
+[2025-11-27 23:42:06] INFO: Configuration validated
+[2025-11-27 23:42:06] INFO: Testing SSH connection
+[2025-11-27 23:42:08] INFO: SSH connection successful
+[2025-11-27 23:42:08] INFO: Creating backup on server
+[2025-11-27 23:42:11] INFO: Backing up existing application
+[2025-11-27 23:42:13] INFO: Backup created: EcoNeTool_20251127_234208.tar.gz
+[2025-11-27 23:42:15] INFO: Deploying files with rsync
+[2025-11-27 23:42:15] WARN: rsync not available, falling back to manual copy
+[2025-11-27 23:42:15] INFO: Using manual file copy (SCP)
+[2025-11-27 23:42:43] INFO: Files deployed using SCP
+[2025-11-27 23:42:43] INFO: Files deployed
+[2025-11-27 23:42:43] INFO: Installing R packages on server
+[2025-11-27 23:42:45] INFO: Packages installed successfully
+[2025-11-27 23:42:45] INFO: Restarting Shiny Server
+[2025-11-27 23:42:48] WARN: Could not restart server automatically
+[2025-11-27 23:42:53] INFO: Deployment completed successfully
