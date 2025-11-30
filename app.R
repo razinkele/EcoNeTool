@@ -1762,7 +1762,7 @@ save(net, info, file='my_foodweb.Rdata')</pre>
   footer = dashboardFooter(
     left = tagList(
       "EcoNeTool - Food Web Explorer | ",
-      tags$a(href = "https://github.com", "GitHub", target = "_blank")
+      tags$a(href = "https://github.com/razinkele/EcoNeTool", icon("github"), " GitHub", target = "_blank")
     ),
     right = "Powered by bs4Dash & Shiny"
   ),
