@@ -56,31 +56,30 @@ fi
 # Files to deploy
 FILES=(
   "app.R"
-  "plotfw.R"
   "BalticFW.Rdata"
   "README.md"
-  "BS4DASH_README.md"
-  "QUICK_START_BS4DASH.md"
-  "LAUNCH_GUIDE.md"
-  "IMPROVEMENTS.md"
-  "FIXES_APPLIED.md"
-  "CHANGELOG_v2.1.md"
+  "LICENSE"
+  "run_app.R"
+  "www/"
+  "examples/"
 )
 
 # Files/directories to exclude
 EXCLUDE_PATTERNS=(
   "*.Rproj"
-  "*.Rproj.user"
+  ".Rproj.user/*"
   "*.Rhistory"
   ".RData"
-  ".git"
+  ".git/*"
   ".gitignore"
+  ".claude/*"
   "*backup*"
   "*test*.R"
-  "deploy_*"
-  "install_*"
-  "check_*"
-  "deployment_logs"
+  "deploy.sh"
+  "deployment/*"
+  "Script.R"
+  "create_example_datasets.R"
+  "*.ewemdb"
 )
 
 # Flags
@@ -467,7 +466,7 @@ install_packages() {
 
   # Create R script for package installation
   local install_script="
-  packages <- c('shiny', 'bs4Dash', 'igraph', 'fluxweb', 'visNetwork')
+  packages <- c('shiny', 'bs4Dash', 'igraph', 'fluxweb', 'visNetwork', 'DT')
   new_packages <- packages[!(packages %in% installed.packages()[,'Package'])]
   if(length(new_packages)) {
     cat('Installing packages:', paste(new_packages, collapse=', '), '\n')
