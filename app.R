@@ -3434,6 +3434,12 @@ install.packages('Hmisc')</pre>
             fillOpacity = 0.15,
             fillColor = "#3366ff",
             group = "Study Area",
+            label = "Custom Study Area",
+            labelOptions = labelOptions(
+              style = list("font-weight" = "bold", padding = "3px 8px"),
+              textsize = "13px",
+              direction = "auto"
+            ),
             highlightOptions = highlightOptions(
               weight = 4,
               color = "#FF0000",
@@ -3632,6 +3638,12 @@ install.packages('Hmisc')</pre>
             fillOpacity = 0.15,
             fillColor = "#3366ff",
             group = "Study Area",
+            label = ~paste0("Study Area: ", Name),
+            labelOptions = labelOptions(
+              style = list("font-weight" = "bold", padding = "3px 8px"),
+              textsize = "13px",
+              direction = "auto"
+            ),
             highlightOptions = highlightOptions(
               weight = 4,
               color = "#FF0000",
@@ -3927,7 +3939,13 @@ install.packages('Hmisc')</pre>
           fillOpacity = 0.2,
           color = "#555555",
           weight = 1,
-          popup = ~paste0("Hex ID: ", hex_id)
+          popup = ~paste0("Hex ID: ", hex_id),
+          label = ~paste0("Grid Cell ", hex_id),
+          labelOptions = labelOptions(
+            style = list("font-weight" = "normal", padding = "3px 8px"),
+            textsize = "12px",
+            direction = "auto"
+          )
         ) %>%
         showGroup("Grid")  # EXPLICITLY SHOW THE LAYER
 
@@ -4276,6 +4294,15 @@ install.packages('Hmisc')</pre>
               "<strong>Habitat:</strong> ", substr(EUNIScombD, 1, 60), "<br>",
               "<strong>Substrate:</strong> ", Substrate, "<br>",
               "<strong>Biozone:</strong> ", Biozone
+            ),
+            label = ~paste0(
+              EUNIScomb, ": ", substr(EUNIScombD, 1, 40),
+              ifelse(nchar(EUNIScombD) > 40, "...", "")
+            ),
+            labelOptions = labelOptions(
+              style = list("font-weight" = "normal", padding = "3px 8px"),
+              textsize = "12px",
+              direction = "auto"
             )
           ) %>%
           showGroup("Habitat")  # EXPLICITLY SHOW THE LAYER
@@ -4345,6 +4372,17 @@ install.packages('Hmisc')</pre>
               "<strong>Substrate:</strong> ", dominant_substrate, "<br>",
               "<strong>Habitat Diversity:</strong> ", habitat_diversity, "<br>",
               "<strong>N Habitats:</strong> ", n_habitats
+            ),
+            label = ~paste0(
+              "Cell ", cell_id, " | ",
+              dominant_eunis, " | ",
+              "Diversity: ", round(habitat_diversity, 2), " | ",
+              n_habitats, " habitat", ifelse(n_habitats > 1, "s", "")
+            ),
+            labelOptions = labelOptions(
+              style = list("font-weight" = "normal", padding = "3px 8px"),
+              textsize = "12px",
+              direction = "auto"
             )
           ) %>%
           showGroup("Grid")  # EXPLICITLY SHOW THE LAYER
@@ -4721,6 +4759,16 @@ install.packages('Hmisc')</pre>
           "<strong>Hex ID: ", hex_id, "</strong><br>",
           metric_label, ": ",
           if (is_categorical) as.character(get(selected_metric)) else round(get(selected_metric), 3)
+        ),
+        label = ~paste0(
+          "Cell ", hex_id, " | ",
+          metric_label, ": ",
+          if (is_categorical) as.character(get(selected_metric)) else round(get(selected_metric), 3)
+        ),
+        labelOptions = labelOptions(
+          style = list("font-weight" = "normal", padding = "3px 8px"),
+          textsize = "12px",
+          direction = "auto"
         )
       ) %>%
       showGroup("Metrics") %>%  # EXPLICITLY SHOW THE LAYER
