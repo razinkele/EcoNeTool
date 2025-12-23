@@ -1,0 +1,25 @@
+# EcoNeTool Version Information
+#
+# This file tracks the version number and release information
+# Format: MAJOR.MINOR.PATCH
+# See CHANGELOG.md for detailed change history
+
+VERSION=1.0.20
+VERSION_NAME="Color Scheme Fix & Lithuanian Coastal Dataset"
+RELEASE_DATE=2025-12-23
+STATUS=stable
+
+# Version components
+MAJOR=1
+MINOR=0
+PATCH=20
+
+# Git information (if available)
+# Set by deployment scripts
+GIT_COMMIT=
+GIT_BRANCH=
+BUILD_DATE=
+
+# Deployment information
+DEPLOYED_BY=
+DEPLOYED_ON=
