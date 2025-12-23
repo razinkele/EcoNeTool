@@ -4,15 +4,15 @@
 # Format: MAJOR.MINOR.PATCH
 # See CHANGELOG.md for detailed change history
 
-VERSION=1.0.20
+VERSION=1.1.1
 VERSION_NAME="Color Scheme Fix & Lithuanian Coastal Dataset"
 RELEASE_DATE=2025-12-23
 STATUS=stable
 
 # Version components
 MAJOR=1
-MINOR=0
-PATCH=20
+MINOR=1
+PATCH=1
 
 # Git information (if available)
 # Set by deployment scripts

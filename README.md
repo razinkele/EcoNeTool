@@ -51,7 +51,7 @@ EcoNeTool is an interactive web application built with R Shiny that provides com
 **📊 Export Capabilities**: Download results, plots, and data for publications
 **🎯 Metaweb Export**: Export current network to RData format for reuse
 
-### Recent Updates (v1.0.20 - 2025-12-23)
+### Recent Updates (v1.1.1 - 2025-12-23)
 
 🎉 **Critical Fixes & New Features:**
 - **Color Scheme Fix**: Phytoplankton now displays correctly as GREEN, Zooplankton as LIGHT BLUE
@@ -484,7 +484,7 @@ If you use EcoNeTool in your research, please cite:
   title = {EcoNeTool: Marine Food Web Network Analysis Tool},
   author = {MARBEFES Project Team},
   year = {2025},
-  version = {1.0.20},
+  version = {1.1.1},
   institution = {Klaipėda University},
   url = {https://github.com/razinkele/EcoNeTool},
   note = {Interactive R Shiny application for marine food web analysis}
@@ -538,7 +538,7 @@ This project is licensed under:
 
 ## 🔄 Version Information
 
-**Current Version**: 1.0.20
+**Current Version**: 1.1.1
 **Last Updated**: 2025-12-23
 **Status**: Production Ready
 

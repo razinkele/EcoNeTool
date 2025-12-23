@@ -26,7 +26,6 @@ source("R/config/plugins.R")  # Plugin system configuration
 
 # Analysis functions (organized by domain)
 source("R/functions/functional_group_utils.R")  # Shared utilities
-source("R/functions/validation_utils.R")  # Validation utilities
 source("R/functions/trophic_levels.R")
 source("R/functions/network_visualization.R")
 source("R/functions/topological_metrics.R")
@@ -37,15 +36,14 @@ source("R/functions/metaweb_io.R")
 source("R/functions/spatial_analysis.R")
 source("R/functions/ecobase_connection.R")
 source("R/functions/taxonomic_api_utils.R")  # Taxonomic database integration
-source("R/functions/shark_api_utils.R")  # SHARK4R integration (Swedish ocean archives)
 source("R/functions/emodnet_habitat_utils.R")  # EMODnet habitat integration
 source("R/functions/euseamap_regional_config.R")  # Regional optimization for EUSeaMap
 
 # ECOPATH import (cross-platform compatible)
-source("R/functions/ecopath/load_all.R")
+source("R/functions/ecopath_import.R")
 
 # Rpath integration (ECOPATH/ECOSIM module)
-source("R/functions/rpath/load_all.R")
+source("R/functions/rpath_integration.R")
 source("R/functions/auxillary_parser.R")  # Auxillary data parser for comments/tooltips
 source("R/ui/rpath_ui.R")  # Rpath module UI component
 source("R/modules/rpath_server.R")  # Rpath module server logic
@@ -62,7 +60,6 @@ source("R/ui/dataeditor_ui.R")
 source("R/ui/metaweb_ui.R")
 source("R/ui/spatial_ui.R")
 source("R/ui/ecobase_ui.R")
-source("R/ui/shark_ui.R")
 
 # Data loading and validation (loads net and info objects)
 source("R/data_loading.R")
@@ -184,12 +181,6 @@ ui <- dashboardPage(
       ),
 
       menuItem(
-        text = "SHARK Data",
-        tabName = "shark",
-        icon = icon("database")
-      ),
-
-      menuItem(
         text = "ECOPATH/ECOSIM",
         tabName = "rpath",
         icon = icon("fish")
@@ -211,16 +202,6 @@ ui <- dashboardPage(
         .main-header .nav-link[data-widget='control-sidebar']:hover {
           color: #0056b3 !important;
         }
-
-        /* Center Shiny progress notifications */
-        .shiny-notification {
-          position: fixed !important;
-          top: 50% !important;
-          left: 50% !important;
-          transform: translate(-50%, -50%) !important;
-          min-width: 400px !important;
-          max-width: 600px !important;
-        }
       "))
     ),
 
@@ -238,7 +219,6 @@ ui <- dashboardPage(
       metaweb_ui(),
       spatial_ui(),
       ecobase_ui(),
-      shark_ui(),
 
       # Rpath module tab
       tabItem(
@@ -345,10 +325,10 @@ ui <- dashboardPage(
             <p>Generic food web analysis tool supporting custom data import in multiple formats (Excel, CSV, RData).</p>
 
             <h5>Default Dataset</h5>
-            <p><strong>Lithuanian Coastal Food Web</strong><br>
-            Southeastern Baltic Sea coastal ecosystem<br>
-            41 species, 244 links<br>
-            6 functional groups (Phytoplankton, Zooplankton, Benthos, Fish, Birds, Detritus)</p>
+            <p><strong>Gulf of Riga Food Web</strong><br>
+            Frelat, R., & Kortsch, S. (2020).<br>
+            34 species, 207 links<br>
+            Period: 1979-2016</p>
 
             <h5>Data Import</h5>
             <p>Upload your own food web data using the <strong>Data Import</strong> tab. Supported formats:</p>
@@ -419,37 +399,22 @@ server <- function(input, output, session) {
 
   net_reactive <- reactiveVal(net)
   info_reactive <- reactiveVal({
-    # Assign colors by matching functional group NAMES to COLOR_SCHEME
-    # This works regardless of factor level order in the data
+    # Relevel functional groups to match COLOR_SCHEME order if needed
     fg_levels <- get_functional_group_levels()
-
-    info$colfg <- sapply(as.character(info$fg), function(fg) {
-      idx <- which(fg_levels == fg)
-      if (length(idx) == 0) return("gray")  # Unknown functional group
-      COLOR_SCHEME[idx]
-    })
-
+    if (is.factor(info$fg)) {
+      # Check if current levels match expected levels
+      current_levels <- levels(info$fg)
+      if (!all(current_levels %in% fg_levels)) {
+        # Keep only existing levels but in standard order
+        existing_in_order <- fg_levels[fg_levels %in% current_levels]
+        info$fg <- factor(as.character(info$fg), levels = existing_in_order)
+      } else {
+        info$fg <- factor(as.character(info$fg), levels = fg_levels)
+      }
+    }
+    info$colfg <- COLOR_SCHEME[as.numeric(info$fg)]
     info
   })
-
-  # ============================================================================
-  # CACHED REACTIVE EXPRESSIONS (HIGH-PRIORITY OPTIMIZATION)
-  # ============================================================================
-  # These cached reactives prevent expensive recalculations when the network
-  # hasn't changed. Using bindCache() ensures trophic levels and metrics are
-  # only computed once per unique network state.
-
-  # Cached trophic levels calculation
-  trophic_levels_cached <- reactive({
-    req(net_reactive())
-    calculate_trophic_levels(net_reactive())
-  }) %>% bindCache(net_reactive())
-
-  # Cached topological metrics calculation
-  topological_metrics_cached <- reactive({
-    req(net_reactive())
-    get_topological_indicators(net_reactive())
-  }) %>% bindCache(net_reactive())
 
   # Metaweb Manager (Phase 2) - used by Spatial Analysis (Phase 1)
   # Note: METAWEB_PATHS is now defined in R/config.R and validated at startup
@@ -457,9 +422,9 @@ server <- function(input, output, session) {
 
   # Metadata for dashboard boxes
   metaweb_metadata <- reactiveVal(list(
-    location = "Lithuanian Coast, Southeastern Baltic Sea",
-    time_period = "Coastal ecosystem",
-    source = "LTCoastal Food Web Model"
+    location = "Gulf of Riga, Baltic Sea",
+    time_period = "1979-2016",
+    source = "Frelat & Kortsch, 2020"
   ))
 
   # Trigger for dashboard updates
@@ -621,9 +586,6 @@ server <- function(input, output, session) {
   # Reactive value to store ECOPATH import data for Rpath module
   ecopath_import_data <- reactiveVal(NULL)
 
-  # Reactive value to store ECOPATH native import status for formatted display
-  ecopath_native_status_data <- reactiveVal(NULL)
-
   # Call Rpath module server
   rpath_results <- rpathModuleServer(
     "rpath_module",
@@ -711,7 +673,7 @@ server <- function(input, output, session) {
   #' Reads ECOPATH with Ecosim native database files using mdbtools
   #' @param db_file Path to ECOPATH database file
   #' @return List with 'net' (igraph object) and 'info' (data.frame)
-  parse_ecopath_native <- function(db_file, session = NULL) {
+  parse_ecopath_native <- function(db_file) {
     # Check if file exists
     if (!file.exists(db_file)) {
       stop("Database file not found: ", db_file)
@@ -822,31 +784,15 @@ server <- function(input, output, session) {
       qb_values <- clean_ecopath_value(qb_values, 1.5, "Q/B")
 
       # Log data quality summary
-      message("\nData quality summary (BEFORE filtering):")
-      message("  Total groups in database: ", length(species_names))
+      message("\nData quality summary:")
+      message("  Species/groups: ", length(species_names))
       message("  Biomass range: ", round(min(biomass_values), 3), " - ", round(max(biomass_values), 3))
       message("  P/B range: ", round(min(pb_values), 3), " - ", round(max(pb_values), 3))
       message("  Q/B range: ", round(min(qb_values), 3), " - ", round(max(qb_values), 3))
 
-      # Show all group names for verification
-      message("\nAll group names loaded from database:")
-      for (i in seq_along(species_names)) {
-        message(sprintf("  %2d. %s", i, species_names[i]))
-      }
-
       # Remove NA, empty, or "Import" and "Export" groups (common in ECOPATH)
       valid_idx <- !is.na(species_names) & species_names != "" &
                    !grepl("^import$|^export$|^fleet", tolower(species_names))
-
-      # Log which groups were filtered out
-      filtered_groups <- species_names[!valid_idx]
-      if (length(filtered_groups) > 0) {
-        message("\n⚠ Filtered out ", length(filtered_groups), " technical groups:")
-        for (g in filtered_groups) {
-          message("  ✗ ", g, " (technical construct, not a biological group)")
-        }
-        message("  Remaining groups: ", sum(valid_idx), " (biological groups only)")
-      }
 
       species_names <- species_names[valid_idx]
       biomass_values <- biomass_values[valid_idx]
@@ -1008,16 +954,6 @@ server <- function(input, output, session) {
       # Explicitly set vertex names to ensure they're preserved
       igraph::V(net)$name <- species_names
 
-      # Log network creation
-      message("\nNetwork created:")
-      message("  Vertices (species/groups): ", igraph::vcount(net))
-      message("  Edges (trophic links): ", igraph::ecount(net))
-      message("  Expected vertices: ", length(species_names))
-      if (igraph::vcount(net) != length(species_names)) {
-        message("  ⚠ WARNING: Vertex count mismatch! Some species may have been lost during network creation.")
-        message("  Vertex names in network: ", paste(igraph::V(net)$name, collapse = ", "))
-      }
-
       # Assign functional groups using shared utility with topology heuristics
       indegrees <- igraph::degree(net, mode = "in")
       outdegrees <- igraph::degree(net, mode = "out")
@@ -1047,30 +983,15 @@ server <- function(input, output, session) {
 
         # Initialize progress
         total_species <- length(species_names)
-
-        # Create Shiny progress object (this works inside observeEvent!)
-        # CSS in app.R lines 216-223 centers it on screen
-        progress <- Progress$new(
-          min = 0,
-          max = total_species
-        )
-        on.exit(progress$close())
-
-        progress$set(
-          message = "🔍 Taxonomic Database Search",
-          value = 0,
-          detail = sprintf("Initializing classification for %d species\nQuerying: FishBase → WoRMS → OBIS\nResults will be cached locally", total_species)
-        )
-
-        # Also update custom reactive for detailed UI
         taxonomic_progress(list(
           current = 0,
           total = total_species,
           percent = 0,
-          database = "Initializing",
-          search_term = "",
-          message = sprintf("Starting taxonomic verification for %d species. Will query FishBase, WoRMS, and OBIS databases.", total_species)
+          message = sprintf("Starting taxonomic verification for %d species...\nQuerying FishBase, WoRMS, and OBIS databases.", total_species)
         ))
+
+        # Allow Shiny to show initial progress UI
+        Sys.sleep(0.1)
 
         # Initialize taxonomic report data
         taxonomic_report_data <- data.frame(
@@ -1082,68 +1003,20 @@ server <- function(input, output, session) {
         )
 
         # Enhanced classification with API verification
-        # Process each species and collect results
-        # Try to extract geographic region from model metadata or filename
-        geographic_region <- NULL
-
-        # Check if model_metadata exists and has region info
-        if (exists("model_metadata") && !is.null(model_metadata)) {
-          if ("region" %in% names(model_metadata)) {
-            geographic_region <- model_metadata$region
-          } else if ("name" %in% names(model_metadata)) {
-            # Try to extract region from model name (e.g., "Baltic Sea Model", "North Sea")
-            model_name <- tolower(model_metadata$name)
-            if (grepl("baltic", model_name)) {
-              geographic_region <- "Baltic"
-            } else if (grepl("north sea", model_name)) {
-              geographic_region <- "North Sea"
-            } else if (grepl("mediterranean", model_name)) {
-              geographic_region <- "Mediterranean"
-            } else if (grepl("atlantic", model_name)) {
-              geographic_region <- "Atlantic"
-            } else if (grepl("pacific", model_name)) {
-              geographic_region <- "Pacific"
-            }
-          }
-        }
-
-        # If no metadata, try to extract from filename
-        if (is.null(geographic_region) && !is.null(input$ecopath_native_file)) {
-          filename <- tolower(input$ecopath_native_file$name)
-          if (grepl("baltic", filename)) {
-            geographic_region <- "Baltic"
-          } else if (grepl("north.*sea", filename)) {
-            geographic_region <- "North Sea"
-          } else if (grepl("mediterranean", filename)) {
-            geographic_region <- "Mediterranean"
-          } else if (grepl("atlantic", filename)) {
-            geographic_region <- "Atlantic"
-          } else if (grepl("pacific", filename)) {
-            geographic_region <- "Pacific"
-          }
-        }
-
-        if (!is.null(geographic_region)) {
-          message(sprintf("  Geographic region detected: %s", geographic_region))
-        } else {
-          message("  No geographic region detected - using first match for ambiguous species")
-        }
-
-        # NOTE: Using for loop instead of lapply so session$flushReact() works
-        classification_results <- list()
-
-        # Progress message accumulator for real-time updates
-        current_progress_messages <- character()
-
-        for (i in seq_along(species_names)) {
+        functional_groups <- sapply(seq_along(species_names), function(i) {
           sp <- species_names[i]
 
-          # Update progress (both Shiny progress bar and custom UI)
+          # Update progress
           percent <- round((i / total_species) * 100)
+          taxonomic_progress(list(
+            current = i,
+            total = total_species,
+            percent = percent,
+            message = sprintf("[%d/%d] Querying: %s\n\nThis may take a few minutes.\nResults are cached for faster subsequent imports.", i, total_species, sp)
+          ))
 
-          # Check if this is a combined species name
-          is_combined <- grepl("\\s+and\\s+|\\s*&\\s*|\\s*/\\s*", sp, ignore.case = TRUE)
-          combined_note <- if (is_combined) " (combined name - will query first species)" else ""
+          # Allow Shiny to update UI (force reactive flush)
+          Sys.sleep(0.01)
 
           message(sprintf("  [%d/%d] Querying: %s", i, total_species, sp))
 
@@ -1156,150 +1029,25 @@ server <- function(input, output, session) {
             use_topology = TRUE
           )
 
-          # Detect birds by name patterns
-          is_bird <- grepl("bird|duck|cormorant|gull|tern|gannet|aves", sp, ignore.case = TRUE)
-
-          # Reset progress messages for this species
-          current_progress_messages <- c(
-            sprintf("[%d/%d] %s%s", i, total_species, sp, combined_note),
-            "",
-            sprintf("📊 Progress: %d%%", percent)
-          )
-
-          # Update Shiny's built-in progress (this WILL show in real-time!)
-          # Build verbose detail message similar to console output
-          detail_lines <- c(
-            "🔍 Database sequence:",
-            if (pattern_hint %in% c("Detritus", "Phytoplankton", "Zooplankton", "Benthos") || is_bird) {
-              if (is_bird) {
-                "   ⊗ Skipping FishBase (bird species)"
-              } else {
-                "   ⊗ Skipping FishBase (non-fish pattern)"
-              }
-            } else {
-              "   → Trying FishBase..."
-            },
-            "   → Trying WoRMS...",
-            "   → Trying OBIS...",
-            "",
-            sprintf("[%d/%d] %s%s", i, total_species, sp, combined_note),
-            "",
-            sprintf("📊 Progress: %d%%", percent),
-            "💾 Cache: Checking for previous result..."
-          )
-
-          progress$set(
-            value = i,
-            detail = paste(detail_lines, collapse = "\n")
-          )
-
-          # Also update custom reactive for detailed UI (may not update in real-time)
-          taxonomic_progress(list(
-            current = i,
-            total = total_species,
-            percent = percent,
-            database = "Querying",
-            search_term = sp,
-            message = sprintf("Querying databases for species classification. Results are cached for faster subsequent imports.")
-          ))
-
-          # Create progress callback for real-time updates
-          progress_callback <- function(msg) {
-            # Add message to accumulator
-            current_progress_messages <<- c(current_progress_messages, msg)
-
-            # Update progress modal with accumulated messages
-            progress$set(
-              value = i,
-              detail = paste(current_progress_messages, collapse = "\n")
-            )
-          }
-
           # Get full API result with database source information
-          # Pass pattern hint to skip FishBase for non-fish groups and birds
-          hint_for_api <- if (is_bird) "Birds" else pattern_hint
-          api_result <- classify_species_api(
-            sp,
-            functional_group_hint = hint_for_api,
-            geographic_region = geographic_region,
-            progress_callback = progress_callback
-          )
+          # Pass pattern hint to skip FishBase for non-fish groups
+          api_result <- classify_species_api(sp, functional_group_hint = pattern_hint)
 
-          # Update progress with result
-          result_db <- if (!is.na(api_result$source)) api_result$source else "Pattern matching"
-          result_icon <- switch(result_db,
-            "FishBase" = "🐟",
-            "WoRMS" = "🌊",
-            "OBIS" = "🗺️",
-            "Pattern matching" = "🔍",
-            "✓"
-          )
-
-          # Build verbose result message
-          result_detail_lines <- c(
-            sprintf("[%d/%d] Querying: %s%s", i, total_species, sp, combined_note),
-            "",
-            sprintf("📊 Progress: %d%%", percent),
-            "",
-            sprintf("%s Database: %s", result_icon, result_db),
-            sprintf("   Confidence: %s", if (!is.na(api_result$confidence)) api_result$confidence else "unknown"),
-            sprintf("   Classification: %s", if (!is.na(api_result$functional_group)) api_result$functional_group else pattern_hint),
-            "",
-            if (!is.na(api_result$body_mass_g)) {
-              sprintf("   Body mass: %.2f g", api_result$body_mass_g)
-            } else { NULL },
-            if (!is.na(api_result$trophic_level)) {
-              sprintf("   Trophic level: %.2f", api_result$trophic_level)
-            } else { NULL },
-            if (!is.na(api_result$habitat) && api_result$habitat != "") {
-              sprintf("   Habitat: %s", api_result$habitat)
-            } else { NULL },
-            if (!is.na(api_result$min_depth_m) && !is.na(api_result$max_depth_m)) {
-              sprintf("   Depth range: %d-%d m", api_result$min_depth_m, api_result$max_depth_m)
-            } else { NULL },
-            "",
-            if (result_db != "Pattern matching") {
-              "✓ Result cached for future imports"
-            } else {
-              "⚠ Using pattern-based classification"
-            }
-          )
-
-          progress$set(
-            value = i,
-            detail = paste(result_detail_lines[!sapply(result_detail_lines, is.null)], collapse = "\n")
-          )
+          # Store report data
+          taxonomic_report_data[i, "species"] <<- sp
+          taxonomic_report_data[i, "database_source"] <<- if(!is.na(api_result$source)) api_result$source else "Pattern matching"
+          taxonomic_report_data[i, "confidence"] <<- api_result$confidence
 
           # Use API result if available and confident
           if (!is.na(api_result$functional_group) && api_result$confidence %in% c("high", "medium")) {
-            final_fg <- api_result$functional_group
+            taxonomic_report_data[i, "functional_group"] <<- api_result$functional_group
+            api_result$functional_group
           } else {
-            final_fg <- pattern_hint
+            # Fall back to pattern hint
+            taxonomic_report_data[i, "functional_group"] <<- pattern_hint
+            pattern_hint
           }
-
-          # Store result (including body mass from FishBase)
-          classification_results[[i]] <- list(
-            species = sp,
-            database_source = if(!is.na(api_result$source)) api_result$source else "Pattern matching",
-            confidence = api_result$confidence,
-            functional_group = final_fg,
-            body_mass_g = if(!is.na(api_result$body_mass_g)) api_result$body_mass_g else NA,
-            trophic_level = if(!is.na(api_result$trophic_level)) api_result$trophic_level else NA,
-            habitat = if(!is.na(api_result$habitat)) api_result$habitat else NA
-          )
-        }
-
-        # Build taxonomic report data frame from results
-        taxonomic_report_data <- data.frame(
-          species = sapply(classification_results, function(x) x$species),
-          functional_group = sapply(classification_results, function(x) x$functional_group),
-          database_source = sapply(classification_results, function(x) x$database_source),
-          confidence = sapply(classification_results, function(x) x$confidence),
-          stringsAsFactors = FALSE
-        )
-
-        # Extract functional groups vector
-        functional_groups <- taxonomic_report_data$functional_group
+        })
 
         # Store report for display
         taxonomic_report(taxonomic_report_data)
@@ -1313,24 +1061,6 @@ server <- function(input, output, session) {
         for (src in names(db_summary)) {
           message(sprintf("  %s: %d species", src, db_summary[src]))
         }
-
-        # Show functional group distribution
-        fg_summary <- table(functional_groups)
-        message("\nFunctional Group Distribution:")
-        for (fg_name in sort(names(fg_summary))) {
-          message(sprintf("  %s: %d species", fg_name, fg_summary[fg_name]))
-        }
-
-        # Show detailed classification for verification
-        message("\nDetailed Classification (first 10 species):")
-        for (i in 1:min(10, nrow(taxonomic_report_data))) {
-          message(sprintf("  %2d. %-30s → %-15s (source: %s, confidence: %s)",
-                          i,
-                          taxonomic_report_data$species[i],
-                          taxonomic_report_data$functional_group[i],
-                          taxonomic_report_data$database_source[i],
-                          taxonomic_report_data$confidence[i]))
-        }
       } else {
         # Standard pattern matching (faster, offline)
         functional_groups <- assign_functional_groups(
@@ -1343,86 +1073,30 @@ server <- function(input, output, session) {
       }
 
       # Body masses: Use ECOPATH data if available, otherwise estimate by functional group
-      # Extract FishBase body masses if taxonomic API was used
-      fishbase_masses <- rep(NA, length(species_names))
-      if (exists("classification_results") && length(classification_results) > 0) {
-        for (i in seq_along(classification_results)) {
-          if (!is.null(classification_results[[i]]$body_mass_g)) {
-            fishbase_masses[i] <- classification_results[[i]]$body_mass_g
-          }
-        }
-      }
-
       if (!is.null(bodymass_values_raw)) {
         # Clean ECOPATH body mass values (remove sentinels, convert negative/zero to NA)
         bodymass_values_clean <- bodymass_values_raw
         bodymass_values_clean[bodymass_values_clean < -9000] <- NA  # ECOPATH missing value
         bodymass_values_clean[bodymass_values_clean <= 0] <- NA      # Invalid masses
 
-        # Priority order: ECOPATH > FishBase > Estimation
+        # Use actual values where available, estimate for missing
         body_masses <- sapply(1:length(functional_groups), function(i) {
           if (!is.na(bodymass_values_clean[i]) && bodymass_values_clean[i] > 0) {
-            # Priority 1: Use ECOPATH data
             bodymass_values_clean[i]
-          } else if (!is.na(fishbase_masses[i])) {
-            # Priority 2: Use FishBase data with ontogenetic stage adjustment
-            fishbase_mass <- fishbase_masses[i]
-            name_lower <- tolower(species_names[i])
-
-            # Apply ontogenetic stage multipliers to FishBase adult weight
-            stage_multiplier <- 1.0
-            if (grepl("\\blarva\\b|\\blarval\\b", name_lower)) {
-              stage_multiplier <- 0.10  # Larvae = 10% of adult
-            } else if (grepl("\\bjuvenile\\b", name_lower)) {
-              stage_multiplier <- 0.30  # Juvenile = 30% of adult
-            } else if (grepl("\\bsub-adult\\b|\\bsubadult\\b", name_lower)) {
-              stage_multiplier <- 0.70  # Sub-adult = 70% of adult
-            }
-
-            fishbase_mass * stage_multiplier
           } else {
-            # Priority 3: Use enhanced estimation with size/stage extraction
-            estimate_body_mass_enhanced(species_names[i], functional_groups[i])
+            estimate_body_mass_by_fg(functional_groups[i])
           }
         })
 
-        n_ecopath <- sum(!is.na(bodymass_values_clean) & bodymass_values_clean > 0)
-        n_fishbase <- sum(is.na(bodymass_values_clean) & !is.na(fishbase_masses))
-        n_estimated <- length(body_masses) - n_ecopath - n_fishbase
+        n_actual <- sum(!is.na(bodymass_values_clean) & bodymass_values_clean > 0)
+        n_estimated <- length(body_masses) - n_actual
         message("Body mass assignment:")
-        message("  From ECOPATH data: ", n_ecopath, " species")
-        message("  From FishBase API: ", n_fishbase, " species")
-        message("  Estimated with size/stage info: ", n_estimated, " species")
+        message("  From ECOPATH data: ", n_actual, " species")
+        message("  Estimated by functional group: ", n_estimated, " species")
       } else {
-        # No body mass column found - use FishBase or estimate
-        body_masses <- sapply(1:length(species_names), function(i) {
-          if (!is.na(fishbase_masses[i])) {
-            # Use FishBase data with ontogenetic stage adjustment
-            fishbase_mass <- fishbase_masses[i]
-            name_lower <- tolower(species_names[i])
-
-            # Apply ontogenetic stage multipliers
-            stage_multiplier <- 1.0
-            if (grepl("\\blarva\\b|\\blarval\\b", name_lower)) {
-              stage_multiplier <- 0.10
-            } else if (grepl("\\bjuvenile\\b", name_lower)) {
-              stage_multiplier <- 0.30
-            } else if (grepl("\\bsub-adult\\b|\\bsubadult\\b", name_lower)) {
-              stage_multiplier <- 0.70
-            }
-
-            fishbase_mass * stage_multiplier
-          } else {
-            # Estimate using enhanced method with size/stage extraction
-            estimate_body_mass_enhanced(species_names[i], functional_groups[i])
-          }
-        })
-
-        n_fishbase <- sum(!is.na(fishbase_masses))
-        n_estimated <- length(body_masses) - n_fishbase
-        message("Body mass assignment:")
-        message("  From FishBase API: ", n_fishbase, " species")
-        message("  Estimated with size/stage info: ", n_estimated, " species")
+        # No body mass column found - estimate all by functional group
+        body_masses <- sapply(functional_groups, estimate_body_mass_by_fg)
+        message("Body mass assignment: All ", length(body_masses), " species estimated by functional group")
       }
 
       # Assign metabolic types using shared utility
@@ -1444,14 +1118,6 @@ server <- function(input, output, session) {
         stringsAsFactors = FALSE
       )
 
-      # Log final data frame
-      message("\nFinal info data frame:")
-      message("  Rows (species/groups): ", nrow(info))
-      message("  Expected: ", length(species_names))
-      if (nrow(info) != length(species_names)) {
-        message("  ⚠ WARNING: Row count mismatch!")
-      }
-
       # Return both processed data (net/info) and raw data (group_data/diet_data)
       # Raw data is needed for Rpath conversion
       # ECOSIM scenarios passed through from import
@@ -1461,9 +1127,7 @@ server <- function(input, output, session) {
         metadata = metadata,
         group_data = group_table,
         diet_data = diet_table,
-        ecosim_scenarios = import_result$ecosim_scenarios,
-        total_groups_loaded = length(biomass_values) + length(filtered_groups),
-        filtered_groups = filtered_groups
+        ecosim_scenarios = import_result$ecosim_scenarios
       ))
 
     }, error = function(e) {
@@ -1522,33 +1186,28 @@ server <- function(input, output, session) {
 
         # Extract only data objects (not functions) from loaded environment
         # This ensures we use the app's function definitions, not ones from the RData file
-        loaded_net <- env$net
-        loaded_info <- env$info
+        net <<- env$net
+        info <<- env$info
 
         # Upgrade igraph if needed
-        loaded_net <- igraph::upgrade_graph(loaded_net)
+        net <<- igraph::upgrade_graph(net)
 
         # Ensure vertex names are properly set
         # If vertex names are missing or numeric, try to get them from info$species or rownames
-        if (is.null(igraph::V(loaded_net)$name) || all(grepl("^[0-9]+$", igraph::V(loaded_net)$name))) {
-          if ("species" %in% colnames(loaded_info)) {
-            igraph::V(loaded_net)$name <- as.character(loaded_info$species)
-          } else if (!is.null(rownames(loaded_info))) {
-            igraph::V(loaded_net)$name <- rownames(loaded_info)
+        if (is.null(igraph::V(net)$name) || all(grepl("^[0-9]+$", igraph::V(net)$name))) {
+          if ("species" %in% colnames(info)) {
+            igraph::V(net)$name <<- as.character(info$species)
+          } else if (!is.null(rownames(info))) {
+            igraph::V(net)$name <<- rownames(info)
           }
         }
 
-        # Assign colors by matching functional group names to COLOR_SCHEME
-        fg_levels <- get_functional_group_levels()
-        loaded_info$colfg <- sapply(as.character(loaded_info$fg), function(fg) {
-          idx <- which(fg_levels == fg)
-          if (length(idx) == 0) return("gray")
-          COLOR_SCHEME[idx]
-        })
+        # Assign colors
+        info$colfg <<- COLOR_SCHEME[as.numeric(info$fg)]
 
         # Update reactive values for dashboard
-        net_reactive(loaded_net)
-        info_reactive(loaded_info)
+        net_reactive(net)
+        info_reactive(info)
 
         # Refresh data editor tables
         refresh_data_editor()
@@ -1640,24 +1299,15 @@ server <- function(input, output, session) {
       # Parse ECOPATH data
       result <- parse_ecopath_data(basic_file, diet_file)
 
-      # Process loaded data (use local variables, no global state)
-      ecopath_net <- result$net
-      ecopath_info <- result$info
+      # Update global variables
+      net <<- result$net
+      info <<- result$info
 
       # Upgrade igraph if needed
-      ecopath_net <- igraph::upgrade_graph(ecopath_net)
+      net <<- igraph::upgrade_graph(net)
 
-      # Assign colors by matching functional group names to COLOR_SCHEME
-      fg_levels <- get_functional_group_levels()
-      ecopath_info$colfg <- sapply(as.character(ecopath_info$fg), function(fg) {
-        idx <- which(fg_levels == fg)
-        if (length(idx) == 0) return("gray")
-        COLOR_SCHEME[idx]
-      })
-
-      # Update reactive values
-      net_reactive(ecopath_net)
-      info_reactive(ecopath_info)
+      # Assign colors based on functional groups
+      info$colfg <<- COLOR_SCHEME[as.numeric(info$fg)]
 
       # Refresh data editor tables
       refresh_data_editor()
@@ -1665,12 +1315,12 @@ server <- function(input, output, session) {
       output$ecopath_upload_status <- renderPrint({
         cat("✓ SUCCESS: ECOPATH data imported!\n\n")
         cat("Conversion complete:\n")
-        cat("  - Species/groups:", vcount(net_reactive()), "\n")
-        cat("  - Trophic links:", ecount(net_reactive()), "\n")
-        cat("  - Functional groups:", nlevels(info_reactive()$fg), "\n\n")
+        cat("  - Species/groups:", vcount(net), "\n")
+        cat("  - Trophic links:", ecount(net), "\n")
+        cat("  - Functional groups:", nlevels(info$fg), "\n\n")
 
         cat("Functional group distribution:\n")
-        fg_table <- table(info_reactive()$fg)
+        fg_table <- table(info$fg)
         for (fg_name in names(fg_table)) {
           cat("  ", fg_name, ":", fg_table[fg_name], "\n")
         }
@@ -1912,25 +1562,16 @@ install.packages('Hmisc')</pre>
 
     if (plugin_enabled) {
       # Plugin is enabled - show normal checkbox
-      tags$div(
-        style = "margin-top: 15px; padding: 10px; background-color: #f0f8ff; border-radius: 5px; border-left: 4px solid #0066cc;",
+      tagList(
         checkboxInput(
           "use_taxonomic_api",
-          tagList(
-            HTML("<strong>Enable Taxonomic Database Integration</strong>"),
-            tags$a(
-              href = "#",
-              onclick = "return false;",
-              style = "margin-left: 8px; color: #0066cc;",
-              title = "When enabled, queries FishBase, WoRMS, and OBIS for authoritative species classification and trait data. Results are cached locally. Requires internet connection for first query. Slower but more accurate.",
-              icon("info-circle")
-            )
-          ),
+          HTML("<strong>Verify species with taxonomic databases</strong> <span class='badge badge-info'>Advanced</span>"),
           value = FALSE
         ),
-        tags$small(
-          style = "color: #666; display: block; margin-top: -10px; margin-left: 25px; font-style: italic;",
-          "Automatically classifies species using online databases (FishBase, WoRMS, OBIS)"
+        helpText(
+          HTML("<small>When enabled, queries <strong>FishBase</strong>, <strong>WoRMS</strong>, and <strong>OBIS</strong> for authoritative species classification and trait data. ",
+               "Results are cached locally. Requires internet connection for first query. ",
+               "<em>Slower but more accurate.</em></small>")
         )
       )
     } else {
@@ -1941,24 +1582,37 @@ install.packages('Hmisc')</pre>
       packages_ok <- httr_installed && jsonlite_installed
 
       help_msg <- if (!packages_ok) {
-        "Missing required packages. Install: install.packages(c('httr', 'jsonlite'))"
+        paste0(
+          "<small><strong style='color: #721c24;'>⚠ Missing Required Packages</strong><br>",
+          "Install required packages first:<br>",
+          "<code>install.packages(c('httr', 'jsonlite'))</code><br><br>",
+          "Then go to: <code>Settings → Plugins → Advanced → Taxonomic Database Integration</code><br>",
+          "Toggle the switch ON and click <strong>Save & Apply</strong></small>"
+        )
       } else {
-        "Enable in Settings → Plugins → Taxonomic Database Integration"
+        paste0(
+          "<small><strong style='color: #721c24;'>⚠ Plugin Disabled</strong><br>",
+          "To use this feature:<br>",
+          "1. Go to: <code>Settings → Plugins → Advanced → Taxonomic Database Integration</code><br>",
+          "2. Toggle the switch to <strong>ON</strong><br>",
+          "3. Click <strong>Save & Apply</strong> button<br>",
+          "<em>(Packages are installed ✓)</em></small>"
+        )
       }
 
-      tags$div(
-        style = "margin-top: 15px; padding: 10px; background-color: #fff3cd; border-radius: 5px; border-left: 4px solid #ffc107;",
+      tagList(
         div(
-          style = "opacity: 0.6; pointer-events: none;",
+          style = "opacity: 0.5; pointer-events: none;",
           checkboxInput(
             "use_taxonomic_api",
-            HTML("<strong>Taxonomic Database Integration</strong> <span class='badge badge-warning'>Disabled</span>"),
+            HTML("<strong>Verify species with taxonomic databases</strong> <span class='badge badge-secondary'>Disabled</span>"),
             value = FALSE
           )
         ),
-        tags$small(
-          style = "color: #856404; display: block; margin-top: -10px; margin-left: 25px;",
-          icon("exclamation-triangle"), " ", help_msg
+        helpText(
+          HTML(paste0("<div style='background-color: #f8d7da; padding: 8px; border-radius: 4px; border-left: 3px solid #dc3545;'>",
+                     help_msg,
+                     "</div>"))
         )
       )
     }
@@ -1973,103 +1627,29 @@ install.packages('Hmisc')</pre>
   # Reactive value to cache EUSeaMap data (loaded once, reused)
   euseamap_data <- reactiveVal(NULL)
 
-  # Render taxonomic progress panel (right side)
-  output$taxonomic_progress_panel_ui <- renderUI({
-    progress_data <- taxonomic_progress()
-    if (is.null(progress_data)) return(NULL)
+  # Render taxonomic progress indicator
+  output$taxonomic_progress_ui <- renderUI({
+    progress_info <- taxonomic_progress()
 
-    # Extract detailed progress info
-    current_db <- if (!is.null(progress_data$database)) progress_data$database else "Processing"
-    search_term <- if (!is.null(progress_data$search_term)) progress_data$search_term else ""
-    species_current <- if (!is.null(progress_data$current)) progress_data$current else 0
-    species_total <- if (!is.null(progress_data$total)) progress_data$total else 0
+    if (is.null(progress_info)) {
+      return(NULL)
+    }
 
-    # Determine database icon and color
-    db_icon <- switch(current_db,
-      "FishBase" = "fish",
-      "WoRMS" = "water",
-      "OBIS" = "map-marker-alt",
-      "Initializing" = "database",
-      "Querying" = "search",
-      "database"
-    )
-
-    db_color <- switch(current_db,
-      "FishBase" = "#0066cc",
-      "WoRMS" = "#009688",
-      "OBIS" = "#4caf50",
-      "Initializing" = "#666",
-      "Querying" = "#2196f3",
-      "#666"
-    )
-
-    box(
-      title = tagList(
-        icon("spinner", class = "fa-spin"),
-        " Taxonomic Database Search"
-      ),
-      status = "info",
-      solidHeader = TRUE,
-      width = 12,
-
-      # Progress bar
-      tags$div(
-        style = "margin-bottom: 20px;",
-        tags$h5(
-          style = "margin: 0 0 10px 0; color: #555; font-weight: normal; font-size: 16px;",
-          sprintf("Processing species %d of %d", species_current, species_total)
-        ),
+    # Show progress box
+    div(
+      style = "margin-top: 10px; padding: 10px; background-color: #e3f2fd; border-left: 4px solid #2196f3; border-radius: 4px;",
+      h5(icon("fish"), " Taxonomic API Progress", style = "margin-top: 0; color: #1976d2;"),
+      verbatimTextOutput("taxonomic_progress_text"),
+      div(
+        class = "progress",
+        style = "height: 25px; margin-top: 10px;",
         div(
-          class = "progress",
-          style = "height: 32px; margin-bottom: 0;",
-          div(
-            class = "progress-bar progress-bar-striped active",
-            role = "progressbar",
-            style = sprintf("width: %d%%; background-color: %s;", progress_data$percent, db_color),
-            tags$strong(style = "font-size: 16px;", sprintf("%d%%", progress_data$percent))
-          )
+          class = "progress-bar progress-bar-striped progress-bar-animated bg-info",
+          role = "progressbar",
+          style = paste0("width: ", progress_info$percent, "%; transition: width 0.3s ease;"),
+          paste0(progress_info$current, " / ", progress_info$total, " species")
         )
-      ),
-
-      # Database information
-      tags$div(
-        style = "padding: 15px; background-color: #f8f9fa; border-radius: 5px; margin-bottom: 15px;",
-        tags$div(
-          style = "margin-bottom: 12px;",
-          tags$div(
-            style = "font-size: 13px; color: #666; margin-bottom: 4px;",
-            "Current Database"
-          ),
-          tags$div(
-            style = sprintf("font-size: 18px; color: %s; font-weight: bold;", db_color),
-            icon(db_icon, style = "margin-right: 8px;"),
-            current_db
-          )
-        ),
-
-        # Search term
-        if (nchar(search_term) > 0) {
-          tags$div(
-            tags$div(
-              style = "font-size: 13px; color: #666; margin-bottom: 4px;",
-              "Searching for"
-            ),
-            tags$code(
-              style = "background-color: #fff; padding: 6px 10px; border-radius: 3px; display: inline-block; font-size: 14px;",
-              search_term
-            )
-          )
-        } else { NULL }
-      ),
-
-      # Status message
-      if (!is.null(progress_data$message) && nchar(progress_data$message) > 0) {
-        tags$div(
-          style = "padding: 12px; background-color: #e3f2fd; border-left: 3px solid #2196f3; border-radius: 3px; font-size: 14px; color: #1565c0;",
-          icon("info-circle", style = "margin-right: 6px;"),
-          progress_data$message
-        )
-      } else { NULL }
+      )
     )
   })
 
@@ -2168,218 +1748,8 @@ install.packages('Hmisc')</pre>
     }
   )
 
-  # Render formatted ECOPATH native import status
-  output$ecopath_native_status_ui <- renderUI({
-    status_data <- ecopath_native_status_data()
-
-    if (is.null(status_data)) {
-      return(NULL)
-    }
-
-    # Log what we're reading from the reactive value
-    message("\n=== RENDERING SUCCESS BOX ===")
-    message("Species count from reactive: ", status_data$species_count)
-    message("Links count from reactive: ", status_data$links_count)
-    message("FG count from reactive: ", status_data$fg_count)
-    if (!is.null(status_data$fg_distribution)) {
-      message("FG distribution from reactive:")
-      for (fg_name in names(status_data$fg_distribution)) {
-        message(sprintf("  %s: %d", fg_name, status_data$fg_distribution[[fg_name]]))
-      }
-    }
-    message("=============================\n")
-
-    if (status_data$success) {
-      # Success message - formatted box
-      box(
-        title = tagList(
-          icon("check-circle", style = "color: #4caf50;"),
-          " ECOPATH Import Success"
-        ),
-        status = "success",
-        solidHeader = TRUE,
-        width = 12,
-
-        # Database info
-        tags$div(
-          style = "margin-bottom: 15px;",
-          tags$strong("Database: "),
-          tags$code(
-            style = "background-color: #f5f5f5; padding: 4px 8px; border-radius: 3px; font-size: 13px;",
-            status_data$filename
-          )
-        ),
-
-        # Conversion stats
-        tags$div(
-          style = "padding: 15px; background-color: #f8f9fa; border-radius: 5px; margin-bottom: 15px;",
-          tags$h5("Conversion Complete", style = "margin-top: 0; color: #333; font-size: 15px;"),
-
-          # Show loaded vs imported if groups were filtered
-          if (!is.null(status_data$total_groups_loaded) && status_data$total_groups_loaded > status_data$species_count) {
-            tags$div(
-              style = "margin-bottom: 10px; padding: 8px; background-color: #e3f2fd; border-left: 3px solid #2196f3; border-radius: 3px; font-size: 13px;",
-              sprintf("Loaded %d groups from database, imported %d biological groups",
-                      status_data$total_groups_loaded,
-                      status_data$species_count),
-              if (!is.null(status_data$filtered_groups) && length(status_data$filtered_groups) > 0) {
-                tags$div(
-                  style = "margin-top: 5px; font-size: 12px; color: #666;",
-                  sprintf("Filtered out %d technical groups: %s",
-                          length(status_data$filtered_groups),
-                          paste(status_data$filtered_groups, collapse = ", "))
-                )
-              } else { NULL }
-            )
-          } else { NULL },
-
-          tags$div(
-            style = "display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;",
-            # Species/groups
-            tags$div(
-              style = "text-align: center; padding: 10px; background-color: #fff; border-radius: 4px;",
-              tags$div(style = "font-size: 24px; font-weight: bold; color: #0066cc;", status_data$species_count),
-              tags$div(style = "font-size: 12px; color: #666; margin-top: 4px;", "Species/Groups")
-            ),
-            # Trophic links
-            tags$div(
-              style = "text-align: center; padding: 10px; background-color: #fff; border-radius: 4px;",
-              tags$div(style = "font-size: 24px; font-weight: bold; color: #009688;", status_data$links_count),
-              tags$div(style = "font-size: 12px; color: #666; margin-top: 4px;", "Trophic Links")
-            ),
-            # Functional groups
-            tags$div(
-              style = "text-align: center; padding: 10px; background-color: #fff; border-radius: 4px;",
-              tags$div(style = "font-size: 24px; font-weight: bold; color: #4caf50;", status_data$fg_count),
-              tags$div(style = "font-size: 12px; color: #666; margin-top: 4px;", "Functional Groups")
-            )
-          )
-        ),
-
-        # Functional group distribution
-        if (!is.null(status_data$fg_distribution)) {
-          tags$div(
-            style = "margin-bottom: 15px;",
-            tags$h6("Functional Group Distribution", style = "margin-bottom: 10px; color: #555;"),
-            tags$div(
-              style = "display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 10px; background-color: #f8f9fa; border-radius: 4px;",
-              lapply(names(status_data$fg_distribution), function(fg_name) {
-                count <- status_data$fg_distribution[fg_name]
-                tags$div(
-                  style = "padding: 6px 10px; background-color: #fff; border-radius: 3px; font-size: 13px;",
-                  tags$strong(fg_name, ": "),
-                  tags$span(style = "color: #666;", count)
-                )
-              })
-            )
-          )
-        } else { NULL },
-
-        # Ratios (if available)
-        if (!is.null(status_data$mean_pb) || !is.null(status_data$mean_qb)) {
-          tags$div(
-            style = "margin-bottom: 15px; padding: 12px; background-color: #e3f2fd; border-left: 3px solid #2196f3; border-radius: 3px;",
-            tags$h6("P/B and Q/B Ratios", style = "margin: 0 0 8px 0; color: #1565c0;"),
-            if (!is.null(status_data$mean_pb)) {
-              tags$div(
-                style = "font-size: 13px; margin-bottom: 4px;",
-                tags$strong("Mean P/B: "),
-                tags$span(style = "font-family: monospace;", status_data$mean_pb)
-              )
-            } else { NULL },
-            if (!is.null(status_data$mean_qb)) {
-              tags$div(
-                style = "font-size: 13px;",
-                tags$strong("Mean Q/B: "),
-                tags$span(style = "font-family: monospace;", status_data$mean_qb)
-              )
-            } else { NULL }
-          )
-        } else { NULL },
-
-        # Notes
-        tags$div(
-          style = "padding: 12px; background-color: #fff3cd; border-left: 3px solid #ffc107; border-radius: 3px; margin-bottom: 12px;",
-          tags$strong(icon("info-circle"), " Note:"),
-          tags$div(
-            style = "margin-top: 8px; font-size: 13px;",
-            "Default values assigned for:",
-            tags$ul(
-              style = "margin: 5px 0 0 0; padding-left: 20px;",
-              tags$li("Body masses (based on functional groups)"),
-              tags$li("Metabolic types (vertebrates vs invertebrates)"),
-              tags$li("Assimilation efficiencies")
-            )
-          )
-        ),
-
-        # Success checklist
-        tags$div(
-          style = "font-size: 13px;",
-          if (status_data$pb_qb_preserved) {
-            tags$div(
-              style = "color: #4caf50; margin-bottom: 4px;",
-              icon("check-circle"), " P/B and Q/B ratios preserved from ECOPATH model"
-            )
-          } else { NULL },
-          if (status_data$metaweb_created) {
-            tags$div(
-              style = "color: #4caf50; margin-bottom: 4px;",
-              icon("check-circle"), " Metaweb format created and loaded"
-            )
-          } else {
-            tags$div(
-              style = "color: #ff9800;",
-              icon("exclamation-triangle"), " Metaweb conversion had issues (check console)"
-            )
-          },
-          tags$div(
-            style = "color: #4caf50;",
-            icon("check-circle"), " Dashboard boxes updated"
-          )
-        ),
-
-        # Next steps
-        hr(),
-        tags$div(
-          style = "font-size: 13px; color: #666;",
-          tags$p(
-            style = "margin: 5px 0;",
-            icon("arrow-right"), " Use the ", tags$strong("'Internal Data Editor'"), " tab to refine these values."
-          ),
-          tags$p(
-            style = "margin: 5px 0;",
-            icon("arrow-right"), " Navigate to other tabs to explore your ECOPATH model."
-          ),
-          tags$p(
-            style = "margin: 5px 0;",
-            icon("arrow-right"), " For keystoneness analysis, go to ", tags$strong("'Keystoneness Analysis'"), " tab."
-          )
-        )
-      )
-    } else {
-      # Error message
-      tags$div(
-        style = "margin-top: 15px; padding: 15px; background-color: #ffebee; border-left: 4px solid #f44336; border-radius: 4px;",
-        h5(
-          icon("times-circle", style = "color: #f44336;"),
-          " ERROR importing ECOPATH native database",
-          style = "margin-top: 0; color: #c62828;"
-        ),
-        tags$pre(
-          style = "background-color: #fff; padding: 10px; border-radius: 3px; overflow-x: auto; font-size: 12px;",
-          status_data$error_message
-        ),
-        tags$div(
-          style = "margin-top: 10px;",
-          HTML(status_data$solution_html)
-        )
-      )
-    }
-  })
-
   # Ensure taxonomic outputs are not suspended when hidden
-  outputOptions(output, "taxonomic_progress_panel_ui", suspendWhenHidden = FALSE)
+  outputOptions(output, "taxonomic_progress_ui", suspendWhenHidden = FALSE)
   outputOptions(output, "taxonomic_progress_text", suspendWhenHidden = FALSE)
   outputOptions(output, "taxonomic_report_ui", suspendWhenHidden = FALSE)
   outputOptions(output, "taxonomic_report_table", suspendWhenHidden = FALSE)
@@ -2459,41 +1829,33 @@ install.packages('Hmisc')</pre>
     tryCatch({
       db_file <- input$ecopath_native_file$datapath
 
-      # Clear previous status
-      ecopath_native_status_data(NULL)
+      # Update status
+      output$ecopath_native_status <- renderPrint({
+        cat("Processing ECOPATH native database...\n\n")
+        cat("File:", input$ecopath_native_file$name, "\n")
+        cat("Size:", round(input$ecopath_native_file$size / 1024, 2), "KB\n\n")
+        cat("Reading database tables...\n")
+      })
 
-      # Parse ECOPATH native database (pass session for progress updates)
-      result <- parse_ecopath_native(db_file, session = session)
+      # Parse ECOPATH native database
+      result <- parse_ecopath_native(db_file)
 
       # Store data for Rpath module (ECOPATH/ECOSIM integration)
       ecopath_import_data(result)
 
-      # Process loaded data (use local variables, no global state)
-      native_net <- result$net
-      native_info <- result$info
-
-      # Validate required data
-      if (is.null(native_net) || is.null(native_info)) {
-        stop("Invalid ECOPATH data: Missing network or species information")
-      }
-      if (!"fg" %in% colnames(native_info)) {
-        stop("Invalid ECOPATH data: Missing functional group column")
-      }
+      # Update global variables (for backward compatibility)
+      net <<- result$net
+      info <<- result$info
 
       # Upgrade igraph if needed
-      native_net <- igraph::upgrade_graph(native_net)
+      net <<- igraph::upgrade_graph(net)
 
-      # Assign colors by matching functional group names to COLOR_SCHEME
-      fg_levels <- get_functional_group_levels()
-      native_info$colfg <- sapply(as.character(native_info$fg), function(fg) {
-        idx <- which(fg_levels == fg)
-        if (length(idx) == 0) return("gray")
-        COLOR_SCHEME[idx]
-      })
+      # Assign colors based on functional groups
+      info$colfg <<- COLOR_SCHEME[as.numeric(info$fg)]
 
       # Update reactive values for dashboard
-      net_reactive(native_net)
-      info_reactive(native_info)
+      net_reactive(net)
+      info_reactive(info)
 
       # Refresh data editor tables
       refresh_data_editor()
@@ -2553,20 +1915,20 @@ install.packages('Hmisc')</pre>
       # Convert to metaweb format and update current metaweb
       metaweb_created <- FALSE
       tryCatch({
-        # Create species data frame for metaweb (use native_net and native_info, not reactive values)
+        # Create species data frame for metaweb
         species_data <- data.frame(
-          species_id = igraph::V(native_net)$name,
-          species_name = igraph::V(native_net)$name,
-          functional_group = as.character(native_info$fg),
-          biomass = native_info$meanB,
+          species_id = igraph::V(net)$name,
+          species_name = igraph::V(net)$name,
+          functional_group = as.character(info$fg),
+          biomass = info$meanB,
           stringsAsFactors = FALSE
         )
 
         # Add optional columns if available
-        if ("PB" %in% colnames(native_info)) species_data$pb_ratio <- native_info$PB
-        if ("QB" %in% colnames(native_info)) species_data$qb_ratio <- native_info$QB
-        if ("bodymasses" %in% colnames(native_info)) species_data$body_mass <- native_info$bodymasses
-        if ("taxon" %in% colnames(native_info)) species_data$taxon <- native_info$taxon
+        if ("PB" %in% colnames(info)) species_data$pb_ratio <- info$PB
+        if ("QB" %in% colnames(info)) species_data$qb_ratio <- info$QB
+        if ("bodymasses" %in% colnames(info)) species_data$body_mass <- info$bodymasses
+        if ("taxon" %in% colnames(info)) species_data$taxon <- info$taxon
 
         # ============================================================
         # Add EMODnet habitat data if enabled
@@ -2608,8 +1970,8 @@ install.packages('Hmisc')</pre>
         }
         # ============================================================
 
-        # Create interactions data frame for metaweb (use native_net, not reactive value)
-        edges <- as_edgelist(native_net)
+        # Create interactions data frame for metaweb
+        edges <- as_edgelist(net)
         interactions_data <- data.frame(
           predator_id = edges[,1],
           prey_id = edges[,2],
@@ -2639,85 +2001,92 @@ install.packages('Hmisc')</pre>
         print(paste("Metaweb conversion error:", e$message))
       })
 
-      # Populate status data for formatted display (use native_info and native_net, not reactive values)
-      # Calculate network metrics once (avoid redundant calls)
-      species_count <- vcount(native_net)
-      links_count <- ecount(native_net)
-      fg_count <- nlevels(native_info$fg)
+      output$ecopath_native_status <- renderPrint({
+        cat("✓ SUCCESS: ECOPATH native database imported!\n\n")
+        cat("Database:", input$ecopath_native_file$name, "\n\n")
 
-      # Create functional group distribution (as.list preserves names automatically)
-      fg_table <- table(native_info$fg)
-      fg_distribution <- as.list(fg_table)
+        cat("Conversion complete:\n")
+        cat("  - Species/groups:", vcount(net), "\n")
+        cat("  - Trophic links:", ecount(net), "\n")
+        cat("  - Functional groups:", nlevels(info$fg), "\n\n")
 
-      # Log what we're about to send to the UI
-      message("\n=== UPDATING SUCCESS BOX DATA ===")
-      message("Species count: ", species_count)
-      message("Links count: ", links_count)
-      message("Functional groups: ", fg_count)
-      message("FG distribution:")
-      message(paste(sprintf("  %s: %d", names(fg_distribution), unlist(fg_distribution)), collapse = "\n"))
-      message("=================================\n")
+        cat("Functional group distribution:\n")
+        fg_table <- table(info$fg)
+        for (fg_name in names(fg_table)) {
+          cat("  ", fg_name, ":", fg_table[fg_name], "\n")
+        }
 
-      ecopath_native_status_data(list(
-        success = TRUE,
-        filename = input$ecopath_native_file$name,
-        species_count = species_count,
-        links_count = links_count,
-        fg_count = fg_count,
-        fg_distribution = fg_distribution,
-        mean_pb = if ("PB" %in% colnames(native_info)) round(mean(native_info$PB, na.rm = TRUE), 3) else NULL,
-        mean_qb = if ("QB" %in% colnames(native_info)) round(mean(native_info$QB, na.rm = TRUE), 3) else NULL,
-        pb_qb_preserved = TRUE,
-        metaweb_created = metaweb_created,
-        total_groups_loaded = result$total_groups_loaded,
-        filtered_groups = result$filtered_groups
-      ))
+        cat("\nP/B and Q/B ratios:\n")
+        if ("PB" %in% colnames(info)) {
+          cat("  Mean P/B:", round(mean(info$PB, na.rm = TRUE), 3), "\n")
+        }
+        if ("QB" %in% colnames(info)) {
+          cat("  Mean Q/B:", round(mean(info$QB, na.rm = TRUE), 3), "\n")
+        }
+
+        cat("\n⚠ Note: Default values assigned for:\n")
+        cat("  - Body masses (based on functional groups)\n")
+        cat("  - Metabolic types (vertebrates vs invertebrates)\n")
+        cat("  - Assimilation efficiencies\n\n")
+
+        cat("✓ P/B and Q/B ratios preserved from ECOPATH model\n")
+        if (metaweb_created) {
+          cat("✓ Metaweb format created and loaded\n")
+        } else {
+          cat("⚠ Metaweb conversion had issues (check console)\n")
+        }
+        cat("✓ Dashboard boxes updated\n\n")
+
+        cat("Use the 'Internal Data Editor' tab to refine these values.\n")
+        cat("Navigate to other tabs to explore your ECOPATH model.\n")
+        cat("\nFor keystoneness analysis, go to 'Keystoneness Analysis' tab.\n")
+      })
 
     }, error = function(e) {
-      # Build error solution HTML
-      os <- Sys.info()["sysname"]
+      output$ecopath_native_status <- renderPrint({
+        cat("✗ ERROR importing ECOPATH native database:\n\n")
+        cat(e$message, "\n\n")
 
-      solution_html <- if (os == "Windows") {
-        paste0(
-          "<div style='padding: 10px; background-color: #fff3cd; border-radius: 4px; margin-bottom: 10px;'>",
-          "<strong>⚠ WINDOWS USERS:</strong><br>",
-          "Windows ECOPATH import requires RODBC package.<br><br>",
-          "<strong>SOLUTION:</strong><br>",
-          "1. Install RODBC package: <code>install.packages('RODBC')</code><br>",
-          "2. Install Microsoft Access Database Engine:<br>",
-          "&nbsp;&nbsp;<a href='https://www.microsoft.com/download/details.aspx?id=54920' target='_blank'>Download here</a> (Choose 64-bit if using 64-bit R)<br><br>",
-          "<strong>ALTERNATIVE:</strong> Use CSV/Excel export method above",
-          "</div>"
-        )
-      } else {
-        paste0(
-          "<div style='padding: 10px; background-color: #fff3cd; border-radius: 4px; margin-bottom: 10px;'>",
-          "<strong>LINUX/MAC USERS:</strong><br>",
-          "Install mdbtools package:<br>",
-          "&nbsp;&nbsp;Linux: <code>sudo apt-get install mdbtools</code><br>",
-          "&nbsp;&nbsp;Mac: <code>brew install mdbtools</code><br><br>",
-          "Also install Hmisc package: <code>install.packages('Hmisc')</code>",
-          "</div>"
-        )
-      }
+        cat("==================================================\n")
+        cat("SOLUTION:\n")
+        cat("==================================================\n\n")
 
-      solution_html <- paste0(
-        solution_html,
-        "<div style='padding: 10px; background-color: #f5f5f5; border-radius: 4px;'>",
-        "<strong>Alternative solutions:</strong><br><br>",
-        "1. Missing Hmisc package: <code>install.packages('Hmisc')</code><br><br>",
-        "2. Use CSV/Excel exports instead (all platforms):<br>",
-        "&nbsp;&nbsp;- Export from ECOPATH: File > Export<br>",
-        "&nbsp;&nbsp;- Use 'Import ECOPATH CSV/Excel Exports' above<br><br>",
-        "3. Corrupted database file: Re-export from ECOPATH software",
-        "</div>"
-      )
+        # Detect operating system
+        os <- Sys.info()["sysname"]
 
-      ecopath_native_status_data(list(
-        success = FALSE,
-        error_message = e$message,
-        solution_html = solution_html
-      ))
+        if (os == "Windows") {
+          cat("⚠ WINDOWS USERS:\n")
+          cat("Windows ECOPATH import requires RODBC package.\n\n")
+          cat("SOLUTION:\n")
+          cat("  1. Install RODBC package:\n")
+          cat("     install.packages('RODBC')\n")
+          cat("  2. Install Microsoft Access Database Engine:\n")
+          cat("     Download from: https://www.microsoft.com/download/details.aspx?id=54920\n")
+          cat("     (Choose 64-bit if using 64-bit R)\n\n")
+          cat("ALTERNATIVE: Use CSV/Excel export method above\n\n")
+        } else {
+          cat("LINUX/MAC USERS:\n")
+          cat("Install mdbtools package:\n")
+          cat("  Linux: sudo apt-get install mdbtools\n")
+          cat("  Mac:   brew install mdbtools\n\n")
+          cat("Also install Hmisc package:\n")
+          cat("  install.packages('Hmisc')\n\n")
+        }
+
+        cat("--------------------------------------------------\n")
+        cat("Alternative solutions:\n")
+        cat("--------------------------------------------------\n\n")
+
+        cat("1. Missing Hmisc package:\n")
+        cat("   Solution: install.packages('Hmisc')\n\n")
+
+        cat("2. Use CSV/Excel exports instead (all platforms):\n")
+        cat("   - Export from ECOPATH: File > Export\n")
+        cat("   - Use 'Import ECOPATH CSV/Excel Exports' above\n\n")
+
+        cat("3. Corrupted database file:\n")
+        cat("   Solution: Re-export from ECOPATH software\n")
+      })
     })
   })
 
@@ -2731,15 +2100,13 @@ install.packages('Hmisc')</pre>
       # Use reactive values to ensure automatic updates
       current_net <- net_reactive()
       current_info <- info_reactive()
-      current_tl <- trophic_levels_cached()
 
-      # Use common visualization function with fixed node sizes and cached trophic levels
+      # Use common visualization function with fixed node sizes
       create_foodweb_visnetwork(
         net = current_net,
         info = current_info,
         node_size_method = "fixed",
-        edge_color_by = "default",
-        trophic_levels = current_tl
+        edge_color_by = "default"
       )
     }, error = function(e) {
       # Return empty network on error
@@ -2776,10 +2143,10 @@ install.packages('Hmisc')</pre>
     })
   })
 
-  # Topological Indicators (using cached computation)
+  # Topological Indicators
   output$topo_indicators <- renderPrint({
     tryCatch({
-      ind <- topological_metrics_cached()
+      ind <- get_topological_indicators(net)
       print(ind)
     }, error = function(e) {
       cat("Error calculating topological indicators:", e$message)
@@ -2822,15 +2189,13 @@ install.packages('Hmisc')</pre>
       # Use reactive values to ensure automatic updates
       current_net <- net_reactive()
       current_info <- info_reactive()
-      current_tl <- trophic_levels_cached()
 
-      # Use common visualization function with biomass-scaled nodes and cached trophic levels
+      # Use common visualization function with biomass-scaled nodes
       create_foodweb_visnetwork(
         net = current_net,
         info = current_info,
         node_size_method = "biomass_sqrt",
-        edge_color_by = "prey",
-        trophic_levels = current_tl
+        edge_color_by = "prey"
       )
     }, error = function(e) {
       # Return empty network on error
@@ -2884,73 +2249,45 @@ install.packages('Hmisc')</pre>
       # Use reactive values to ensure automatic updates
       current_net <- net_reactive()
       current_info <- info_reactive()
-      current_tl <- trophic_levels_cached()
 
       # Get cached flux results
       res <- flux_results()
 
-      # Check if flux network has edges
-      if (ecount(res$netLW) == 0) {
-        # No edges - show network with all nodes but no connections
-        create_foodweb_visnetwork(
-          net = current_net,
-          info = current_info,
-          node_size_method = "fixed",
-          edge_network = res$netLW,  # Empty edge network
-          edge_data = NULL,
-          edge_color_by = "default",
-          trophic_levels = current_tl
-        )
-      } else {
-        # Prepare edge data with flux information
-        flux_weights <- E(res$netLW)$weight
+      # Prepare edge data with flux information
+      flux_weights <- E(res$netLW)$weight
+      edge_widths <- EDGE_WIDTH_MIN + (flux_weights/max(flux_weights) * EDGE_WIDTH_SCALE)
 
-        # Handle case where all fluxes are zero
-        max_flux <- max(flux_weights, na.rm = TRUE)
-        if (is.finite(max_flux) && max_flux > 0) {
-          edge_widths <- EDGE_WIDTH_MIN + (flux_weights/max_flux * EDGE_WIDTH_SCALE)
+      # Format flux values for display
+      flux_display <- sapply(flux_weights, function(x) {
+        if (x >= 0.01) {
+          sprintf("%.4f", x)
+        } else if (x >= 0.0001) {
+          sprintf("%.6f", x)
         } else {
-          edge_widths <- rep(EDGE_WIDTH_MIN, length(flux_weights))
+          sprintf("%.2e", x)
         }
+      })
 
-        # Format flux values for display
-        flux_display <- sapply(flux_weights, function(x) {
-          if (is.na(x) || !is.finite(x)) {
-            "0"
-          } else if (x >= 0.01) {
-            sprintf("%.4f", x)
-          } else if (x >= 0.0001) {
-            sprintf("%.6f", x)
-          } else {
-            sprintf("%.2e", x)
-          }
-        })
-
-        edge_data <- data.frame(
-          width = edge_widths,
-          value = flux_weights,
-          title = paste0("Flux: ", flux_display, " kJ/day/km²"),
-          stringsAsFactors = FALSE
-        )
-
-        # Use common visualization function with flux network and cached trophic levels
-        create_foodweb_visnetwork(
-          net = current_net,
-          info = current_info,
-          node_size_method = "fixed",
-          edge_network = res$netLW,
-          edge_data = edge_data,
-          edge_color_by = "default",
-          trophic_levels = current_tl
-        )
-      }
-    }, error = function(e) {
-      # Return informative error message
-      visNetwork(
-        data.frame(id=1, label="Error",
-                   title=paste0("<b>Flux Network Error:</b><br>", e$message)),
-        data.frame(from=integer(0), to=integer(0))
+      edge_data <- data.frame(
+        width = edge_widths,
+        value = flux_weights,
+        title = paste0("Flux: ", flux_display, " kJ/day/km²"),
+        stringsAsFactors = FALSE
       )
+
+      # Use common visualization function with flux network
+      create_foodweb_visnetwork(
+        net = current_net,
+        info = current_info,
+        node_size_method = "fixed",
+        edge_network = res$netLW,
+        edge_data = edge_data,
+        edge_color_by = "default"
+      )
+    }, error = function(e) {
+      # Return empty network on error
+      visNetwork(data.frame(id=1, label="Error", title=e$message),
+                 data.frame(from=integer(0), to=integer(0)))
     })
   })
 
@@ -3230,48 +2567,6 @@ install.packages('Hmisc')</pre>
   )
 
   # ============================================================================
-  # EXPORT CURRENT METAWEB
-  # ============================================================================
-
-  output$download_current_metaweb <- downloadHandler(
-    filename = function() {
-      # Get filename from input, add .Rdata extension
-      filename <- input$export_metaweb_name
-      if (is.null(filename) || filename == "") {
-        filename <- "my_metaweb"
-      }
-      # Remove any existing extension and add .Rdata
-      filename <- tools::file_path_sans_ext(filename)
-      paste0(filename, ".Rdata")
-    },
-    content = function(file) {
-      tryCatch({
-        # Get current network and info
-        current_net <- net_reactive()
-        current_info <- info_reactive()
-
-        # Use export function
-        export_metaweb_rda(current_net, current_info, file)
-
-        showNotification(
-          paste0("Metaweb exported successfully: ", basename(file)),
-          type = "message",
-          duration = 5
-        )
-
-      }, error = function(e) {
-        showNotification(
-          paste0("Export failed: ", e$message),
-          type = "error",
-          duration = 10
-        )
-        # Still create an empty file so download doesn't fail
-        save(list = character(0), file = file)
-      })
-    }
-  )
-
-  # ============================================================================
   # INTERNAL DATA EDITOR HANDLERS
   # ============================================================================
 
@@ -3290,17 +2585,13 @@ install.packages('Hmisc')</pre>
   # Function to refresh data editor tables
   refresh_data_editor <- function() {
     tryCatch({
-      # Use reactive values, not initial default dataset
-      current_info <- info_reactive()
-      current_net <- net_reactive()
-
-      info_copy <- current_info[, !names(current_info) %in% c("colfg"), drop = FALSE]
+      info_copy <- info[, !names(info) %in% c("colfg"), drop = FALSE]
       species_data(info_copy)
 
-      adj_matrix <- as.matrix(as_adjacency_matrix(current_net, sparse = FALSE))
+      adj_matrix <- as.matrix(as_adjacency_matrix(net, sparse = FALSE))
       network_matrix_data(adj_matrix)
 
-      cat("Data editor tables refreshed with", nrow(info_copy), "species\n")
+      cat("Data editor tables refreshed\n")
     }, error = function(e) {
       cat("Error refreshing data editor:", e$message, "\n")
     })
@@ -3317,21 +2608,12 @@ install.packages('Hmisc')</pre>
 
     req(species_df)
 
-    # Prepare display data with appropriate decimal precision
+    # Round numeric columns to 2 decimal places for display
     species_display <- species_df
     numeric_cols <- sapply(species_display, is.numeric)
+    species_display[numeric_cols] <- lapply(species_display[numeric_cols], function(x) round(x, 2))
 
-    # Round numeric columns (2 decimals by default, 3 for bodymasses)
-    for (col_name in names(species_display)[numeric_cols]) {
-      if (col_name == "bodymasses") {
-        species_display[[col_name]] <- round(species_display[[col_name]], 3)
-      } else {
-        species_display[[col_name]] <- round(species_display[[col_name]], 2)
-      }
-    }
-
-    # Create the datatable
-    dt <- DT::datatable(
+    DT::datatable(
       species_display,
       editable = TRUE,
       options = list(
@@ -3341,21 +2623,8 @@ install.packages('Hmisc')</pre>
         dom = 'tp'
       ),
       rownames = TRUE
-    )
-
-    # Apply formatting (3 decimals for bodymasses, 2 for others)
-    if ("bodymasses" %in% names(species_display)) {
-      bodymasses_col_idx <- which(names(species_display) == "bodymasses")
-      dt <- dt %>% DT::formatRound(columns = bodymasses_col_idx, digits = 3)
-    }
-
-    # Format other numeric columns
-    other_numeric_cols <- which(numeric_cols & names(species_display) != "bodymasses")
-    if (length(other_numeric_cols) > 0) {
-      dt <- dt %>% DT::formatRound(columns = other_numeric_cols, digits = 2)
-    }
-
-    dt
+    ) %>%
+      DT::formatRound(columns = which(numeric_cols), digits = 2)
   })
 
   # Handle Species Info Table edits
@@ -3369,7 +2638,7 @@ install.packages('Hmisc')</pre>
   # Save Species Info button
   observeEvent(input$save_species_info, {
     tryCatch({
-      # Get edited data from reactive
+      # Update global info variable
       edited_info <- species_data()
 
       # Validate required columns exist
@@ -3379,20 +2648,15 @@ install.packages('Hmisc')</pre>
         stop(paste("Missing required columns:", paste(missing_cols, collapse=", ")))
       }
 
-      # Reassign colors by matching functional group names to COLOR_SCHEME
-      fg_levels <- get_functional_group_levels()
-      edited_info$colfg <- sapply(as.character(edited_info$fg), function(fg) {
-        idx <- which(fg_levels == fg)
-        if (length(idx) == 0) return("gray")
-        COLOR_SCHEME[idx]
-      })
+      # Update global info
+      info <<- edited_info
 
-      # Update reactive value
-      info_reactive(edited_info)
+      # Reassign colors based on functional groups
+      info$colfg <<- COLOR_SCHEME[as.numeric(info$fg)]
 
       output$species_info_status <- renderPrint({
         cat("✓ SUCCESS: Species information saved!\n")
-        cat("Updated", nrow(info_reactive()), "species records.\n")
+        cat("Updated", nrow(info), "species records.\n")
         cat("\nNavigate to other tabs to see updated visualizations.\n")
       })
     }, error = function(e) {
@@ -3469,24 +2733,24 @@ install.packages('Hmisc')</pre>
       }
 
       # Create new network from adjacency matrix
-      updated_net <- igraph::graph_from_adjacency_matrix(edited_matrix, mode = "directed")
+      net <<- igraph::graph_from_adjacency_matrix(edited_matrix, mode = "directed")
 
       # Upgrade if needed
-      updated_net <- igraph::upgrade_graph(updated_net)
+      net <<- igraph::upgrade_graph(net)
 
       # Explicitly set vertex names from rownames to ensure they're preserved
       if (!is.null(rownames(edited_matrix))) {
-        igraph::V(updated_net)$name <- rownames(edited_matrix)
+        igraph::V(net)$name <<- rownames(edited_matrix)
       }
 
       # Update reactive values for dashboard
-      net_reactive(updated_net)
+      net_reactive(net)
 
       output$network_matrix_status <- renderPrint({
         cat("✓ SUCCESS: Network updated from matrix!\n")
         cat("Network now has:\n")
-        cat("  - Species:", vcount(net_reactive()), "\n")
-        cat("  - Links:", ecount(net_reactive()), "\n")
+        cat("  - Species:", vcount(net), "\n")
+        cat("  - Links:", ecount(net), "\n")
         cat("\nAll visualizations will now use the updated network.\n")
         cat("Navigate to other tabs to see the changes.\n")
       })
@@ -3935,8 +3199,8 @@ install.packages('Hmisc')</pre>
       # Convert metaweb to igraph
       new_net <- metaweb_to_igraph(current_metaweb())
 
-      # Update reactive network
-      net_reactive(new_net)
+      # Update global network
+      net <<- new_net
 
       # Try to update info if it exists
       if ("species_name" %in% colnames(current_metaweb()$species)) {
@@ -3951,14 +3215,13 @@ install.packages('Hmisc')</pre>
         if (!"met.types" %in% colnames(info_df)) info_df$met.types <- "Other"
         if (!"efficiencies" %in% colnames(info_df)) info_df$efficiencies <- 0.5
 
-        # Update reactive info
-        info_reactive(info_df)
+        info <<- info_df
       }
 
       output$export_status <- renderPrint({
         cat("✓ SUCCESS: Metaweb converted to active network!\n")
-        cat("Species:", vcount(net_reactive()), "\n")
-        cat("Links:", ecount(net_reactive()), "\n")
+        cat("Species:", vcount(net), "\n")
+        cat("Links:", ecount(net), "\n")
         cat("\nThe network is now available in:\n")
         cat("  • Food Web Network tab\n")
         cat("  • Topological Metrics tab\n")
@@ -4825,7 +4088,7 @@ install.packages('Hmisc')</pre>
               cat("✓ BBT polygon loaded directly for habitat extraction\n")
             }, error = function(e) {
               cat("✗ Failed to load BBT polygon:", conditionMessage(e), "\n")
-              study_area_sf <- NULL
+              study_area_sf <<- NULL
             })
           }
 
@@ -5853,24 +5116,19 @@ install.packages('Hmisc')</pre>
         convert_ecobase_to_econetool(model_id, use_output = use_output)
       }
 
-      # Process loaded data (use local variables, no global state)
-      ecobase_net <- result$net
-      ecobase_info <- result$info
+      # Update global variables
+      net <<- result$net
+      info <<- result$info
 
       # Upgrade igraph if needed
-      ecobase_net <- igraph::upgrade_graph(ecobase_net)
+      net <<- igraph::upgrade_graph(net)
 
-      # Assign colors by matching functional group names to COLOR_SCHEME
-      fg_levels <- get_functional_group_levels()
-      ecobase_info$colfg <- sapply(as.character(ecobase_info$fg), function(fg) {
-        idx <- which(fg_levels == fg)
-        if (length(idx) == 0) return("gray")
-        COLOR_SCHEME[idx]
-      })
+      # Assign colors based on functional groups
+      info$colfg <<- COLOR_SCHEME[as.numeric(info$fg)]
 
       # Update reactive values for dashboard
-      net_reactive(ecobase_net)
-      info_reactive(ecobase_info)
+      net_reactive(net)
+      info_reactive(info)
 
       # Refresh data editor tables
       refresh_data_editor()
@@ -5970,582 +5228,6 @@ install.packages('Hmisc')</pre>
       )
     })
   })
-
-  # ===========================================================================
-  # SHARK4R SERVER LOGIC
-  # ===========================================================================
-  # Swedish ocean archives integration for marine environmental data
-  # Data sources: Dyntaxa, WoRMS, AlgaeBase, SHARK database
-  # ===========================================================================
-
-  # Initialize reactive values for SHARK data
-  shark_data <- reactiveValues(
-    taxonomy_results = NULL,
-    environmental_data = NULL,
-    occurrence_data = NULL,
-    qc_results = NULL
-  )
-
-  # ---------------------------------------------------------------------------
-  # TAB 1: Taxonomy Search
-  # ---------------------------------------------------------------------------
-
-  observeEvent(input$shark_search_taxonomy, {
-    req(input$shark_species_name)
-    req(length(input$shark_taxonomy_sources) > 0)
-
-    species_name <- trimws(input$shark_species_name)
-
-    withProgress(message = 'Querying taxonomic databases...', value = 0, {
-      results <- list()
-      sources <- input$shark_taxonomy_sources
-      n_sources <- length(sources)
-
-      # Query each selected source
-      if ("dyntaxa" %in% sources) {
-        incProgress(1/n_sources, detail = "Querying Dyntaxa...")
-        results$dyntaxa <- query_dyntaxa(species_name,
-                                        fuzzy = input$shark_fuzzy_search)
-      }
-
-      if ("worms" %in% sources) {
-        incProgress(1/n_sources, detail = "Querying WoRMS...")
-        results$worms <- query_shark_worms(species_name,
-                                          fuzzy = input$shark_fuzzy_search)
-      }
-
-      if ("algaebase" %in% sources) {
-        incProgress(1/n_sources, detail = "Querying AlgaeBase...")
-        results$algaebase <- query_algaebase(species_name)
-      }
-
-      shark_data$taxonomy_results <- results
-      incProgress(1, detail = "Complete!")
-    })
-  })
-
-  # Render taxonomy results
-  output$shark_taxonomy_results <- renderUI({
-    req(shark_data$taxonomy_results)
-
-    results <- shark_data$taxonomy_results
-
-    if (length(results) == 0) {
-      return(tags$div(
-        class = "alert alert-warning",
-        icon("exclamation-triangle"),
-        " No results found. Try a different species name or enable more data sources."
-      ))
-    }
-
-    # Create a result box for each source
-    result_boxes <- lapply(names(results), function(source_name) {
-      result <- results[[source_name]]
-
-      if (is.null(result)) {
-        return(tags$div(
-          class = "alert alert-secondary",
-          style = "margin-bottom: 15px;",
-          tags$h5(tags$strong(toupper(source_name))),
-          tags$p(icon("times-circle"), " No results found in this database")
-        ))
-      }
-
-      # Format result based on source
-      if (source_name == "dyntaxa") {
-        tags$div(
-          class = "alert alert-success",
-          style = "margin-bottom: 15px;",
-          tags$h5(tags$strong("DYNTAXA (Swedish Taxonomy)")),
-          tags$table(
-            class = "table table-sm",
-            tags$tr(
-              tags$td(tags$strong("Scientific Name:")),
-              tags$td(result$scientific_name)
-            ),
-            tags$tr(
-              tags$td(tags$strong("Swedish Name:")),
-              tags$td(ifelse(is.na(result$swedish_name), "—", result$swedish_name))
-            ),
-            tags$tr(
-              tags$td(tags$strong("Taxon ID:")),
-              tags$td(result$taxon_id)
-            ),
-            tags$tr(
-              tags$td(tags$strong("Class:")),
-              tags$td(ifelse(is.na(result$class), "—", result$class))
-            ),
-            tags$tr(
-              tags$td(tags$strong("Family:")),
-              tags$td(ifelse(is.na(result$family), "—", result$family))
-            ),
-            tags$tr(
-              tags$td(tags$strong("Author:")),
-              tags$td(ifelse(is.na(result$author), "—", result$author))
-            )
-          )
-        )
-      } else if (source_name == "worms") {
-        tags$div(
-          class = "alert alert-info",
-          style = "margin-bottom: 15px;",
-          tags$h5(tags$strong("WoRMS (World Register of Marine Species)")),
-          tags$table(
-            class = "table table-sm",
-            tags$tr(
-              tags$td(tags$strong("Scientific Name:")),
-              tags$td(result$scientific_name)
-            ),
-            tags$tr(
-              tags$td(tags$strong("AphiaID:")),
-              tags$td(tags$a(href = paste0("https://www.marinespecies.org/aphia.php?p=taxdetails&id=", result$aphia_id),
-                            target = "_blank", result$aphia_id))
-            ),
-            tags$tr(
-              tags$td(tags$strong("Authority:")),
-              tags$td(ifelse(is.na(result$authority), "—", result$authority))
-            ),
-            tags$tr(
-              tags$td(tags$strong("Status:")),
-              tags$td(ifelse(is.na(result$status), "—", result$status))
-            ),
-            tags$tr(
-              tags$td(tags$strong("Class:")),
-              tags$td(ifelse(is.na(result$class), "—", result$class))
-            ),
-            tags$tr(
-              tags$td(tags$strong("Family:")),
-              tags$td(ifelse(is.na(result$family), "—", result$family))
-            )
-          )
-        )
-      } else if (source_name == "algaebase") {
-        tags$div(
-          class = "alert alert-primary",
-          style = "margin-bottom: 15px;",
-          tags$h5(tags$strong("ALGAEBASE (Algae Database)")),
-          tags$table(
-            class = "table table-sm",
-            tags$tr(
-              tags$td(tags$strong("Scientific Name:")),
-              tags$td(result$scientific_name)
-            ),
-            tags$tr(
-              tags$td(tags$strong("AlgaeBase ID:")),
-              tags$td(result$algaebase_id)
-            ),
-            tags$tr(
-              tags$td(tags$strong("Authority:")),
-              tags$td(ifelse(is.na(result$authority), "—", result$authority))
-            ),
-            tags$tr(
-              tags$td(tags$strong("Phylum:")),
-              tags$td(ifelse(is.na(result$phylum), "—", result$phylum))
-            ),
-            tags$tr(
-              tags$td(tags$strong("Class:")),
-              tags$td(ifelse(is.na(result$class), "—", result$class))
-            )
-          )
-        )
-      }
-    })
-
-    do.call(tagList, result_boxes)
-  })
-
-  # ---------------------------------------------------------------------------
-  # TAB 2: Environmental Data
-  # ---------------------------------------------------------------------------
-
-  observeEvent(input$shark_query_environmental, {
-    req(input$shark_date_range)
-    req(length(input$shark_parameters) > 0)
-
-    # Build bounding box
-    bbox <- NULL
-    if (!is.null(input$shark_bbox_north) && !is.null(input$shark_bbox_south) &&
-        !is.null(input$shark_bbox_east) && !is.null(input$shark_bbox_west)) {
-      bbox <- c(
-        north = input$shark_bbox_north,
-        south = input$shark_bbox_south,
-        east = input$shark_bbox_east,
-        west = input$shark_bbox_west
-      )
-    }
-
-    withProgress(message = 'Retrieving environmental data from SHARK...', value = 0.5, {
-      data <- get_shark_environmental_data(
-        parameters = input$shark_parameters,
-        start_date = input$shark_date_range[1],
-        end_date = input$shark_date_range[2],
-        bbox = bbox,
-        max_records = input$shark_max_env_records
-      )
-
-      if (!is.null(data)) {
-        shark_data$environmental_data <- format_shark_results(data, "environmental")
-      } else {
-        shark_data$environmental_data <- NULL
-      }
-
-      incProgress(1)
-    })
-  })
-
-  # Render environmental data status
-  output$shark_environmental_status <- renderUI({
-    if (is.null(shark_data$environmental_data)) {
-      return(tags$div(
-        class = "alert alert-info",
-        icon("info-circle"),
-        " No data retrieved yet. Configure query parameters and click 'Query Data'."
-      ))
-    } else {
-      return(tags$div(
-        class = "alert alert-success",
-        icon("check-circle"),
-        sprintf(" Retrieved %d environmental records", nrow(shark_data$environmental_data))
-      ))
-    }
-  })
-
-  # Render environmental data table
-  output$shark_environmental_table <- renderDT({
-    req(shark_data$environmental_data)
-
-    datatable(
-      shark_data$environmental_data,
-      options = list(
-        pageLength = 25,
-        scrollX = TRUE,
-        dom = 'Bfrtip'
-      ),
-      rownames = FALSE,
-      class = 'cell-border stripe'
-    )
-  })
-
-  # Download environmental data
-  output$shark_download_environmental <- downloadHandler(
-    filename = function() {
-      paste0("shark_environmental_", Sys.Date(), ".csv")
-    },
-    content = function(file) {
-      req(shark_data$environmental_data)
-      write.csv(shark_data$environmental_data, file, row.names = FALSE)
-    }
-  )
-
-  # ---------------------------------------------------------------------------
-  # TAB 3: Species Occurrence
-  # ---------------------------------------------------------------------------
-
-  observeEvent(input$shark_query_occurrence, {
-    req(input$shark_occurrence_species)
-    req(input$shark_occurrence_dates)
-
-    species_name <- trimws(input$shark_occurrence_species)
-
-    withProgress(message = 'Retrieving species occurrence data...', value = 0.5, {
-      data <- get_shark_species_occurrence(
-        species_name = species_name,
-        start_date = input$shark_occurrence_dates[1],
-        end_date = input$shark_occurrence_dates[2],
-        max_records = input$shark_max_occ_records
-      )
-
-      if (!is.null(data)) {
-        shark_data$occurrence_data <- format_shark_results(data, "occurrence")
-      } else {
-        shark_data$occurrence_data <- NULL
-      }
-
-      incProgress(1)
-    })
-  })
-
-  # Render occurrence status
-  output$shark_occurrence_status <- renderUI({
-    if (is.null(shark_data$occurrence_data)) {
-      return(tags$div(
-        class = "alert alert-info",
-        icon("info-circle"),
-        " No occurrence data retrieved yet. Enter a species name and click 'Get Occurrences'."
-      ))
-    } else {
-      return(tags$div(
-        class = "alert alert-success",
-        icon("check-circle"),
-        sprintf(" Retrieved %d occurrence records", nrow(shark_data$occurrence_data))
-      ))
-    }
-  })
-
-  # Render occurrence table
-  output$shark_occurrence_table <- renderDT({
-    req(shark_data$occurrence_data)
-
-    datatable(
-      shark_data$occurrence_data,
-      options = list(
-        pageLength = 15,
-        scrollX = TRUE
-      ),
-      rownames = FALSE,
-      class = 'cell-border stripe'
-    )
-  })
-
-  # Render occurrence map
-  output$shark_occurrence_map <- renderLeaflet({
-    req(shark_data$occurrence_data)
-    req("Lat" %in% colnames(shark_data$occurrence_data))
-    req("Lon" %in% colnames(shark_data$occurrence_data))
-
-    # Filter rows with valid coordinates
-    data_map <- shark_data$occurrence_data[
-      !is.na(shark_data$occurrence_data$Lat) &
-      !is.na(shark_data$occurrence_data$Lon), ]
-
-    if (nrow(data_map) == 0) {
-      return(leaflet() %>%
-              addTiles() %>%
-              setView(lng = 18, lat = 59, zoom = 5))
-    }
-
-    # Create map
-    leaflet(data_map) %>%
-      addTiles() %>%
-      addCircleMarkers(
-        lng = ~Lon,
-        lat = ~Lat,
-        popup = ~paste0("<strong>", Species, "</strong><br>",
-                       "Date: ", Date, "<br>",
-                       "Abundance: ", Abundance, " ", Unit),
-        radius = 5,
-        color = "#007bff",
-        fillOpacity = 0.7,
-        stroke = TRUE,
-        weight = 1
-      ) %>%
-      fitBounds(
-        lng1 = min(data_map$Lon, na.rm = TRUE),
-        lat1 = min(data_map$Lat, na.rm = TRUE),
-        lng2 = max(data_map$Lon, na.rm = TRUE),
-        lat2 = max(data_map$Lat, na.rm = TRUE)
-      )
-  })
-
-  # Download occurrence data
-  output$shark_download_occurrence <- downloadHandler(
-    filename = function() {
-      paste0("shark_occurrence_", Sys.Date(), ".csv")
-    },
-    content = function(file) {
-      req(shark_data$occurrence_data)
-      write.csv(shark_data$occurrence_data, file, row.names = FALSE)
-    }
-  )
-
-  # ---------------------------------------------------------------------------
-  # TAB 4: Quality Control
-  # ---------------------------------------------------------------------------
-
-  observeEvent(input$shark_run_qc, {
-    req(input$shark_qc_file)
-
-    withProgress(message = 'Running quality control checks...', value = 0, {
-      # Read uploaded file
-      incProgress(0.2, detail = "Reading file...")
-      data <- tryCatch({
-        read.csv(input$shark_qc_file$datapath, stringsAsFactors = FALSE)
-      }, error = function(e) {
-        NULL
-      })
-
-      if (is.null(data)) {
-        shark_data$qc_results <- list(
-          error = TRUE,
-          message = "Failed to read file. Please check file format."
-        )
-        return()
-      }
-
-      # Run validation
-      incProgress(0.3, detail = "Validating format...")
-      validation <- if ("format" %in% input$shark_qc_checks) {
-        validate_shark_data(data)
-      } else {
-        list(valid = TRUE, message = "Format validation skipped")
-      }
-
-      # Run quality checks
-      incProgress(0.3, detail = "Checking quality...")
-      quality <- if ("completeness" %in% input$shark_qc_checks) {
-        check_data_quality(data)
-      } else {
-        list(message = "Quality check skipped")
-      }
-
-      # Store results
-      shark_data$qc_results <- list(
-        error = FALSE,
-        validation = validation,
-        quality = quality,
-        data_summary = list(
-          rows = nrow(data),
-          columns = ncol(data),
-          column_names = colnames(data)
-        )
-      )
-
-      incProgress(1, detail = "Complete!")
-    })
-  })
-
-  # Render QC status
-  output$shark_qc_status <- renderUI({
-    if (is.null(shark_data$qc_results)) {
-      return(tags$div(
-        class = "alert alert-info",
-        icon("info-circle"),
-        " No quality control run yet. Upload a SHARK format file and click 'Run Quality Control'."
-      ))
-    }
-
-    if (shark_data$qc_results$error) {
-      return(tags$div(
-        class = "alert alert-danger",
-        icon("exclamation-triangle"),
-        paste(" Error:", shark_data$qc_results$message)
-      ))
-    }
-
-    return(tags$div(
-      class = "alert alert-success",
-      icon("check-circle"),
-      sprintf(" Quality control completed - %d rows, %d columns analyzed",
-              shark_data$qc_results$data_summary$rows,
-              shark_data$qc_results$data_summary$columns)
-    ))
-  })
-
-  # Render QC results
-  output$shark_qc_results <- renderPrint({
-    req(shark_data$qc_results)
-    req(!shark_data$qc_results$error)
-
-    cat("================================================================================\n")
-    cat("SHARK DATA QUALITY CONTROL REPORT\n")
-    cat("================================================================================\n\n")
-
-    # Data summary
-    cat("DATA SUMMARY\n")
-    cat("------------\n")
-    cat("Rows:", shark_data$qc_results$data_summary$rows, "\n")
-    cat("Columns:", shark_data$qc_results$data_summary$columns, "\n")
-    cat("Columns:", paste(shark_data$qc_results$data_summary$column_names, collapse = ", "), "\n\n")
-
-    # Validation results
-    if (!is.null(shark_data$qc_results$validation)) {
-      cat("VALIDATION RESULTS\n")
-      cat("------------------\n")
-      if (shark_data$qc_results$validation$valid) {
-        cat("✓ Format validation: PASSED\n")
-      } else {
-        cat("✗ Format validation: FAILED\n")
-        cat("Message:", shark_data$qc_results$validation$message, "\n")
-      }
-      cat("\n")
-    }
-
-    # Quality check results
-    if (!is.null(shark_data$qc_results$quality)) {
-      cat("QUALITY CHECK RESULTS\n")
-      cat("---------------------\n")
-      if (!is.null(shark_data$qc_results$quality$completeness)) {
-        cat(sprintf("Data completeness: %.1f%%\n", shark_data$qc_results$quality$completeness))
-      }
-      if (!is.null(shark_data$qc_results$quality$record_count)) {
-        cat("Record count:", shark_data$qc_results$quality$record_count, "\n")
-      }
-      cat("\n")
-    }
-
-    cat("================================================================================\n")
-  })
-
-  # Render QC warnings
-  output$shark_qc_warnings <- renderUI({
-    req(shark_data$qc_results)
-    req(!shark_data$qc_results$error)
-
-    warnings <- list()
-
-    # Check for validation warnings
-    if (!is.null(shark_data$qc_results$validation) &&
-        !is.null(shark_data$qc_results$validation$warnings) &&
-        length(shark_data$qc_results$validation$warnings) > 0) {
-      warnings <- c(warnings, shark_data$qc_results$validation$warnings)
-    }
-
-    if (length(warnings) == 0) {
-      return(tags$div(
-        class = "alert alert-success",
-        icon("check"), " No warnings detected"
-      ))
-    }
-
-    # Display warnings
-    warning_items <- lapply(warnings, function(w) {
-      tags$li(w)
-    })
-
-    tags$div(
-      class = "alert alert-warning",
-      tags$h5(icon("exclamation-triangle"), " Warnings:"),
-      tags$ul(warning_items)
-    )
-  })
-
-  # Render QC summary
-  output$shark_qc_summary <- renderUI({
-    req(shark_data$qc_results)
-    req(!shark_data$qc_results$error)
-
-    if (!is.null(shark_data$qc_results$quality) &&
-        !is.null(shark_data$qc_results$quality$completeness)) {
-      completeness <- shark_data$qc_results$quality$completeness
-
-      status_class <- if (completeness >= 95) {
-        "success"
-      } else if (completeness >= 80) {
-        "warning"
-      } else {
-        "danger"
-      }
-
-      tags$div(
-        class = paste("alert alert-", status_class, sep = ""),
-        tags$h5("Data Quality Summary:"),
-        tags$p(sprintf("Overall completeness: %.1f%%", completeness)),
-        tags$p(
-          if (completeness >= 95) {
-            "Data quality is excellent."
-          } else if (completeness >= 80) {
-            "Data quality is acceptable but some values are missing."
-          } else {
-            "Data quality needs improvement. Significant missing values detected."
-          }
-        )
-      )
-    }
-  })
-
-  # ===========================================================================
-  # END OF SHARK4R SERVER LOGIC
-  # ===========================================================================
 
   # Note: EcoBase outputs are created dynamically inside observeEvent, so no outputOptions needed
 
