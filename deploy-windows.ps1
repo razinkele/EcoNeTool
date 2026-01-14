@@ -23,7 +23,7 @@ param(
     [switch]$Force,
     [switch]$RestartServer,
     [string]$User = "razinka",
-    [string]$Host = "laguna.ku.lt",
+    [string]$Server = "laguna.ku.lt",
     [int]$Port = 22
 )
 
@@ -46,7 +46,7 @@ $TIMESTAMP = Get-Date -Format "yyyyMMdd_HHmmss"
 $LOG_FILE = Join-Path $LOG_DIR "deploy_$TIMESTAMP.log"
 
 # SSH connection string
-$SSH_TARGET = "$User@$Host"
+$SSH_TARGET = "$User@$Server"
 $SSH_OPTS = @("-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10")
 if ($Port -ne 22) {
     $SSH_OPTS += @("-p", $Port)
@@ -396,7 +396,7 @@ function Test-Deployment {
 
 Write-Host ""
 Write-Host "================================================================================" -ForegroundColor Blue
-Write-Host " EcoNeTool - Windows Deployment to $Host" -ForegroundColor Blue
+Write-Host " EcoNeTool - Windows Deployment to $Server" -ForegroundColor Blue
 Write-Host "================================================================================" -ForegroundColor Blue
 Write-Host ""
 
@@ -445,7 +445,7 @@ try {
         Write-Host " DEPLOYMENT SUCCESSFUL" -ForegroundColor Green
         Write-Host "================================================================================" -ForegroundColor Green
         Write-Host ""
-        Write-Host " Application URL: http://$Host/$APP_NAME/" -ForegroundColor Cyan
+        Write-Host " Application URL: http://$Server/$APP_NAME/" -ForegroundColor Cyan
         Write-Host " Log file: $LOG_FILE" -ForegroundColor Gray
         Write-Host ""
     } else {
