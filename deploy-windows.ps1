@@ -47,7 +47,8 @@ $LOG_FILE = Join-Path $LOG_DIR "deploy_$TIMESTAMP.log"
 
 # SSH connection string
 $SSH_TARGET = "$User@$Server"
-$SSH_OPTS = @("-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10")
+# Minimal SSH options - rely on user's ~/.ssh/config for other settings
+$SSH_OPTS = @()
 if ($Port -ne 22) {
     $SSH_OPTS += @("-p", $Port)
 }
@@ -123,7 +124,11 @@ function Test-SSHConnection {
     Write-Log "Testing SSH connection to $SSH_TARGET..."
 
     try {
-        $result = & ssh $SSH_OPTS $SSH_TARGET "echo 'Connection successful'" 2>&1
+        if ($SSH_OPTS.Count -gt 0) {
+            $result = & ssh $SSH_OPTS $SSH_TARGET "echo 'Connection successful'" 2>&1
+        } else {
+            $result = & ssh $SSH_TARGET "echo 'Connection successful'" 2>&1
+        }
         if ($LASTEXITCODE -eq 0) {
             Write-Log "SSH connection successful" "SUCCESS"
             return $true
@@ -145,7 +150,11 @@ function Invoke-RemoteCommand {
         return ""
     }
 
-    $result = & ssh $SSH_OPTS $SSH_TARGET $Command 2>&1
+    if ($SSH_OPTS.Count -gt 0) {
+        $result = & ssh $SSH_OPTS $SSH_TARGET $Command 2>&1
+    } else {
+        $result = & ssh $SSH_TARGET $Command 2>&1
+    }
     if ($LASTEXITCODE -ne 0 -and -not $IgnoreError) {
         Write-Log "Remote command failed: $Command" "ERROR"
         Write-Log "Output: $result" "ERROR"
@@ -166,7 +175,7 @@ function Copy-ToRemote {
         return
     }
 
-    $scpOpts = @("-o", "StrictHostKeyChecking=accept-new")
+    $scpOpts = @()
     if ($Port -ne 22) {
         $scpOpts += @("-P", $Port)
     }
@@ -174,7 +183,11 @@ function Copy-ToRemote {
         $scpOpts += "-r"
     }
 
-    & scp $scpOpts $LocalPath "${SSH_TARGET}:${RemotePath}" 2>&1
+    if ($scpOpts.Count -gt 0) {
+        & scp $scpOpts $LocalPath "${SSH_TARGET}:${RemotePath}" 2>&1
+    } else {
+        & scp $LocalPath "${SSH_TARGET}:${RemotePath}" 2>&1
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "SCP failed for $LocalPath"
     }
