@@ -2,6 +2,7 @@
 .Rhistory
 .RData
 .Rproj.user/
+**/.Rproj.user/
 *.Rproj
 
 # Shiny specific
@@ -14,9 +15,23 @@ rsconnect/
 # System files
 .DS_Store
 Thumbs.db
-.Rproj.user
 
 # Temporary files
 *~
 *.swp
 *.swo
+
+# Backup files
+*.bak
+
+# Log files
+*.log
+err.log
+
+# Generated output
+output/*.html
+
+# Custom configuration files (Phase 1: Harmonization)
+R/config/harmonization_custom.R
+config/harmonization_custom.json
+config/api_keys.R
