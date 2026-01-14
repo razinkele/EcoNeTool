@@ -1,0 +1,27 @@
+linters: linters_with_defaults(
+    # Line length - be generous for Shiny apps with long UI definitions
+    line_length_linter(120),
+
+    # Disable some overly strict linters for existing codebase
+    object_name_linter = NULL,        # Allow existing naming conventions
+    cyclocomp_linter = NULL,          # Complex functions OK in Shiny
+    object_length_linter = NULL,      # Long names OK for clarity
+
+    # Keep these important checks
+    assignment_linter(),              # Use <- not =
+    no_tab_linter(),                  # No tabs
+    trailing_blank_lines_linter(),    # Clean file endings
+    trailing_whitespace_linter()      # No trailing spaces
+  )
+
+# Exclude generated/vendored files
+exclusions: list(
+    "metawebs/arctic/infomap_ecology_package",
+    "metawebs/atlantic/NorthSeaFoodWeb",
+    "archive",
+    "tests/debug",
+    "renv"
+  )
+
+# Encoding
+encoding: "UTF-8"
