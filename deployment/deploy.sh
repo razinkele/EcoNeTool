@@ -19,21 +19,46 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Logging configuration
+LOG_DIR="/var/log/econetool"
+LOG_FILE="${LOG_DIR}/deployment.log"
+
+# Create log directory if it doesn't exist
+if [ "$EUID" -eq 0 ]; then
+    mkdir -p "$LOG_DIR"
+    chmod 755 "$LOG_DIR"
+fi
+
+# Function to log messages
+log_message() {
+    local level="$1"
+    shift
+    local message="$@"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    if [ -w "$LOG_FILE" ] || [ "$EUID" -eq 0 ]; then
+        echo "[$timestamp] [$level] $message" >> "$LOG_FILE" 2>/dev/null || true
+    fi
+}
+
 # Function to print status messages
 print_status() {
     echo -e "${BLUE}==>${NC} $1"
+    log_message "INFO" "$1"
 }
 
 print_success() {
     echo -e "${GREEN}✓${NC} $1"
+    log_message "SUCCESS" "$1"
 }
 
 print_error() {
     echo -e "${RED}✗${NC} $1"
+    log_message "ERROR" "$1"
 }
 
 print_warning() {
     echo -e "${YELLOW}⚠${NC} $1"
+    log_message "WARNING" "$1"
 }
 
 # Get the absolute path to the deployment directory
@@ -47,6 +72,9 @@ echo "==========================================================================
 echo " EcoNeTool - Deployment Script"
 echo "================================================================================"
 echo ""
+log_message "DEPLOY" "Deployment started by user: $(whoami)"
+log_message "DEPLOY" "Deployment method: $DEPLOY_METHOD"
+log_message "DEPLOY" "Application directory: $APP_DIR"
 
 # Run pre-deployment checks
 print_status "Running pre-deployment checks..."
@@ -133,91 +161,170 @@ deploy_docker() {
 deploy_shiny_server() {
     print_status "Starting Shiny Server deployment..."
 
-    # Check if Shiny Server is installed
-    if ! systemctl is-active --quiet shiny-server; then
-        print_warning "Shiny Server is not running"
-        print_status "Installing Shiny Server..."
-
-        # Install R if not present
-        if ! command -v R &> /dev/null; then
-            print_status "Installing R..."
-            apt-get update
-            apt-get install -y r-base r-base-dev
-        fi
-
-        # Install system dependencies
-        print_status "Installing system dependencies..."
-        apt-get install -y \
-            libcurl4-openssl-dev \
-            libssl-dev \
-            libxml2-dev \
-            libgit2-dev \
-            libfontconfig1-dev \
-            libharfbuzz-dev \
-            libfribidi-dev \
-            libfreetype6-dev \
-            libpng-dev \
-            libtiff5-dev \
-            libjpeg-dev \
-            pandoc \
-            gdebi-core
-
-        # Download and install Shiny Server
-        print_status "Downloading Shiny Server..."
-        wget https://download3.rstudio.org/ubuntu-18.04/x86_64/shiny-server-1.5.21.1012-amd64.deb
-
-        print_status "Installing Shiny Server..."
-        gdebi -n shiny-server-1.5.21.1012-amd64.deb
-        rm shiny-server-1.5.21.1012-amd64.deb
-
-        # Start Shiny Server
-        systemctl enable shiny-server
-        systemctl start shiny-server
-
-        print_success "Shiny Server installed"
-    else
-        print_success "Shiny Server is running"
+    # Ensure app directory exists and is writable
+    if [ ! -d /srv/shiny-server/EcoNeTool ]; then
+        print_status "Creating deployment directory..."
+        mkdir -p /srv/shiny-server/EcoNeTool
+        chmod 775 /srv/shiny-server/EcoNeTool
     fi
+    print_status "Deployment directory status:"
+    ls -ld /srv/shiny-server/EcoNeTool
 
-    # Install R package dependencies
-    print_status "Installing R package dependencies..."
-    cd "$DEPLOY_DIR"
-    Rscript install_dependencies.R
+    # Remove old deployment contents
+    print_status "Removing old deployment contents..."
+    rm -rf /srv/shiny-server/EcoNeTool/*
 
-    if [ $? -ne 0 ]; then
-        print_error "Failed to install R dependencies"
+    # List of critical files and directories to copy
+    CRITICAL_ITEMS=(
+        "app.R"
+        "BalticFW.Rdata"
+        "run_app.R"
+        "README.md"
+        "LICENSE"
+        "VERSION"
+        "CHANGELOG.md"
+        "R"
+        "R/functions"
+        "www"
+        "examples"
+        "metawebs"
+        "output"
+        "docs"
+        "scripts"
+        "cache"
+        "archive"
+        "tests"
+    )
+
+    ERRORS=()
+    WARNINGS=()
+
+    for ITEM in "${CRITICAL_ITEMS[@]}"; do
+        SRC="$APP_DIR/$ITEM"
+        DEST="/srv/shiny-server/EcoNeTool/"
+        if [ -e "$SRC" ]; then
+            print_status "Copying $ITEM..."
+            if [ -d "$SRC" ]; then
+                cp -rv "$SRC" "$DEST" 2>err.log
+            else
+                cp -vf "$SRC" "$DEST" 2>err.log
+            fi
+            COPY_STATUS=$?
+            if [ $COPY_STATUS -eq 0 ]; then
+                print_success "Copied: $ITEM"
+                log_message "DEPLOY" "Copied $ITEM from $APP_DIR"
+            else
+                print_error "Failed to copy $ITEM"
+                log_message "ERROR" "Failed to copy $ITEM from $APP_DIR"
+                print_error "Copy error details:"
+                cat err.log
+                ERRORS+=("$ITEM: $(cat err.log)")
+            fi
+            rm -f err.log
+        else
+            print_warning "$ITEM not found in source directory"
+            log_message "WARNING" "$ITEM not found at $SRC"
+            WARNINGS+=("$ITEM not found")
+        fi
+    done
+
+    # Summary of errors and warnings
+    if [ ${#ERRORS[@]} -gt 0 ]; then
+        echo -e "${RED}Deployment encountered errors:${NC}"
+        for ERR in "${ERRORS[@]}"; do
+            echo -e "${RED}✗ $ERR${NC}"
+        done
+    fi
+    if [ ${#WARNINGS[@]} -gt 0 ]; then
+        echo -e "${YELLOW}Deployment warnings:${NC}"
+        for WARN in "${WARNINGS[@]}"; do
+            echo -e "${YELLOW}⚠ $WARN${NC}"
+        done
+    fi
+    if [ ${#ERRORS[@]} -eq 0 ]; then
+        print_success "All critical files and directories copied successfully"
+    else
+        print_error "Some critical files or directories failed to copy. See above."
         exit 1
     fi
 
-    print_success "R dependencies installed"
-
-    # Copy application files
-    print_status "Deploying application files..."
-
-    # Create app directory
-    mkdir -p /srv/shiny-server/econetool
-
-    # Remove old deployment if exists
-    if [ -d /srv/shiny-server/econetool ]; then
-        print_status "Removing old deployment..."
-        rm -rf /srv/shiny-server/econetool/*
+    # Copy optional R files if they exist
+    if [ -f "$APP_DIR/run_app.R" ]; then
+        if cp -v "$APP_DIR/run_app.R" /srv/shiny-server/EcoNeTool/; then
+            print_success "Copied: run_app.R (optional)"
+            log_message "DEPLOY" "Copied run_app.R from $APP_DIR"
+        else
+            print_warning "Failed to copy run_app.R (optional)"
+            log_message "WARNING" "Failed to copy run_app.R from $APP_DIR"
+        fi
     fi
 
-    # Copy core files
-    print_status "Copying application files..."
-    cp "$APP_DIR/app.R" /srv/shiny-server/econetool/
-    cp "$APP_DIR/plotfw.R" /srv/shiny-server/econetool/
-    cp "$APP_DIR/BalticFW.Rdata" /srv/shiny-server/econetool/
+    # Copy www directory (contains images and web assets)
+    if [ -d "$APP_DIR/www" ]; then
+        print_status "Copying www directory..."
+        if cp -rv "$APP_DIR/www" /srv/shiny-server/EcoNeTool/; then
+            print_success "Copied: www directory"
+            log_message "DEPLOY" "Copied www directory from $APP_DIR"
+        else
+            print_warning "Failed to copy www directory"
+            log_message "WARNING" "Failed to copy www directory from $APP_DIR"
+        fi
+    fi
 
-    # Copy optional files if they exist
-    if [ -f "$APP_DIR/run_app.R" ]; then
-        cp "$APP_DIR/run_app.R" /srv/shiny-server/econetool/
+    # Copy examples directory (contains example datasets)
+    if [ -d "$APP_DIR/examples" ]; then
+        print_status "Copying examples directory..."
+        if cp -rv "$APP_DIR/examples" /srv/shiny-server/EcoNeTool/; then
+            print_success "Copied: examples directory"
+            log_message "DEPLOY" "Copied examples directory from $APP_DIR"
+        else
+            print_warning "Failed to copy examples directory"
+            log_message "WARNING" "Failed to copy examples directory from $APP_DIR"
+        fi
+    fi
+
+    # Copy metawebs directory (contains metaweb data)
+    if [ -d "$APP_DIR/metawebs" ]; then
+        print_status "Copying metawebs directory..."
+        if cp -rv "$APP_DIR/metawebs" /srv/shiny-server/EcoNeTool/; then
+            print_success "Copied: metawebs directory"
+            log_message "DEPLOY" "Copied metawebs directory from $APP_DIR"
+        else
+            print_warning "Failed to copy metawebs directory"
+            log_message "WARNING" "Failed to copy metawebs directory from $APP_DIR"
+        fi
+    fi
+
+    # Copy R directory (contains all modular application code)
+    if [ -d "$APP_DIR/R" ]; then
+        print_status "Copying R directory..."
+        if cp -rv "$APP_DIR/R" /srv/shiny-server/EcoNeTool/; then
+            print_success "Copied: R directory (config, functions, modules, UI)"
+            log_message "DEPLOY" "Copied R directory from $APP_DIR"
+        else
+            print_error "Failed to copy R directory (CRITICAL)"
+            log_message "ERROR" "Failed to copy R directory from $APP_DIR"
+            exit 1
+        fi
+    else
+        print_error "R directory not found (CRITICAL)"
+        log_message "ERROR" "R directory not found at $APP_DIR/R"
+        exit 1
     fi
 
     # Set permissions
-    chown -R shiny:shiny /srv/shiny-server/econetool
+    print_status "Setting file permissions..."
+    if chown -R shiny:shiny /srv/shiny-server/EcoNeTool; then
+        print_success "Permissions set"
+        log_message "DEPLOY" "Set permissions for shiny:shiny"
+    else
+        print_error "Failed to set permissions"
+        log_message "ERROR" "Failed to set permissions"
+        exit 1
+    fi
 
     print_success "Application files deployed"
+    log_message "DEPLOY" "All application files deployed successfully"
 
     # Configure Shiny Server
     print_status "Configuring Shiny Server..."
@@ -257,8 +364,8 @@ server {
   }
 
   # Define EcoNeTool specific location
-  location /econetool {
-    app_dir /srv/shiny-server/econetool;
+  location /EcoNeTool {
+    app_dir /srv/shiny-server/EcoNeTool;
     log_dir /var/log/shiny-server;
   }
 }
@@ -267,9 +374,17 @@ EOF
 
     print_success "Shiny Server configured"
 
+    # Clear Shiny Server caches
+    print_status "Clearing Shiny Server caches..."
+    rm -rf /var/lib/shiny-server/bookmarks/* 2>/dev/null || true
+    rm -rf /srv/shiny-server/EcoNeTool/.Rhistory 2>/dev/null || true
+    rm -rf /srv/shiny-server/EcoNeTool/.RData 2>/dev/null || true
+
     # Restart Shiny Server
     print_status "Restarting Shiny Server..."
-    systemctl restart shiny-server
+    systemctl stop shiny-server
+    sleep 2
+    systemctl start shiny-server
 
     # Wait for server to start
     sleep 5
@@ -277,15 +392,24 @@ EOF
     # Check if Shiny Server is running
     if systemctl is-active --quiet shiny-server; then
         print_success "Deployment successful!"
+        log_message "DEPLOY" "Deployment completed successfully"
+        log_message "DEPLOY" "Application running at: http://$(hostname -I | awk '{print $1}'):3838/EcoNeTool"
         echo ""
-        echo "Application is running at: http://$(hostname -I | awk '{print $1}'):3838/econetool"
+        echo "Application is running at: http://$(hostname -I | awk '{print $1}'):3838/EcoNeTool"
+        echo ""
+        echo "⚠️  IMPORTANT: Clear your browser cache to see changes!"
+        echo "   - Hard reload: Ctrl+Shift+R (Linux/Windows) or Cmd+Shift+R (Mac)"
+        echo "   - Or open in incognito/private browsing mode"
         echo ""
         echo "Useful commands:"
         echo "  - Check status: sudo systemctl status shiny-server"
         echo "  - View logs: sudo tail -f /var/log/shiny-server.log"
-        echo "  - Restart: sudo systemctl restart shiny-server"
+        echo "  - Deployment log: sudo tail -f $LOG_FILE"
+        echo "  - Force reload: cd deployment && sudo ./force-reload.sh"
+        echo "  - Verify deployment: cd deployment && sudo ./verify-deployment.sh"
     else
         print_error "Shiny Server failed to start"
+        log_message "DEPLOY" "Deployment failed - Shiny Server not running"
         echo "Check logs with: sudo journalctl -u shiny-server -n 50"
         exit 1
     fi
