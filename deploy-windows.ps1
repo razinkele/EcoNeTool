@@ -124,12 +124,34 @@ function Test-SSHConnection {
     Write-Log "Testing SSH connection to $SSH_TARGET..."
 
     try {
-        if ($SSH_OPTS.Count -gt 0) {
-            $result = & ssh $SSH_OPTS $SSH_TARGET "echo 'Connection successful'" 2>&1
-        } else {
-            $result = & ssh $SSH_TARGET "echo 'Connection successful'" 2>&1
+        # Use a simple job-based approach with timeout
+        Write-Host "  DEBUG: Testing with: ssh -o BatchMode=yes -o ConnectTimeout=10 $SSH_TARGET echo CONNECTION_OK" -ForegroundColor Gray
+
+        $job = Start-Job -ScriptBlock {
+            param($target)
+            & ssh -o BatchMode=yes -o ConnectTimeout=10 $target "echo CONNECTION_OK" 2>&1
+        } -ArgumentList $SSH_TARGET
+
+        Write-Host "  DEBUG: Waiting for SSH job (max 20 seconds)..." -ForegroundColor Gray
+
+        $completed = Wait-Job $job -Timeout 20
+
+        if ($null -eq $completed) {
+            Write-Host "  DEBUG: SSH job timed out, stopping..." -ForegroundColor Yellow
+            Stop-Job $job
+            Remove-Job $job -Force
+            Write-Log "SSH connection timed out" "ERROR"
+            return $false
         }
-        if ($LASTEXITCODE -eq 0) {
+
+        $result = Receive-Job $job
+        $state = $job.State
+        Remove-Job $job -Force
+
+        Write-Host "  DEBUG: Job state: $state" -ForegroundColor Gray
+        Write-Host "  DEBUG: Result: $result" -ForegroundColor Gray
+
+        if ($result -match "CONNECTION_OK") {
             Write-Log "SSH connection successful" "SUCCESS"
             return $true
         } else {
@@ -138,6 +160,7 @@ function Test-SSHConnection {
         }
     } catch {
         Write-Log "SSH connection error: $_" "ERROR"
+        Write-Host "  DEBUG: Exception: $_" -ForegroundColor Red
         return $false
     }
 }
@@ -297,14 +320,39 @@ function Deploy-Application {
         # Create tar archive for faster transfer
         $tarFile = Join-Path $env:TEMP "econetool_deploy.tar.gz"
 
+        # Helper function to convert Windows path to Git Bash path
+        function Convert-ToGitBashPath {
+            param([string]$WinPath)
+            # C:\Users\... -> /c/Users/...
+            if ($WinPath -match '^([A-Za-z]):(.*)$') {
+                $drive = $Matches[1].ToLower()
+                $rest = $Matches[2].Replace('\', '/')
+                return "/$drive$rest"
+            }
+            return $WinPath.Replace('\', '/')
+        }
+
         # Use tar if available (Git Bash), otherwise use scp directly
         $gitBash = "C:\Program Files\Git\bin\bash.exe"
+        $tarSuccess = $false
+
         if (Test-Path $gitBash) {
+            # Convert Windows paths to Git Bash format
+            $bashTempDir = Convert-ToGitBashPath $tempDir
+            $bashTarFile = Convert-ToGitBashPath $tarFile
+
+            Write-Host "  DEBUG: tempDir = $tempDir" -ForegroundColor Gray
+            Write-Host "  DEBUG: bashTempDir = $bashTempDir" -ForegroundColor Gray
+            Write-Host "  DEBUG: bashTarFile = $bashTarFile" -ForegroundColor Gray
+
             # Use tar via Git Bash for faster transfer
-            $tarCommand = "cd '$tempDir' && tar -czf '$tarFile' ."
-            & $gitBash -c $tarCommand.Replace('\', '/')
+            $tarCommand = "cd '$bashTempDir' && tar -czf '$bashTarFile' ."
+            Write-Host "  DEBUG: tar command = $tarCommand" -ForegroundColor Gray
+
+            & $gitBash -c $tarCommand 2>&1 | ForEach-Object { Write-Host "  tar: $_" -ForegroundColor Gray }
 
             if (Test-Path $tarFile) {
+                $tarSuccess = $true
                 Write-Log "Created archive: $tarFile"
 
                 if (-not $DryRun) {
@@ -316,10 +364,16 @@ function Deploy-Application {
                 }
 
                 Remove-Item $tarFile -Force -ErrorAction SilentlyContinue
+            } else {
+                Write-Log "Tar archive not created, falling back to SCP" "WARNING"
             }
-        } else {
+        }
+
+        if (-not $tarSuccess) {
             # Fallback: use scp for each directory
-            Write-Log "Git Bash not found, using direct SCP (slower)..." "WARNING"
+            if (-not (Test-Path $gitBash)) {
+                Write-Log "Git Bash not found, using direct SCP (slower)..." "WARNING"
+            }
 
             foreach ($file in $files) {
                 $localPath = Join-Path $tempDir $file.RelativePath
@@ -377,6 +431,12 @@ function Restart-ShinyServer {
 
 function Test-Deployment {
     Write-Log "Verifying deployment..."
+
+    # In dry-run mode, skip actual verification
+    if ($DryRun) {
+        Write-Log "[DRY-RUN] Skipping verification (nothing was deployed)" "INFO"
+        return $true
+    }
 
     # Check if app.R exists
     $appExists = Invoke-RemoteCommand "test -f $APP_DEPLOY_PATH/app.R && echo 'yes' || echo 'no'" -IgnoreError
