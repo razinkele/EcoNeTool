@@ -35,3 +35,22 @@ output/*.html
 R/config/harmonization_custom.R
 config/harmonization_custom.json
 config/api_keys.R
+
+# Large binary data files (ECOPATH databases, spatial data)
+# These should be distributed separately or via Git LFS
+*.ewemdb
+*.eweaccdb
+*.accdb
+
+# Large spatial/GIS data files
+examples/EUSeaMap*.zip
+examples/*.shp
+examples/*.shx
+examples/*.dbf
+examples/*.prj
+
+# Keep small example datasets tracked (explicitly listed in repo)
+# BalticFW.Rdata, Caribbean_Reef.Rdata, Simple_3Species.Rdata, Template_Empty.Rdata
+
+# Nested git repositories (should be submodules instead)
+**/.git/
