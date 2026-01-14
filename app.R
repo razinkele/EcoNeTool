@@ -167,7 +167,7 @@ ui <- dashboardPage(
     sidebarIcon = icon("bars"),
     fixed = FALSE,
     leftUI = tagList(
-        h4("Ecological Interaction Network Explorer", style = "margin: 10px; color: #007bff;")
+        tags$span("Ecological Interaction Network Explorer", style = "margin-left: 10px; color: #007bff; font-size: 1.1rem; font-weight: 500;")
     ),
     rightUI = tagList(
       # Settings Button

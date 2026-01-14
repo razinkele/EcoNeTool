@@ -5,112 +5,136 @@ trait_research_ui <- function() {
   tabItem(
     tabName = "trait_research",
 
-    # Header with title and help button
+    # Compact header with title and help button
     fluidRow(
       column(
-        width = 10,
-        h3(icon("search"), " Trait Research"),
-        p("Research species traits from multiple online databases. View and export trait data for entered or uploaded species lists.")
+        width = 9,
+        h4(icon("search"), " Trait Research",
+           tags$small(class = "text-muted", " - Query species traits from online databases")),
+        style = "margin-bottom: 5px;"
       ),
       column(
-        width = 2,
-        style = "text-align: right; padding-top: 20px;",
+        width = 3,
+        style = "text-align: right;",
         actionButton(
           "trait_research_help_button",
           tagList(icon("question-circle"), " Help"),
-          class = "btn-info"
+          class = "btn-info btn-sm"
         )
       )
     ),
 
-    hr(),
-
     # Main content - two column layout
     fluidRow(
-      # Left column: Species input and database selection
+      # Left column: Species input, databases, and action buttons side by side
       column(
         width = 4,
 
-        # Species Input Panel
-        wellPanel(
-          h4(icon("list"), " Species Input"),
-          p(class = "text-muted", "Enter species names or upload a file with species list."),
+        # Row with Input Panel and Action Buttons
+        fluidRow(
+          # Species Input Panel (left)
+          column(
+            width = 8,
+            wellPanel(
+              style = "padding: 10px; margin-bottom: 10px;",
+              h5(icon("list"), " Species Input", style = "margin-top: 0;"),
 
-          # Input method selection
-          radioButtons(
-            "trait_research_input_method",
-            "Input Method:",
-            choices = c(
-              "Enter manually" = "manual",
-              "Upload file" = "file",
-              "Test dataset" = "test"
-            ),
-            selected = "manual",
-            inline = FALSE
-          ),
-
-          # Manual input
-          conditionalPanel(
-            condition = "input.trait_research_input_method == 'manual'",
-            textAreaInput(
-              "trait_research_species_list",
-              "Species Names (one per line):",
-              value = "Gadus morhua\nClupea harengus\nSprattus sprattus\nPlatichthys flesus\nPerca fluviatilis",
-              rows = 8,
-              placeholder = "Gadus morhua\nClupea harengus\n..."
-            )
-          ),
-
-          # File upload
-          conditionalPanel(
-            condition = "input.trait_research_input_method == 'file'",
-            fileInput(
-              "trait_research_species_file",
-              "Upload Species List (CSV/TXT):",
-              accept = c(".csv", ".txt"),
-              placeholder = "No file selected"
-            ),
-            helpText(
-              icon("info-circle"),
-              " File should have one species name per line or a 'species' column."
-            )
-          ),
-
-          # Test dataset
-          conditionalPanel(
-            condition = "input.trait_research_input_method == 'test'",
-            selectInput(
-              "trait_research_test_dataset",
-              "Select Test Dataset:",
-              choices = c(
-                "Central Baltic Sea (67 species)" = "baltic_full",
-                "Baltic Fish Only (20 species)" = "baltic_fish",
-                "Baltic Benthos Only (17 species)" = "baltic_benthos",
-                "Baltic Plankton (17 species)" = "baltic_plankton",
-                "Baltic Top Predators (15 species)" = "baltic_top_predators"
+              # Input method selection (inline to save space)
+              radioButtons(
+                "trait_research_input_method",
+                NULL,
+                choices = c(
+                  "Manual" = "manual",
+                  "File" = "file",
+                  "Test" = "test"
+                ),
+                selected = "manual",
+                inline = TRUE
               ),
-              selected = "baltic_full"
-            ),
-            htmlOutput("trait_research_test_description"),
-            br(),
-            actionButton(
-              "trait_research_load_test",
-              "Load Test Dataset",
-              icon = icon("database"),
-              class = "btn-info btn-block"
+
+              # Manual input
+              conditionalPanel(
+                condition = "input.trait_research_input_method == 'manual'",
+                textAreaInput(
+                  "trait_research_species_list",
+                  NULL,
+                  value = "Gadus morhua\nClupea harengus\nSprattus sprattus\nPlatichthys flesus\nPerca fluviatilis",
+                  rows = 6,
+                  placeholder = "One species per line..."
+                )
+              ),
+
+              # File upload
+              conditionalPanel(
+                condition = "input.trait_research_input_method == 'file'",
+                fileInput(
+                  "trait_research_species_file",
+                  NULL,
+                  accept = c(".csv", ".txt"),
+                  placeholder = "Upload CSV/TXT"
+                ),
+                tags$small(class = "text-muted", "One species per line or 'species' column")
+              ),
+
+              # Test dataset
+              conditionalPanel(
+                condition = "input.trait_research_input_method == 'test'",
+                selectInput(
+                  "trait_research_test_dataset",
+                  NULL,
+                  choices = c(
+                    "Baltic Full (67)" = "baltic_full",
+                    "Fish (20)" = "baltic_fish",
+                    "Benthos (17)" = "baltic_benthos",
+                    "Plankton (17)" = "baltic_plankton",
+                    "Top Pred (15)" = "baltic_top_predators"
+                  ),
+                  selected = "baltic_full"
+                ),
+                actionButton(
+                  "trait_research_load_test",
+                  "Load",
+                  icon = icon("database"),
+                  class = "btn-info btn-sm btn-block"
+                )
+              )
             )
           ),
 
-          helpText(
-            icon("lightbulb"),
-            " Use exact scientific names for best results."
+          # Action Buttons Panel (right)
+          column(
+            width = 4,
+            wellPanel(
+              style = "padding: 10px; margin-bottom: 10px;",
+              h5(icon("play"), " Actions", style = "margin-top: 0;"),
+
+              actionButton(
+                "trait_research_run_lookup",
+                tagList(icon("search"), " Run"),
+                class = "btn-success btn-block",
+                style = "margin-bottom: 8px;"
+              ),
+
+              actionButton(
+                "trait_research_clear",
+                tagList(icon("trash"), " Clear"),
+                class = "btn-outline-secondary btn-block btn-sm"
+              ),
+
+              hr(style = "margin: 10px 0;"),
+
+              tags$small(
+                class = "text-muted",
+                icon("lightbulb"), " Use scientific names"
+              )
+            )
           )
         ),
 
-        # Database Selection Panel
+        # Database Selection Panel (full width below)
         wellPanel(
-          h4(icon("database"), " Database Selection"),
-          p(class = "text-muted", "Select databases to query (in hierarchical order)."),
+          style = "padding: 10px;",
+          h5(icon("database"), " Databases", style = "margin-top: 0;"),
 
           checkboxGroupInput(
             "trait_research_databases",
@@ -118,34 +142,15 @@ trait_research_ui <- function() {
             choices = c(
               "WoRMS (taxonomy)" = "worms",
               "FishBase (fish)" = "fishbase",
-              "SeaLifeBase (invertebrates)" = "sealifebase",
+              "SeaLifeBase (inverts)" = "sealifebase",
               "BIOTIC (benthic)" = "biotic",
-              "freshwaterecology.info" = "freshwater",
+              "freshwaterecology" = "freshwater",
               "MAREDAT (zooplankton)" = "maredat",
               "PTDB (phytoplankton)" = "ptdb",
-              "AlgaeBase (algae)" = "algaebase",
-              "SHARK (Swedish archives)" = "shark"
+              "AlgaeBase" = "algaebase",
+              "SHARK (Swedish)" = "shark"
             ),
             selected = c("worms", "fishbase", "sealifebase")
-          ),
-
-          hr(),
-
-          actionButton(
-            "trait_research_run_lookup",
-            "Run Trait Lookup",
-            icon = icon("search"),
-            class = "btn-success btn-block btn-lg"
-          ),
-
-          br(),
-
-          # Clear results button
-          actionButton(
-            "trait_research_clear",
-            "Clear Results",
-            icon = icon("trash"),
-            class = "btn-outline-secondary btn-block"
           )
         )
       ),
