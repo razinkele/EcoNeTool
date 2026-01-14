@@ -1,0 +1,191 @@
+# =============================================================================
+# EcoNeTool - Continuous Integration
+# =============================================================================
+# Runs on push and pull requests to ensure code quality and repo hygiene.
+#
+# Checks performed:
+# - Pre-commit hooks (whitespace, YAML, JSON, large files)
+# - Shell script linting (shellcheck)
+# - Repository hygiene (no DEBUG prints, no IDE files, no binaries)
+# - R linting (lintr) - optional, runs on R file changes
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [master, main, develop]
+  pull_request:
+    branches: [master, main, develop]
+
+# Cancel in-progress runs for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ===========================================================================
+  # Pre-commit checks (fast, runs on all commits)
+  # ===========================================================================
+  pre-commit:
+    name: Pre-commit checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run pre-commit
+        uses: pre-commit/action@v3.0.1
+
+  # ===========================================================================
+  # Repository hygiene checks
+  # ===========================================================================
+  repo-hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for DEBUG prints in R files
+        run: |
+          echo "Checking for DEBUG: strings in R files..."
+          if grep -rn "DEBUG:" --include="*.R" .; then
+            echo "::error::Found DEBUG: prints in R files. Remove before merging."
+            exit 1
+          fi
+          echo "✓ No DEBUG prints found"
+
+      - name: Check for DEBUG prints in shell scripts
+        run: |
+          echo "Checking for DEBUG: strings in shell scripts..."
+          if grep -rn "DEBUG:" --include="*.sh" .; then
+            echo "::error::Found DEBUG: prints in shell scripts. Remove before merging."
+            exit 1
+          fi
+          echo "✓ No DEBUG prints found"
+
+      - name: Check for tracked IDE files
+        run: |
+          echo "Checking for .Rproj.user files..."
+          if git ls-files | grep -q ".Rproj.user"; then
+            echo "::error::Found .Rproj.user files tracked in git. Remove with: git rm -r --cached .Rproj.user"
+            exit 1
+          fi
+          echo "✓ No IDE files tracked"
+
+      - name: Check for large binary files
+        run: |
+          echo "Checking for large binary files..."
+          LARGE_FILES=$(git ls-files | xargs -I {} sh -c 'size=$(wc -c < "{}" 2>/dev/null || echo 0); if [ "$size" -gt 5000000 ]; then echo "{} ($(numfmt --to=iec $size))"; fi' 2>/dev/null || true)
+          if [ -n "$LARGE_FILES" ]; then
+            echo "::warning::Large files (>5MB) tracked in repository:"
+            echo "$LARGE_FILES"
+          fi
+          echo "✓ Large file check complete"
+
+      - name: Check for common issues
+        run: |
+          echo "Checking for merge conflict markers..."
+          if grep -rn "^<<<<<<< " --include="*.R" --include="*.sh" --include="*.md" . 2>/dev/null; then
+            echo "::error::Found unresolved merge conflict markers"
+            exit 1
+          fi
+          echo "✓ No merge conflicts found"
+
+  # ===========================================================================
+  # Shell script linting
+  # ===========================================================================
+  shellcheck:
+    name: Shell script linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Find shell scripts
+        id: find-scripts
+        run: |
+          SCRIPTS=$(find . -name "*.sh" -type f | grep -v ".git" | tr '\n' ' ')
+          echo "scripts=$SCRIPTS" >> $GITHUB_OUTPUT
+          if [ -z "$SCRIPTS" ]; then
+            echo "No shell scripts found"
+          else
+            echo "Found scripts: $SCRIPTS"
+          fi
+
+      - name: Run shellcheck
+        if: steps.find-scripts.outputs.scripts != ''
+        run: |
+          echo "Running shellcheck..."
+          find . -name "*.sh" -type f | grep -v ".git" | xargs shellcheck --severity=warning || {
+            echo "::warning::Shellcheck found issues. Review and fix if critical."
+          }
+
+  # ===========================================================================
+  # R linting (runs only when R files change)
+  # ===========================================================================
+  lintr:
+    name: R linting
+    runs-on: ubuntu-latest
+    # Only run if R files changed
+    if: |
+      github.event_name == 'pull_request' ||
+      contains(github.event.head_commit.modified, '.R') ||
+      contains(github.event.head_commit.added, '.R')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.0'
+          use-public-rspm: true
+
+      - name: Install lintr
+        run: |
+          install.packages("lintr", repos = "https://cloud.r-project.org")
+        shell: Rscript {0}
+
+      - name: Run lintr on changed files
+        run: |
+          # Lint key files (not entire codebase to keep CI fast)
+          cat("Linting app.R...\n")
+          results <- lintr::lint("app.R")
+          if (length(results) > 0) {
+            print(results)
+            cat("\n::warning::lintr found", length(results), "issues in app.R\n")
+          } else {
+            cat("✓ app.R passed lintr checks\n")
+          }
+        shell: Rscript {0}
+        continue-on-error: true  # Don't fail build on lint warnings
+
+  # ===========================================================================
+  # Summary job (always runs, provides overall status)
+  # ===========================================================================
+  ci-status:
+    name: CI Status
+    runs-on: ubuntu-latest
+    needs: [pre-commit, repo-hygiene, shellcheck]
+    if: always()
+    steps:
+      - name: Check job results
+        run: |
+          echo "Pre-commit: ${{ needs.pre-commit.result }}"
+          echo "Repo hygiene: ${{ needs.repo-hygiene.result }}"
+          echo "Shellcheck: ${{ needs.shellcheck.result }}"
+
+          if [ "${{ needs.pre-commit.result }}" == "failure" ] || \
+             [ "${{ needs.repo-hygiene.result }}" == "failure" ]; then
+            echo "::error::CI checks failed"
+            exit 1
+          fi
+
+          echo "✓ All CI checks passed"

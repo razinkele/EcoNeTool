@@ -1,0 +1,152 @@
+# =============================================================================
+# EcoNeTool - R Validation
+# =============================================================================
+# Comprehensive R checks that run on releases or manual trigger.
+# These checks are more thorough but slower than the main CI.
+#
+# Checks performed:
+# - R dependency installation
+# - Full lintr scan of R/ directory
+# - Shiny app syntax validation
+# =============================================================================
+
+name: R Validation
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      lint_all:
+        description: 'Lint all R files (slow)'
+        required: false
+        default: 'false'
+        type: boolean
+
+  # Run on releases
+  release:
+    types: [published]
+
+  # Run weekly to catch issues
+  schedule:
+    - cron: '0 6 * * 1'  # Monday 6am UTC
+
+jobs:
+  # ===========================================================================
+  # R environment validation
+  # ===========================================================================
+  r-validation:
+    name: R Validation
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.0'
+          use-public-rspm: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev \
+            libfontconfig1-dev \
+            libharfbuzz-dev \
+            libfribidi-dev \
+            libfreetype6-dev \
+            libpng-dev \
+            libtiff5-dev \
+            libjpeg-dev \
+            libgdal-dev \
+            libgeos-dev \
+            libproj-dev \
+            libudunits2-dev
+
+      - name: Install R dependencies
+        run: |
+          install.packages(c("shiny", "lintr", "bs4Dash"), repos = "https://cloud.r-project.org")
+        shell: Rscript {0}
+        continue-on-error: true
+
+      - name: Validate app.R syntax
+        run: |
+          cat("Checking app.R syntax...\n")
+          tryCatch({
+            parse("app.R")
+            cat("✓ app.R has valid R syntax\n")
+          }, error = function(e) {
+            cat("✗ Syntax error in app.R:\n")
+            print(e)
+            quit(status = 1)
+          })
+        shell: Rscript {0}
+
+      - name: Lint app.R
+        run: |
+          cat("Running lintr on app.R...\n")
+          results <- lintr::lint("app.R")
+          cat("Found", length(results), "issues\n")
+          if (length(results) > 0) {
+            print(results)
+          }
+        shell: Rscript {0}
+        continue-on-error: true
+
+      - name: Lint R/functions (key files)
+        run: |
+          key_files <- c(
+            "R/functions/logger.R",
+            "R/functions/validation_utils.R",
+            "R/functions/error_logging.R"
+          )
+          for (f in key_files) {
+            if (file.exists(f)) {
+              cat("Linting", f, "...\n")
+              results <- lintr::lint(f)
+              if (length(results) > 0) {
+                cat("  Found", length(results), "issues\n")
+              } else {
+                cat("  ✓ No issues\n")
+              }
+            }
+          }
+        shell: Rscript {0}
+        continue-on-error: true
+
+      - name: Full lint scan (if requested)
+        if: github.event.inputs.lint_all == 'true'
+        run: |
+          cat("Running full lintr scan on R/ directory...\n")
+          results <- lintr::lint_dir("R/")
+          cat("Total issues found:", length(results), "\n")
+          if (length(results) > 0) {
+            # Group by file
+            by_file <- split(results, sapply(results, function(x) x$filename))
+            for (file in names(by_file)) {
+              cat("\n", file, ":", length(by_file[[file]]), "issues\n")
+            }
+          }
+        shell: Rscript {0}
+        continue-on-error: true
+
+  # ===========================================================================
+  # Dependency check
+  # ===========================================================================
+  dependency-check:
+    name: Check R dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract required packages from app.R
+        run: |
+          echo "Packages loaded in app.R:"
+          grep -E "^library\(|^require\(" app.R | sed 's/library(\|require(//g' | sed 's/)//g' | sort -u
