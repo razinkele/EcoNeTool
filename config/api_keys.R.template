@@ -1,0 +1,92 @@
+# =============================================================================
+# API Keys Configuration Template
+# =============================================================================
+#
+# This is a template file for configuring API keys for external databases.
+#
+# INSTRUCTIONS:
+# 1. Copy this file to config/api_keys.R
+# 2. Fill in your API keys/credentials below
+# 3. NEVER commit config/api_keys.R to git (it's in .gitignore)
+#
+# =============================================================================
+
+# Override API_KEYS list with your credentials
+API_KEYS$algaebase_username <- ""  # Your AlgaeBase username
+API_KEYS$algaebase_password <- ""  # Your AlgaeBase password
+
+# freshwaterecology.info API key (default public key provided, can override)
+# API_KEYS$freshwaterecology_key <- "your-custom-key-here"
+
+# Future database keys
+# API_KEYS$traitbank_key <- "your-traitbank-key"
+# API_KEYS$worms_key <- "your-worms-key-if-needed"
+
+# =============================================================================
+# DATABASE-SPECIFIC INSTRUCTIONS
+# =============================================================================
+
+# ALGAEBASE (algaebase.org)
+# --------------------------
+# 1. Register for free account at: https://www.algaebase.org/register/
+# 2. Login and go to your profile
+# 3. Note: AlgaeBase may not have a public API - this is a placeholder
+#    for future implementation. Currently uses web scraping if needed.
+#
+# Fill in:
+#   API_KEYS$algaebase_username <- "your_username"
+#   API_KEYS$algaebase_password <- "your_password"
+
+# FRESHWATERECOLOGY.INFO
+# ----------------------
+# Public API available with demo key (already provided in default config)
+# API endpoint: https://www.freshwaterecology.info/api/
+# Documentation: https://www.freshwaterecology.info/api/documentation
+#
+# Default key: a06a5fe6-dfe5-11f0-a4f8-525400ca9bdd
+# For higher rate limits, register at: https://www.freshwaterecology.info/
+
+# SEALIFEBASE
+# -----------
+# Uses rfishbase package with server parameter
+# No API key needed - same system as FishBase
+# API endpoint: https://fishbase.ropensci.org/sealifebase
+
+# SHARK (Swedish Ocean Archives)
+# -------------------------------
+# Public API, no authentication required
+# API endpoint: https://sharkdata.smhi.se/
+# Uses shark4r R package or direct API calls
+
+# WORMS (World Register of Marine Species)
+# -----------------------------------------
+# Public API via worrms R package
+# No API key required for normal use
+# Rate limits: ~10 requests/second
+# API endpoint: https://www.marinespecies.org/rest/
+
+# =============================================================================
+# EXAMPLE FILLED TEMPLATE
+# =============================================================================
+
+# Example (DO NOT USE - these are fake credentials):
+# API_KEYS$algaebase_username <- "john.doe@university.edu"
+# API_KEYS$algaebase_password <- "MySecurePassword123"
+# API_KEYS$freshwaterecology_key <- "a06a5fe6-dfe5-11f0-a4f8-525400ca9bdd"
+
+# =============================================================================
+# TESTING YOUR CONFIGURATION
+# =============================================================================
+
+# After filling in your keys, test with:
+#
+# source("R/config.R")
+# has_api_key("algaebase_username")  # Should return TRUE if set
+# get_api_key("freshwaterecology_key")  # Should return your key
+#
+# Then test database lookups:
+# source("R/functions/trait_lookup.R")
+# test_algae <- lookup_algaebase_traits("Phaeocystis pouchetii")
+# test_freshwater <- lookup_freshwaterecology_traits("Daphnia magna")
+
+# =============================================================================

@@ -1,6 +1,7 @@
 # R and RStudio files
 .Rhistory
 .RData
+.RData.*
 .Rproj.user/
 **/.Rproj.user/
 *.Rproj
@@ -8,13 +9,10 @@
 # Shiny specific
 rsconnect/
 
-# Data files (optional - uncomment if you don't want to track large data files)
-# *.Rdata
-# *.rda
-
 # System files
 .DS_Store
 Thumbs.db
+_ul*
 
 # Temporary files
 *~
@@ -23,34 +21,54 @@ Thumbs.db
 
 # Backup files
 *.bak
+*.old_backup
+archive/
 
 # Log files
 *.log
 err.log
+logs/
+deployment_logs/
 
-# Generated output
-output/*.html
+# Cache and output directories
+cache/
+output/
 
-# Custom configuration files (Phase 1: Harmonization)
-R/config/harmonization_custom.R
-config/harmonization_custom.json
+# Model outputs and working data
+models/
+Prebal/
+
+# Custom configuration files
 config/api_keys.R
+config/harmonization_custom.json
 
-# Large binary data files (ECOPATH databases, spatial data)
-# These should be distributed separately or via Git LFS
+# Large binary data files (ECOPATH databases)
 *.ewemdb
 *.eweaccdb
 *.accdb
+*.xml
 
 # Large spatial/GIS data files
+data/EUSeaMap_2025/
+data/EUSeaMap_2025.zip
+data/EUSeaMap_2023.zip
+data/EUSeaMap_2023_Substrate.zip
+data/EUSeaMap_2025_BiologicalZone.zip
+data/coastal_wetlands.gpkg
+data/*.deb
 examples/EUSeaMap*.zip
 examples/*.shp
 examples/*.shx
 examples/*.dbf
 examples/*.prj
+examples/*.doc
+examples/*.zip
 
-# Keep small example datasets tracked (explicitly listed in repo)
-# BalticFW.Rdata, Caribbean_Reef.Rdata, Simple_3Species.Rdata, Template_Empty.Rdata
+# OneDrive backup files
+*-laguna-safeBackup-*
 
-# Nested git repositories (should be submodules instead)
+# Nested git repositories
 **/.git/
+
+# Claude Code settings (user-specific)
+.claude/settings.local.json

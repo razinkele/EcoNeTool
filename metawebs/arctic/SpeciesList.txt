@@ -1,0 +1,71 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+    <head profile="http://www.w3.org/2005/10/profile">
+        <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1" />
+        <link rel="icon" type="image/png" href="https://esapubs.org/archive/images/favicon.png" />
+        <title>ESA's Ecological Archives</title>
+        <link rel="stylesheet" type="text/css" media="print" href="css/print.css" />
+        <link rel="stylesheet" type="text/css" media="screen" href="css/archives_new.css" />
+        <style type="text/css">
+        .red {
+	color: #F00;
+}
+        </style>
+        <script src="scripts/jquery.js"></script>
+        <script type="text/javascript">
+            $(document).ready(function(){
+                $('#header').load('include/header.htm');
+                $('#footer').load('include/footer.htm');
+            });
+        </script>
+        <!-- <link rel="stylesheet" type="text/css" media="handheld" href="http://www.esapubs.org/archive/css/mobile.css" /> -->
+        <script type="text/javascript" src="https://www.esapubs.org/templates/scripts/analytics.js"></script>
+
+
+    </head>
+    <body>
+        <div id="wrapper">
+            <div id="header">
+            </div>
+            <div id="content">
+                 <div id="sidebar" class="absolute">
+                    <h2>Quick links</h2>
+                    <hr class="center" />
+                    <p><b><a href="default.htm">Archives Home</a></b></p>
+                    <p><a href="search.php">Search for archives</a></p>
+
+
+                    <p><a href="https://datadryad.org">DRYAD</a></p>
+                    <p><a href="log.htm">Log of Corrections</a></p>
+                    <p><a href="copyright.htm">Copyright</a></p>
+                </div>
+                <div id="text">
+
+
+
+                    <h3>What is <i>Ecological Archives</i>?</h3>
+                    <p>For the years 1981 through 2015, <i>Ecological Archives</i> published materials supplemental to articles that appeared in the ESA journals (<i>Ecology</i>, <i>Ecological Applications</i>, <i>Ecological Monographs</i>, <i>Ecosphere</i>, <i> Ecosystem Health and Sustainability</i> and <i>Bulletin of the Ecological Society of America</i>), as well as peer-reviewed Data Papers with abstracts published in the printed journals. <i>Ecological Archives</i> is published in digital, Internet-accessible form.</p>
+
+                                       <blockquote>
+										   <p><i>Ecological Archives</i> are also hosted on FigShare. </p>
+                                      <p>As of 2016, supplemental material and Data Papers are hosted at <a href="https://esajournals.onlinelibrary.wiley.com/">https://esajournals.onlinelibrary.wiley.com/</a> along with the journals.</p>
+
+
+
+
+                    <a name="contacts"></a><h3 id="contacts">Contacts for <i>Ecological Archives</i></h3>
+                    <ul style="margin-top: .5em;">
+                        <li>Data Editor: William K. Michener &lt;<a href="/cdn-cgi/l/email-protection#f186989d9d98909cdf9c989299949f9483b1969c90989ddf929e9c"><span class="__cf_email__" data-cfemail="f6819f9a9a9f979bd89b9f959e93989384b6919b979f9ad895999b">[email&#160;protected]</span></a>&gt;</li>
+                        <li>Associate Data Editor: Jane L. Bain &lt;<a href="/cdn-cgi/l/email-protection#583d2b3932372d2a3639342b183d2b3976372a3f"><span class="__cf_email__" data-cfemail="7b1e081a11140e09151a17083b1e081a5514091c">[email&#160;protected]</span></a>&gt;</li>
+                                                <li><i>Ecology</i> Editor-in-Chief: Donald R. Strong</li>
+                        <li><i>Ecological Monographs</i> Editor-in-Chief: Aaron M. Ellison (through 2015); Aimee Classen (2016 to present)</li>
+                        <li><i>Ecological Applications</i> Editor-in-Chief: David S. Schimel</li>
+                        <li><i>Bulletin</i> Editor-in-Chief: Edward A. Johnson</li>
+                        <li><i>Ecosphere</i> Editor-in-Chief: Debra Peters</li>
+                        <li><em>Ecosphere</em> Associate Managing Editor: Ellen Cotter &lt;<a href="/cdn-cgi/l/email-protection#b4d1d7dbc7c4dcd1c6d1f4d1c7d59adbc6d3"><span class="__cf_email__" data-cfemail="adc8cec2deddc5c8dfc8edc8decc83c2dfca">[email&#160;protected]</span></a>&gt;</li>
+                    </ul>
+                </div>
+
+        </div>
+    <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script></body>
+</html>

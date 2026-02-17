@@ -1,0 +1,35 @@
+"species_id","species_name","functional_group","biomass","body_mass","metabolic_type","efficiency"
+"SP001","Synchaeta","Zooplankton",3.25091177885131,6e-06,"invertebrates",0.906
+"SP002","Autotroph","Phytoplankton",31.3992798910811,5.4e-09,"invertebrates",0.77
+"SP003","Mixotroph","Phytoplankton",0.31977966966967,1.46e-08,"invertebrates",0.77
+"SP004","Heterotroph","Phytoplankton",0.601356132561133,1.19e-08,"invertebrates",0.77
+"SP005","Keratella","Zooplankton",0.0456127741485509,1e-06,"invertebrates",0.906
+"SP006","Acartia","Zooplankton",2.8397984463717,1e-05,"invertebrates",0.906
+"SP007","Evadne","Zooplankton",0.210307437412788,4.4e-05,"invertebrates",0.906
+"SP008","Limecola balthica","Benthos",0.93737517162069,0.02,"invertebrates",0.906
+"SP009","Eurytemora affinis","Zooplankton",2.75055166857863,1.7e-05,"invertebrates",0.906
+"SP010","Limnocalanus macrurus","Zooplankton",1.18643632115488,0.000211,"invertebrates",0.906
+"SP011","Podon/pleopis","Zooplankton",0.0831005575713802,6.2e-05,"invertebrates",0.906
+"SP012","Gasterosteus aculeatus","Fish",0.000935755031453063,2.1,"ectotherm vertebrates",0.906
+"SP013","Osmerus eperlanus","Fish",0.127143643362355,50.5,"ectotherm vertebrates",0.906
+"SP014","Pomatoschistus","Fish",0.000289148408135957,0.5,"invertebrates",0.906
+"SP015","Bosmina","Zooplankton",0.0873233604036456,3.4e-05,"invertebrates",0.906
+"SP016","Cyclopoida","Zooplankton",0.0897574855881542,1.1e-05,"invertebrates",0.906
+"SP017","Monoporeia affinis","Benthos",7.10971118413793,0.002,"invertebrates",0.906
+"SP018","Pontoporeia femorata","Benthos",0.362135561034483,0.018,"invertebrates",0.906
+"SP019","Coregonus","Fish",0.0068375,727.2,"ectotherm vertebrates",0.906
+"SP020","Detritus","Detritus",1,1,"Other",0.4
+"SP021","Oligochaeta","Benthos",0.017485090862069,0.002,"invertebrates",0.906
+"SP022","Neogobius melanostomus","Fish",4.77083333333333e-05,50,"ectotherm vertebrates",0.906
+"SP023","Clupea harengus","Fish",5.21554613721053,16.6,"ectotherm vertebrates",0.906
+"SP024","Gadus morhua","Fish",0.0842488628123087,3000,"ectotherm vertebrates",0.906
+"SP025","Saduria entomon","Benthos",10.6020462980345,0.79,"invertebrates",0.906
+"SP026","Sprattus sprattus","Fish",0.0257989079290119,8.8,"ectotherm vertebrates",0.906
+"SP027","Zoarces viviparus","Fish",0.182825247824927,61.5,"ectotherm vertebrates",0.906
+"SP028","Sander lucioperca","Fish",0.0126147517730417,1605,"ectotherm vertebrates",0.906
+"SP029","Myoxocephalus scorpius","Fish",0.00537327152014652,182.7,"ectotherm vertebrates",0.906
+"SP030","Platichthys flesus","Fish",0.00219139814701563,191.8,"ectotherm vertebrates",0.906
+"SP031","Liparis liparis","Fish",0.000731143945989583,50,"ectotherm vertebrates",0.906
+"SP032","Marenzelleria","Benthos",1.5598271047931,0.009,"invertebrates",0.906
+"SP033","Gymnocephalus cernua","Fish",0.00312866520372917,51,"ectotherm vertebrates",0.906
+"SP034","Myoxocephalus quadricornis","Fish",0.0165349917341526,219.9,"ectotherm vertebrates",0.906

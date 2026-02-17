@@ -1,0 +1,138 @@
+
+═══════════════════════════════════════════════════════════════
+POPULATE SQLITE DATABASE WITH LOCAL TRAIT DATABASES
+═══════════════════════════════════════════════════════════════
+
+Warning message:
+package 'readxl' was built under R version 4.4.3 
+Warning messages:
+1: package 'RSQLite' was built under R version 4.4.3 
+2: package 'DBI' was built under R version 4.4.3 
+Initializing new SQLite database...
+Initializing SQLite cache database...
+Creating indexes...
+✓ Database initialized successfully
+  Location: cache/taxonomy.db
+  Indexes created: 12
+✓ Database initialized
+
+--- PROCESSING: BVOL Phytoplankton Database ---
+
+✓ Loaded BVOL database: 3846 phytoplankton species
+There were 50 or more warnings (use warnings() to see the first 50)
+Found 3846 phytoplankton species
+Processing in batches...
+
+  Processed: 100/3846 (added: 100, skipped: 0)
+  Processed: 200/3846 (added: 200, skipped: 0)
+  Processed: 300/3846 (added: 300, skipped: 0)
+  Processed: 400/3846 (added: 400, skipped: 0)
+  Processed: 500/3846 (added: 500, skipped: 0)
+  Processed: 600/3846 (added: 600, skipped: 0)
+  Processed: 700/3846 (added: 700, skipped: 0)
+  Processed: 800/3846 (added: 800, skipped: 0)
+  Processed: 900/3846 (added: 900, skipped: 0)
+  Processed: 1000/3846 (added: 1000, skipped: 0)
+  Processed: 1100/3846 (added: 1100, skipped: 9)
+  Processed: 1200/3846 (added: 1200, skipped: 9)
+  Processed: 1300/3846 (added: 1300, skipped: 23)
+  Processed: 1400/3846 (added: 1400, skipped: 23)
+  Processed: 1500/3846 (added: 1500, skipped: 23)
+  Processed: 1600/3846 (added: 1600, skipped: 23)
+  Processed: 1700/3846 (added: 1700, skipped: 23)
+  Processed: 1800/3846 (added: 1800, skipped: 23)
+  Processed: 1900/3846 (added: 1900, skipped: 23)
+  Processed: 2000/3846 (added: 2000, skipped: 23)
+  Processed: 2100/3846 (added: 2100, skipped: 23)
+  Processed: 2200/3846 (added: 2200, skipped: 23)
+  Processed: 2300/3846 (added: 2300, skipped: 23)
+  Processed: 2400/3846 (added: 2400, skipped: 23)
+  Processed: 2500/3846 (added: 2500, skipped: 29)
+  Processed: 2600/3846 (added: 2600, skipped: 29)
+  Processed: 2700/3846 (added: 2700, skipped: 29)
+  Processed: 2800/3846 (added: 2800, skipped: 29)
+  Processed: 2900/3846 (added: 2900, skipped: 29)
+  Processed: 3000/3846 (added: 3000, skipped: 29)
+  Processed: 3100/3846 (added: 3100, skipped: 29)
+  Processed: 3200/3846 (added: 3200, skipped: 29)
+  Processed: 3300/3846 (added: 3300, skipped: 29)
+  Processed: 3400/3846 (added: 3400, skipped: 29)
+  Processed: 3500/3846 (added: 3500, skipped: 37)
+  Processed: 3600/3846 (added: 3600, skipped: 43)
+  Processed: 3700/3846 (added: 3700, skipped: 43)
+  Processed: 3800/3846 (added: 3800, skipped: 43)
+
+✓ BVOL Processing Complete
+  Total processed: 3803
+  Added to database: 3803
+  Skipped (already cached): 43
+  Errors: 0
+
+--- PROCESSING: Species Enriched Marine Invertebrates Database ---
+
+✓ Loaded species enriched database: 915 marine invertebrates
+Found 915 marine invertebrate species
+Processing in batches...
+
+  Processed: 100/915 (added: 100, skipped: 0)
+  Processed: 200/915 (added: 200, skipped: 0)
+  Processed: 300/915 (added: 300, skipped: 0)
+  Processed: 400/915 (added: 400, skipped: 0)
+  Processed: 500/915 (added: 500, skipped: 0)
+  Processed: 600/915 (added: 600, skipped: 0)
+  Processed: 700/915 (added: 700, skipped: 0)
+  Processed: 800/915 (added: 800, skipped: 0)
+  Processed: 900/915 (added: 900, skipped: 0)
+
+✓ Species Enriched Processing Complete
+  Total processed: 915
+  Added to database: 915
+  Skipped (already cached): 0
+  Errors: 0
+
+Warning messages:
+1: In extract_size_from_range(record) : NAs introduced by coercion
+2: In extract_size_from_range(record) : NAs introduced by coercion
+═══════════════════════════════════════════════════════════════
+POPULATION SUMMARY
+═══════════════════════════════════════════════════════════════
+Total species processed:  4718
+Added to database:        4718
+Skipped (already cached): 43
+Errors:                   0
+
+FINAL DATABASE STATISTICS
+───────────────────────────────────────────────────────────────
+
+═══════════════════════════════════════════════════════════════
+SQLITE CACHE STATISTICS
+═══════════════════════════════════════════════════════════════
+Database: cache/taxonomy.db
+Size: 4.65 MB
+
+SPECIES
+───────────────────────────────────────────────────────────────
+Total species:     2046
+Complete traits:   156 (7.6%)
+
+TAXONOMIC COVERAGE
+───────────────────────────────────────────────────────────────
+Kingdoms: 0
+Phyla:    0
+Classes:  45
+Orders:   135
+Families: 0
+Genera:   422
+
+CONFIDENCE DISTRIBUTION
+───────────────────────────────────────────────────────────────
+high:      1289
+medium:    757
+
+═══════════════════════════════════════════════════════════════
+
+
+═══════════════════════════════════════════════════════════════
+✓ POPULATION COMPLETE
+═══════════════════════════════════════════════════════════════
+

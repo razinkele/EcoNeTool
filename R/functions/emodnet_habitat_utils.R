@@ -470,8 +470,7 @@ print_euseamap_summary <- function(euseamap_layer) {
   print(st_drop_geometry(euseamap_layer[1, ]))
 }
 
-# Helper: Null coalescing operator
-`%||%` <- function(x, y) if (is.null(x)) y else x
+# NOTE: %||% operator is now defined in validation_utils.R
 
 #' Clip Habitat Data to Study Area
 #'

@@ -1,0 +1,6 @@
+"predator_id","prey_id","quality_code","source","notes"
+"SP001","SP002",1,"doi:10.1111/example1","Gut content analysis"
+"SP001","SP003",1,"doi:10.1111/example2","Observed predation"
+"SP002","SP004",2,"Similar species documented","Inferred from similar herring species"
+"SP003","SP004",1,"doi:10.1111/example3","Laboratory feeding experiments"
+"SP004","SP005",1,"doi:10.1111/example4","Known grazer"

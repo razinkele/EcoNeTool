@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+
+
+
+<title>Hypothesis testing</title>
+
+<script src="site_libs/header-attrs-2.20/header-attrs.js"></script>
+<script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/flatly.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+<style>h1 {font-size: 34px;}
+       h1.title {font-size: 38px;}
+       h2 {font-size: 30px;}
+       h3 {font-size: 24px;}
+       h4 {font-size: 18px;}
+       h5 {font-size: 16px;}
+       h6 {font-size: 12px;}
+       code {color: inherit; background-color: rgba(0, 0, 0, 0.04);}
+       pre:not([class]) { background-color: white }</style>
+<script src="site_libs/jqueryui-1.11.4/jquery-ui.min.js"></script>
+<link href="site_libs/tocify-1.9.1/jquery.tocify.css" rel="stylesheet" />
+<script src="site_libs/tocify-1.9.1/jquery.tocify.js"></script>
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+<script src="site_libs/navigation-1.1/codefolding.js"></script>
+<link href="site_libs/highlightjs-9.12.0/default.css" rel="stylesheet" />
+<script src="site_libs/highlightjs-9.12.0/highlight.js"></script>
+<script src="site_libs/clipboard-1.7.1/clipboard.min.js"></script>
+<link href="site_libs/primer-tooltips-1.4.0/build.css" rel="stylesheet" />
+<link href="site_libs/klippy-0.0.0.9500/css/klippy.min.css" rel="stylesheet" />
+<script src="site_libs/klippy-0.0.0.9500/js/klippy.min.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
+
+<style type="text/css">code{white-space: pre;}</style>
+<script type="text/javascript">
+if (window.hljs) {
+  hljs.configure({languages: []});
+  hljs.initHighlightingOnLoad();
+  if (document.readyState && document.readyState === "complete") {
+    window.setTimeout(function() { hljs.initHighlighting(); }, 0);
+  }
+}
+</script>
+
+
+
+
+
+
+
+
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+img {
+  max-width:100%;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+.html-widget {
+  margin-bottom: 20px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+summary {
+  display: list-item;
+}
+details > summary > p:only-child {
+  display: inline;
+}
+pre code {
+  padding: 0;
+}
+</style>
+
+
+<style type="text/css">
+.dropdown-submenu {
+  position: relative;
+}
+.dropdown-submenu>.dropdown-menu {
+  top: 0;
+  left: 100%;
+  margin-top: -6px;
+  margin-left: -1px;
+  border-radius: 0 6px 6px 6px;
+}
+.dropdown-submenu:hover>.dropdown-menu {
+  display: block;
+}
+.dropdown-submenu>a:after {
+  display: block;
+  content: " ";
+  float: right;
+  width: 0;
+  height: 0;
+  border-color: transparent;
+  border-style: solid;
+  border-width: 5px 0 5px 5px;
+  border-left-color: #cccccc;
+  margin-top: 5px;
+  margin-right: -10px;
+}
+.dropdown-submenu:hover>a:after {
+  border-left-color: #adb5bd;
+}
+.dropdown-submenu.pull-left {
+  float: none;
+}
+.dropdown-submenu.pull-left>.dropdown-menu {
+  left: -100%;
+  margin-left: 10px;
+  border-radius: 6px 0 6px 6px;
+}
+</style>
+
+<script type="text/javascript">
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark the anchor link active (and if it's in a dropdown, also mark that active)
+  var dropdown = menuAnchor.closest('li.dropdown');
+  if (window.bootstrap) { // Bootstrap 4+
+    menuAnchor.addClass('active');
+    dropdown.find('> .dropdown-toggle').addClass('active');
+  } else { // Bootstrap 3
+    menuAnchor.parent().addClass('active');
+    dropdown.addClass('active');
+  }
+
+  // Navbar adjustments
+  var navHeight = $(".navbar").first().height() + 15;
+  var style = document.createElement('style');
+  var pt = "padding-top: " + navHeight + "px; ";
+  var mt = "margin-top: -" + navHeight + "px; ";
+  var css = "";
+  // offset scroll position for anchor links (for fixed navbar)
+  for (var i = 1; i <= 6; i++) {
+    css += ".section h" + i + "{ " + pt + mt + "}\n";
+  }
+  style.innerHTML = "body {" + pt + "padding-bottom: 40px; }\n" + css;
+  document.head.appendChild(style);
+});
+</script>
+
+<!-- tabsets -->
+
+<style type="text/css">
+.tabset-dropdown > .nav-tabs {
+  display: inline-table;
+  max-height: 500px;
+  min-height: 44px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs > li.active:before, .tabset-dropdown > .nav-tabs.nav-tabs-open:before {
+  content: "\e259";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li.active:before {
+  content: "\e258";
+  font-family: 'Glyphicons Halflings';
+  border: none;
+}
+
+.tabset-dropdown > .nav-tabs > li.active {
+  display: block;
+}
+
+.tabset-dropdown > .nav-tabs > li > a,
+.tabset-dropdown > .nav-tabs > li > a:focus,
+.tabset-dropdown > .nav-tabs > li > a:hover {
+  border: none;
+  display: inline-block;
+  border-radius: 4px;
+  background-color: transparent;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li {
+  display: block;
+  float: none;
+}
+
+.tabset-dropdown > .nav-tabs > li {
+  display: none;
+}
+</style>
+
+<!-- code folding -->
+<style type="text/css">
+.code-folding-btn { margin-bottom: 4px; }
+</style>
+
+
+
+<style type="text/css">
+
+#TOC {
+  margin: 25px 0px 20px 0px;
+}
+@media (max-width: 768px) {
+#TOC {
+  position: relative;
+  width: 100%;
+}
+}
+
+@media print {
+.toc-content {
+  /* see https://github.com/w3c/csswg-drafts/issues/4434 */
+  float: right;
+}
+}
+
+.toc-content {
+  padding-left: 30px;
+  padding-right: 40px;
+}
+
+div.main-container {
+  max-width: 1200px;
+}
+
+div.tocify {
+  width: 20%;
+  max-width: 260px;
+  max-height: 85%;
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+  div.tocify {
+    width: 25%;
+  }
+}
+
+@media (max-width: 767px) {
+  div.tocify {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+.tocify ul, .tocify li {
+  line-height: 20px;
+}
+
+.tocify-subheader .tocify-item {
+  font-size: 0.90em;
+}
+
+.tocify .list-group-item {
+  border-radius: 0px;
+}
+
+.tocify-subheader {
+  display: inline;
+}
+.tocify-subheader .tocify-item {
+  font-size: 0.95em;
+}
+
+</style>
+
+
+
+</head>
+
+<body>
+
+
+<div class="container-fluid main-container">
+
+
+<!-- setup 3col/9col grid for toc_float and main content  -->
+<div class="row">
+<div class="col-xs-12 col-sm-4 col-md-3">
+<div id="TOC" class="tocify">
+</div>
+</div>
+
+<div class="toc-content col-xs-12 col-sm-8 col-md-9">
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-bs-toggle="collapse" data-target="#navbar" data-bs-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">The infomapecology package website</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="index.html">Home</a>
+</li>
+<li>
+  <a href="installation.html">Installation</a>
+</li>
+<li class="dropdown">
+  <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+    Monolayer
+     
+    <span class="caret"></span>
+  </a>
+  <ul class="dropdown-menu" role="menu">
+    <li>
+      <a href="bipartite.html">Bipartite monolayer network example</a>
+    </li>
+    <li>
+      <a href="monolayer_heirarchical.html">Monolayer directed network with hierarchical structure</a>
+    </li>
+    <li>
+      <a href="monolayer_node_attributes.html">Monolayer directed network with node attributes</a>
+    </li>
+  </ul>
+</li>
+<li class="dropdown">
+  <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+    Multilayer
+     
+    <span class="caret"></span>
+  </a>
+  <ul class="dropdown-menu" role="menu">
+    <li>
+      <a href="multilayer_relax_emln.html">Temporal multilayer network with global relax rates</a>
+    </li>
+    <li>
+      <a href="multilayer_interlayer_emln.html">Temporal multilayer network with interlayer edges</a>
+    </li>
+  </ul>
+</li>
+<li>
+  <a href="flows.html">Flow models</a>
+</li>
+<li>
+  <a href="hypothesis_test.html">Hypothesis testing</a>
+</li>
+<li>
+  <a href="about.html">About</a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+
+<div class="btn-group pull-right float-right">
+<button type="button" class="btn btn-default btn-xs btn-secondary btn-sm dropdown-toggle" data-toggle="dropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><span>Code</span> <span class="caret"></span></button>
+<ul class="dropdown-menu dropdown-menu-right" style="min-width: 50px;">
+<li><a id="rmd-show-all-code" href="#">Show All Code</a></li>
+<li><a id="rmd-hide-all-code" href="#">Hide All Code</a></li>
+</ul>
+</div>
+
+
+
+<h1 class="title toc-ignore">Hypothesis testing</h1>
+
+</div>
+
+
+<script>
+  addClassKlippyTo("pre.r, pre.markdown");
+  addKlippy('right', 'top', '#8B0000', '1', 'Copy code', 'Copied!');
+</script>
+<p><br> <br></p>
+<div id="built-in-randomization-capabilities-for-bipartite-networks"
+class="section level2">
+<h2>1. Built in randomization capabilities for bipartite networks</h2>
+<p>The function <code>run_infomap_monolayer</code> can use shuffling
+algorithms built into <code>vegan</code>. To use this, we need to set
+<code>signif=T</code> and provide a shuffling method to
+<code>shuff_method</code>. The shuffling methods are the ones detailed
+in <code>?vegan::commsim</code>.</p>
+<pre class="r"><code>network_object &lt;- create_monolayer_network(memmott1999, bipartite = T, directed = F, group_names = c(&#39;A&#39;,&#39;P&#39;))</code></pre>
+<pre><code>## [1] &quot;Input: a bipartite matrix&quot;</code></pre>
+<pre class="r"><code># Run with shuffling
+infomap_object &lt;- run_infomap_monolayer(network_object, infomap_executable=&#39;Infomap&#39;,
+                                        flow_model = &#39;undirected&#39;,
+                                        silent=T, trials=20, two_level=T, seed=123, 
+                                        signif = T, shuff_method = &#39;r00&#39;, nsim = 10) #nsim = 50</code></pre>
+<pre><code>## [1] &quot;Creating a link list...&quot;
+## running: ./Infomap infomap.txt . --tree --seed 123 -N 20 -f undirected --silent --two-level
+## [1] &quot;Shuffling...&quot;
+## [1] &quot;Running Infomap on shuffled network 1/10&quot;
+## [1] &quot;Running Infomap on shuffled network 2/10&quot;
+## [1] &quot;Running Infomap on shuffled network 3/10&quot;
+## [1] &quot;Running Infomap on shuffled network 4/10&quot;
+## [1] &quot;Running Infomap on shuffled network 5/10&quot;
+## [1] &quot;Running Infomap on shuffled network 6/10&quot;
+## [1] &quot;Running Infomap on shuffled network 7/10&quot;
+## [1] &quot;Running Infomap on shuffled network 8/10&quot;
+## [1] &quot;Running Infomap on shuffled network 9/10&quot;
+## [1] &quot;Running Infomap on shuffled network 10/10&quot;</code></pre>
+<pre><code>## Warning in run_infomap_monolayer(network_object, infomap_executable = &quot;Infomap&quot;, : pvalue is not really 0, it is &lt;0.1</code></pre>
+<pre><code>## [1] &quot;Removing auxilary files...&quot;</code></pre>
+<pre class="r"><code># Plot histograms
+plots &lt;- plot_signif(infomap_object, plotit = T)</code></pre>
+<pre><code>## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.</code></pre>
+<p><img src="hypothesis_test_files/figure-html/hypothesis_1-1.png" width="864" /></p>
+<pre class="r"><code>plot_grid(
+  plots$L_plot+
+    theme_bw()+
+    theme(legend.position=&#39;none&#39;, 
+          legend.title = element_text(size=16),
+          axis.text = element_text(size=16)),
+  plots$m_plot+
+    theme_bw()+
+    theme(legend.position=&#39;none&#39;, 
+          legend.title = element_text(size=16),
+          axis.text = element_text(size=16))
+)</code></pre>
+<pre><code>## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.</code></pre>
+<p><img src="hypothesis_test_files/figure-html/hypothesis_1-2.png" width="864" /></p>
+<p>Another way is to provide <code>shuff_method</code> with a list
+containing already shuffled networks. You can for example use the
+function <code>shuffle_infomap</code> to produce shuffled networks with
+<code>vegan</code>. This is necessary on the shuffling algorithm from
+<code>?vegan::commsim</code> needs additional arguments such as
+burning.</p>
+<pre class="r"><code># Or can shuffle like this, if additional arguments are needed for the shuffling algorithm
+shuffled &lt;- shuffle_infomap(network_object, shuff_method=&#39;curveball&#39;, nsim=10, burnin=2000) #nsim=50</code></pre>
+<pre><code>## [1] &quot;Shuffling...&quot;</code></pre>
+<pre class="r"><code>infomap_object &lt;- run_infomap_monolayer(network_object, infomap_executable=&#39;Infomap&#39;,
+                                        flow_model = &#39;undirected&#39;,
+                                        silent=T, trials=20, two_level=T, seed=123, 
+                                        signif = T, shuff_method = shuffled, nsim = 10) #nsim = 50</code></pre>
+<pre><code>## [1] &quot;Creating a link list...&quot;
+## running: ./Infomap infomap.txt . --tree --seed 123 -N 20 -f undirected --silent --two-level
+## [1] &quot;Running Infomap on shuffled network 1/10&quot;
+## [1] &quot;Running Infomap on shuffled network 2/10&quot;
+## [1] &quot;Running Infomap on shuffled network 3/10&quot;
+## [1] &quot;Running Infomap on shuffled network 4/10&quot;
+## [1] &quot;Running Infomap on shuffled network 5/10&quot;
+## [1] &quot;Running Infomap on shuffled network 6/10&quot;
+## [1] &quot;Running Infomap on shuffled network 7/10&quot;
+## [1] &quot;Running Infomap on shuffled network 8/10&quot;
+## [1] &quot;Running Infomap on shuffled network 9/10&quot;
+## [1] &quot;Running Infomap on shuffled network 10/10&quot;</code></pre>
+<pre><code>## Warning in run_infomap_monolayer(network_object, infomap_executable = &quot;Infomap&quot;, : pvalue is not really 0, it is &lt;0.1</code></pre>
+<pre><code>## [1] &quot;Removing auxilary files...&quot;</code></pre>
+<pre class="r"><code>plots &lt;- plot_signif(infomap_object, plotit = F)
+plot_grid(
+  plots$L_plot+
+  theme_bw()+
+  theme(legend.position=&#39;none&#39;, 
+        axis.text = element_text(size=16), #20
+        legend.title = element_text(size=16),
+        axis.title = element_text(size=16)), #20
+  plots$m_plot+
+    theme_bw()+
+    theme(legend.position=&#39;none&#39;, 
+          axis.text = element_text(size=16), #20
+          legend.title = element_text(size=16),
+          axis.title = element_text(size=16)) #20
+)</code></pre>
+<pre><code>## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.</code></pre>
+<p><img src="hypothesis_test_files/figure-html/hypothesis_2-1.png" width="864" /></p>
+<p><br> <br></p>
+</div>
+<div id="dedicated-randomization-algorithm" class="section level2">
+<h2>2. Dedicated randomization algorithm</h2>
+<p>You can also create your own shuffling algorithm and a list of
+shuffled link lists. As in this example with the Tur et al. 2016 data
+set..</p>
+<pre class="r"><code># Import data
+data(tur2016)
+tur2016_altitude2000 &lt;- tur2016 %&gt;% 
+  filter(altitude==2000) %&gt;% 
+  select(&quot;donor&quot;, &quot;receptor&quot;, &quot;total&quot;) %&gt;% 
+  group_by(donor, receptor) %&gt;% 
+  summarise(n=mean(total)) %&gt;% 
+  rename(from = donor, to = receptor, weight = n) %&gt;% 
+  ungroup() %&gt;%
+  slice(c(-10,-13,-28)) %&gt;%  # Remove singletons
+  filter(from!=to) # Remove self loops</code></pre>
+<pre><code>## `summarise()` has grouped output by &#39;donor&#39;. You can override using the `.groups` argument.</code></pre>
+<pre class="r"><code>tur_network &lt;- create_monolayer_network(tur2016_altitude2000, directed = T, bipartite = F)</code></pre>
+<pre><code>## Warning: One or more rows sum to 0. This may be ok if you expect some links with only outgoing links (e.g., basal species in a food web)
+## Warning: One or more columns sum to 0. This may be ok if you expect some links with only incoming links (e.g., top predators in a food web)</code></pre>
+<pre class="r"><code># A dedicated function to shuffle the networks, considering the flow.
+shuffle_tur_networks &lt;- function(x){ # x is a network object
+  m &lt;- x$mat
+
+  # Assign off-diagona values
+  off_diagonal_lower &lt;- m[lower.tri(m, diag = FALSE)]
+  off_diagonal_upper &lt;- m[upper.tri(m, diag = FALSE)]
+  out &lt;- matrix(0, nrow(m), ncol(m), dimnames = list(rownames(m), colnames(m)))
+  out[lower.tri(out, diag = FALSE)] &lt;- sample(off_diagonal_lower, size = length(off_diagonal_lower), replace = F)
+  out[upper.tri(out, diag = FALSE)] &lt;- sample(off_diagonal_upper, size = length(off_diagonal_upper), replace = F)
+
+  # Re-assign the diagonal (left intact)
+  diag(out) &lt;- diag(m)
+
+
+  # Sanity checks
+  t1 &lt;- setequal(out[upper.tri(out, diag = FALSE)], m[upper.tri(m, diag = FALSE)]) #Should be TRUE
+  t2 &lt;- setequal(out[lower.tri(out, diag = FALSE)], m[lower.tri(m, diag = FALSE)]) #Should be TRUE
+  t3 &lt;- identical(out[upper.tri(out, diag = FALSE)], m[upper.tri(m, diag = FALSE)]) #Should be FALSE
+  t4 &lt;- identical(out[lower.tri(out, diag = FALSE)], m[lower.tri(m, diag = FALSE)]) #Should be FALSE
+  t5 &lt;- all(table(m)==table(out))# Should be TRUE because it includes all the values, including diagonal
+  if (any(c(t1,t2,!t3,!t4,t5)==F)){stop(&#39;One or more sanity checks failed&#39;)}
+  return(out)
+}
+
+# Create a list with shuffled link lists
+nsim &lt;- 100 #nsim &lt;- 1000
+shuffled &lt;- NULL
+for (i in 1:nsim){
+  print(i)
+  x &lt;- shuffle_tur_networks(tur_network) #Shuffle the network
+  x &lt;- create_monolayer_network(x,directed = T,bipartite = F) # Create a monolayer object
+  shuffled[[i]] &lt;- create_infomap_linklist(x)$edge_list_infomap #Create a link-list
+}  
+
+# Use the shuffled link lists. 
+tur_signif &lt;- run_infomap_monolayer(tur_network, infomap_executable=&#39;Infomap&#39;,
+                      flow_model = &#39;rawdir&#39;,
+                      silent=T,
+                      trials=100, two_level=T, seed=200952,
+                      signif = T, shuff_method = shuffled)</code></pre>
+<pre><code>## Warning in run_infomap_monolayer(tur_network, infomap_executable = &quot;Infomap&quot;, : pvalue is not really 0, it is &lt;0.01</code></pre>
+<pre class="r"><code>print(tur_signif$pvalue)</code></pre>
+<pre><code>## [1] 0</code></pre>
+<pre class="r"><code>plots &lt;- plot_signif(tur_signif, plotit = F)
+
+plots</code></pre>
+<pre><code>## $L_plot</code></pre>
+<pre><code>## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.</code></pre>
+<p><img src="hypothesis_test_files/figure-html/hypothesis_4-1.png" width="864" /></p>
+<pre><code>## 
+## $m_plot</code></pre>
+<pre><code>## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.</code></pre>
+<p><img src="hypothesis_test_files/figure-html/hypothesis_4-2.png" width="864" /></p>
+</div>
+
+
+
+</div>
+</div>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.odd').parent('tbody').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- tabsets -->
+
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+
+$(document).ready(function () {
+  $('.tabset-dropdown > .nav-tabs > li').click(function () {
+    $(this).parent().toggleClass('nav-tabs-open');
+  });
+});
+</script>
+
+<!-- code folding -->
+<script>
+$(document).ready(function () {
+  window.initializeCodeFolding("show" === "show");
+});
+</script>
+
+<script>
+$(document).ready(function ()  {
+
+    // temporarily add toc-ignore selector to headers for the consistency with Pandoc
+    $('.unlisted.unnumbered').addClass('toc-ignore')
+
+    // move toc-ignore selectors from section div to header
+    $('div.section.toc-ignore')
+        .removeClass('toc-ignore')
+        .children('h1,h2,h3,h4,h5').addClass('toc-ignore');
+
+    // establish options
+    var options = {
+      selectors: "h1,h2,h3",
+      theme: "bootstrap3",
+      context: '.toc-content',
+      hashGenerator: function (text) {
+        return text.replace(/[.\\/?&!#<>]/g, '').replace(/\s/g, '_');
+      },
+      ignoreSelector: ".toc-ignore",
+      scrollTo: 0
+    };
+    options.showAndHide = false;
+    options.smoothScroll = true;
+
+    // tocify
+    var toc = $("#TOC").tocify(options).data("toc-tocify");
+});
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

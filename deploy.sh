@@ -60,8 +60,11 @@ FILES=(
   "README.md"
   "LICENSE"
   "run_app.R"
+  "functions.R"
   "www/"
   "examples/"
+  "R/"
+  "metawebs/"
 )
 
 # Files/directories to exclude
@@ -80,6 +83,11 @@ EXCLUDE_PATTERNS=(
   "Script.R"
   "create_example_datasets.R"
   "*.ewemdb"
+  "*.xml"
+  "cache/*"
+  "output/*"
+  "docs/*"
+  "tests/*"
 )
 
 # Flags
@@ -466,7 +474,14 @@ install_packages() {
 
   # Create R script for package installation
   local install_script="
-  packages <- c('shiny', 'bs4Dash', 'igraph', 'fluxweb', 'visNetwork', 'DT')
+  packages <- c(
+    'shiny', 'bs4Dash', 'shinyjs', 'shinyWidgets', 'shinyBS',
+    'igraph', 'visNetwork', 'fluxweb',
+    'DT', 'ggplot2', 'plotly',
+    'dplyr', 'tidyr', 'readr', 'tibble', 'stringr',
+    'jsonlite', 'openxlsx', 'readxl',
+    'MASS', 'RCurl', 'XML', 'plyr'
+  )
   new_packages <- packages[!(packages %in% installed.packages()[,'Package'])]
   if(length(new_packages)) {
     cat('Installing packages:', paste(new_packages, collapse=', '), '\n')

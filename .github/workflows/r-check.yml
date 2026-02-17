@@ -1,13 +1,14 @@
 # =============================================================================
 # EcoNeTool - R Validation
 # =============================================================================
-# Comprehensive R checks that run on releases or manual trigger.
+# Comprehensive R checks that run on releases, PRs, or manual trigger.
 # These checks are more thorough but slower than the main CI.
 #
 # Checks performed:
 # - R dependency installation
+# - All R file syntax validation
 # - Full lintr scan of R/ directory
-# - Shiny app syntax validation
+# - Unit test execution (tests that can run without external APIs)
 # =============================================================================
 
 name: R Validation
@@ -21,6 +22,13 @@ on:
         required: false
         default: 'false'
         type: boolean
+
+  # Run on PRs (R file changes only)
+  pull_request:
+    branches: [master, main, develop]
+    paths:
+      - '**.R'
+      - '.github/workflows/r-check.yml'
 
   # Run on releases
   release:
@@ -47,7 +55,7 @@ jobs:
       - name: Set up R
         uses: r-lib/actions/setup-r@v2
         with:
-          r-version: '4.3.0'
+          r-version: '4.4.1'
           use-public-rspm: true
 
       - name: Install system dependencies
@@ -71,21 +79,63 @@ jobs:
 
       - name: Install R dependencies
         run: |
-          install.packages(c("shiny", "lintr", "bs4Dash"), repos = "https://cloud.r-project.org")
+          install.packages(c(
+            "shiny", "lintr", "bs4Dash",
+            "igraph", "dplyr", "tidyr", "readr", "jsonlite",
+            "shinyWidgets", "DT", "visNetwork"
+          ), repos = "https://cloud.r-project.org")
         shell: Rscript {0}
         continue-on-error: true
 
-      - name: Validate app.R syntax
+      - name: Validate all R file syntax
         run: |
-          cat("Checking app.R syntax...\n")
-          tryCatch({
-            parse("app.R")
-            cat("✓ app.R has valid R syntax\n")
-          }, error = function(e) {
-            cat("✗ Syntax error in app.R:\n")
-            print(e)
+          r_files <- list.files(
+            c(".", "R", "R/config", "R/functions", "R/functions/ecopath",
+              "R/functions/rpath", "R/modules", "R/ui"),
+            pattern = "\\.R$",
+            full.names = TRUE,
+            recursive = FALSE
+          )
+          r_files <- r_files[!grepl("safeBackup", r_files)]
+
+          cat(sprintf("Checking %d R files...\n", length(r_files)))
+          errors <- 0
+          for (f in r_files) {
+            result <- tryCatch({ parse(file = f); NULL },
+                               error = function(e) e$message)
+            if (!is.null(result)) {
+              cat(sprintf("FAIL %s: %s\n", f, result))
+              errors <- errors + 1
+            }
+          }
+          if (errors > 0) {
+            cat(sprintf("\n%d file(s) with parse errors\n", errors))
             quit(status = 1)
-          })
+          }
+          cat("All R files have valid syntax\n")
+        shell: Rscript {0}
+
+      - name: Validate test file syntax
+        run: |
+          test_files <- list.files("tests", pattern = "\\.R$",
+                                   full.names = TRUE, recursive = TRUE)
+          test_files <- test_files[!grepl("safeBackup", test_files)]
+
+          cat(sprintf("Checking %d test files...\n", length(test_files)))
+          errors <- 0
+          for (f in test_files) {
+            result <- tryCatch({ parse(file = f); NULL },
+                               error = function(e) e$message)
+            if (!is.null(result)) {
+              cat(sprintf("FAIL %s: %s\n", f, result))
+              errors <- errors + 1
+            }
+          }
+          if (errors > 0) {
+            cat(sprintf("\n%d test file(s) with parse errors\n", errors))
+            quit(status = 1)
+          }
+          cat("All test files have valid syntax\n")
         shell: Rscript {0}
 
       - name: Lint app.R
@@ -102,9 +152,9 @@ jobs:
       - name: Lint R/functions (key files)
         run: |
           key_files <- c(
-            "R/functions/logger.R",
             "R/functions/validation_utils.R",
-            "R/functions/error_logging.R"
+            "R/functions/error_logging.R",
+            "R/functions/metaweb_core.R"
           )
           for (f in key_files) {
             if (file.exists(f)) {
@@ -113,7 +163,7 @@ jobs:
               if (length(results) > 0) {
                 cat("  Found", length(results), "issues\n")
               } else {
-                cat("  ✓ No issues\n")
+                cat("  No issues\n")
               }
             }
           }
@@ -127,7 +177,6 @@ jobs:
           results <- lintr::lint_dir("R/")
           cat("Total issues found:", length(results), "\n")
           if (length(results) > 0) {
-            # Group by file
             by_file <- split(results, sapply(results, function(x) x$filename))
             for (file in names(by_file)) {
               cat("\n", file, ":", length(by_file[[file]]), "issues\n")

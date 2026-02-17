@@ -48,12 +48,30 @@ Full-featured deployment with backup, verification, and logging:
 # Skip backup
 .\deploy-windows.ps1 -NoBackup
 
+# Fast deployment (skip large data directory)
+.\deploy-windows.ps1 -SkipData
+
+# Deploy to staging area (no sudo required)
+.\deploy-windows.ps1 -NoSudo
+
+# Use SCP instead of tar (more reliable, slower)
+.\deploy-windows.ps1 -UseSCP
+
 # Restart Shiny Server after deployment
 .\deploy-windows.ps1 -RestartServer
 
-# All options
-.\deploy-windows.ps1 -DryRun -Verbose
+# Combined options for quick update (skip data, use staging)
+.\deploy-windows.ps1 -NoSudo -SkipData
 ```
+
+**Options:**
+- `-DryRun`: Preview without making changes
+- `-NoBackup`: Skip creating server backup
+- `-SkipData`: Skip `data/` directory (use for faster code-only updates)
+- `-NoSudo`: Deploy to staging area in home dir (no sudo needed)
+- `-UseSCP`: Use SCP instead of tar (more reliable on slow connections)
+- `-RestartServer`: Restart Shiny Server after deployment
+- `-Force`: Continue even if SSH test fails
 
 **Features:**
 - Creates server backup before deployment
@@ -182,12 +200,17 @@ ssh razinka@laguna.ku.lt "sudo Rscript -e \"install.packages('package_name', rep
 The deployment scripts copy:
 - `app.R` - Main application file
 - `run_app.R` - Alternative launcher
+- `VERSION` - Version information file
 - `R/` - All R modules and functions
 - `www/` - Static web assets (images, CSS)
-- `examples/BalticFW.Rdata` - Default dataset
-- `examples/LTCoast.Rdata` - Alternative dataset
-- `metawebs/` - Metaweb library data
+- `examples/BalticFW.Rdata` - Default dataset (Baltic Sea)
+- `examples/LTCoast.Rdata` - Lithuanian coastal ecosystem
+- `examples/Caribbean_Reef.Rdata` - Caribbean reef ecosystem
+- `examples/Simple_3Species.Rdata` - Simple 3-species example
+- `examples/Template_Empty.Rdata` - Empty template
+- `metawebs/` - Metaweb library data (regional food webs)
 - `data/` - Local trait databases (BVOL, SpeciesEnriched)
+- `config/` - Configuration files (API keys template, harmonization settings)
 
 The following are **excluded**:
 - Test files (`tests/`, `*test*.R`)

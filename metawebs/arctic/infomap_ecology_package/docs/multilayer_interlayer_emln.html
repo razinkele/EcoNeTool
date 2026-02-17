@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+
+
+
+<title>Temporal multilayer network with interlayer edges</title>
+
+<script src="site_libs/header-attrs-2.20/header-attrs.js"></script>
+<script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/flatly.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+<style>h1 {font-size: 34px;}
+       h1.title {font-size: 38px;}
+       h2 {font-size: 30px;}
+       h3 {font-size: 24px;}
+       h4 {font-size: 18px;}
+       h5 {font-size: 16px;}
+       h6 {font-size: 12px;}
+       code {color: inherit; background-color: rgba(0, 0, 0, 0.04);}
+       pre:not([class]) { background-color: white }</style>
+<script src="site_libs/jqueryui-1.11.4/jquery-ui.min.js"></script>
+<link href="site_libs/tocify-1.9.1/jquery.tocify.css" rel="stylesheet" />
+<script src="site_libs/tocify-1.9.1/jquery.tocify.js"></script>
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+<script src="site_libs/navigation-1.1/codefolding.js"></script>
+<link href="site_libs/highlightjs-9.12.0/default.css" rel="stylesheet" />
+<script src="site_libs/highlightjs-9.12.0/highlight.js"></script>
+<script src="site_libs/clipboard-1.7.1/clipboard.min.js"></script>
+<link href="site_libs/primer-tooltips-1.4.0/build.css" rel="stylesheet" />
+<link href="site_libs/klippy-0.0.0.9500/css/klippy.min.css" rel="stylesheet" />
+<script src="site_libs/klippy-0.0.0.9500/js/klippy.min.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
+
+<style type="text/css">code{white-space: pre;}</style>
+<script type="text/javascript">
+if (window.hljs) {
+  hljs.configure({languages: []});
+  hljs.initHighlightingOnLoad();
+  if (document.readyState && document.readyState === "complete") {
+    window.setTimeout(function() { hljs.initHighlighting(); }, 0);
+  }
+}
+</script>
+
+
+
+
+
+
+
+
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+img {
+  max-width:100%;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+.html-widget {
+  margin-bottom: 20px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+summary {
+  display: list-item;
+}
+details > summary > p:only-child {
+  display: inline;
+}
+pre code {
+  padding: 0;
+}
+</style>
+
+
+<style type="text/css">
+.dropdown-submenu {
+  position: relative;
+}
+.dropdown-submenu>.dropdown-menu {
+  top: 0;
+  left: 100%;
+  margin-top: -6px;
+  margin-left: -1px;
+  border-radius: 0 6px 6px 6px;
+}
+.dropdown-submenu:hover>.dropdown-menu {
+  display: block;
+}
+.dropdown-submenu>a:after {
+  display: block;
+  content: " ";
+  float: right;
+  width: 0;
+  height: 0;
+  border-color: transparent;
+  border-style: solid;
+  border-width: 5px 0 5px 5px;
+  border-left-color: #cccccc;
+  margin-top: 5px;
+  margin-right: -10px;
+}
+.dropdown-submenu:hover>a:after {
+  border-left-color: #adb5bd;
+}
+.dropdown-submenu.pull-left {
+  float: none;
+}
+.dropdown-submenu.pull-left>.dropdown-menu {
+  left: -100%;
+  margin-left: 10px;
+  border-radius: 6px 0 6px 6px;
+}
+</style>
+
+<script type="text/javascript">
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark the anchor link active (and if it's in a dropdown, also mark that active)
+  var dropdown = menuAnchor.closest('li.dropdown');
+  if (window.bootstrap) { // Bootstrap 4+
+    menuAnchor.addClass('active');
+    dropdown.find('> .dropdown-toggle').addClass('active');
+  } else { // Bootstrap 3
+    menuAnchor.parent().addClass('active');
+    dropdown.addClass('active');
+  }
+
+  // Navbar adjustments
+  var navHeight = $(".navbar").first().height() + 15;
+  var style = document.createElement('style');
+  var pt = "padding-top: " + navHeight + "px; ";
+  var mt = "margin-top: -" + navHeight + "px; ";
+  var css = "";
+  // offset scroll position for anchor links (for fixed navbar)
+  for (var i = 1; i <= 6; i++) {
+    css += ".section h" + i + "{ " + pt + mt + "}\n";
+  }
+  style.innerHTML = "body {" + pt + "padding-bottom: 40px; }\n" + css;
+  document.head.appendChild(style);
+});
+</script>
+
+<!-- tabsets -->
+
+<style type="text/css">
+.tabset-dropdown > .nav-tabs {
+  display: inline-table;
+  max-height: 500px;
+  min-height: 44px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs > li.active:before, .tabset-dropdown > .nav-tabs.nav-tabs-open:before {
+  content: "\e259";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li.active:before {
+  content: "\e258";
+  font-family: 'Glyphicons Halflings';
+  border: none;
+}
+
+.tabset-dropdown > .nav-tabs > li.active {
+  display: block;
+}
+
+.tabset-dropdown > .nav-tabs > li > a,
+.tabset-dropdown > .nav-tabs > li > a:focus,
+.tabset-dropdown > .nav-tabs > li > a:hover {
+  border: none;
+  display: inline-block;
+  border-radius: 4px;
+  background-color: transparent;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li {
+  display: block;
+  float: none;
+}
+
+.tabset-dropdown > .nav-tabs > li {
+  display: none;
+}
+</style>
+
+<!-- code folding -->
+<style type="text/css">
+.code-folding-btn { margin-bottom: 4px; }
+</style>
+
+
+
+<style type="text/css">
+
+#TOC {
+  margin: 25px 0px 20px 0px;
+}
+@media (max-width: 768px) {
+#TOC {
+  position: relative;
+  width: 100%;
+}
+}
+
+@media print {
+.toc-content {
+  /* see https://github.com/w3c/csswg-drafts/issues/4434 */
+  float: right;
+}
+}
+
+.toc-content {
+  padding-left: 30px;
+  padding-right: 40px;
+}
+
+div.main-container {
+  max-width: 1200px;
+}
+
+div.tocify {
+  width: 20%;
+  max-width: 260px;
+  max-height: 85%;
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+  div.tocify {
+    width: 25%;
+  }
+}
+
+@media (max-width: 767px) {
+  div.tocify {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+.tocify ul, .tocify li {
+  line-height: 20px;
+}
+
+.tocify-subheader .tocify-item {
+  font-size: 0.90em;
+}
+
+.tocify .list-group-item {
+  border-radius: 0px;
+}
+
+.tocify-subheader {
+  display: inline;
+}
+.tocify-subheader .tocify-item {
+  font-size: 0.95em;
+}
+
+</style>
+
+
+
+</head>
+
+<body>
+
+
+<div class="container-fluid main-container">
+
+
+<!-- setup 3col/9col grid for toc_float and main content  -->
+<div class="row">
+<div class="col-xs-12 col-sm-4 col-md-3">
+<div id="TOC" class="tocify">
+</div>
+</div>
+
+<div class="toc-content col-xs-12 col-sm-8 col-md-9">
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-bs-toggle="collapse" data-target="#navbar" data-bs-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">The infomapecology package website</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="index.html">Home</a>
+</li>
+<li>
+  <a href="installation.html">Installation</a>
+</li>
+<li class="dropdown">
+  <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+    Monolayer
+     
+    <span class="caret"></span>
+  </a>
+  <ul class="dropdown-menu" role="menu">
+    <li>
+      <a href="bipartite.html">Bipartite monolayer network example</a>
+    </li>
+    <li>
+      <a href="monolayer_heirarchical.html">Monolayer directed network with hierarchical structure</a>
+    </li>
+    <li>
+      <a href="monolayer_node_attributes.html">Monolayer directed network with node attributes</a>
+    </li>
+  </ul>
+</li>
+<li class="dropdown">
+  <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+    Multilayer
+     
+    <span class="caret"></span>
+  </a>
+  <ul class="dropdown-menu" role="menu">
+    <li>
+      <a href="multilayer_relax_emln.html">Temporal multilayer network with global relax rates</a>
+    </li>
+    <li>
+      <a href="multilayer_interlayer_emln.html">Temporal multilayer network with interlayer edges</a>
+    </li>
+  </ul>
+</li>
+<li>
+  <a href="flows.html">Flow models</a>
+</li>
+<li>
+  <a href="hypothesis_test.html">Hypothesis testing</a>
+</li>
+<li>
+  <a href="about.html">About</a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+
+<div class="btn-group pull-right float-right">
+<button type="button" class="btn btn-default btn-xs btn-secondary btn-sm dropdown-toggle" data-toggle="dropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><span>Code</span> <span class="caret"></span></button>
+<ul class="dropdown-menu dropdown-menu-right" style="min-width: 50px;">
+<li><a id="rmd-show-all-code" href="#">Show All Code</a></li>
+<li><a id="rmd-hide-all-code" href="#">Hide All Code</a></li>
+</ul>
+</div>
+
+
+
+<h1 class="title toc-ignore">Temporal multilayer network with interlayer
+edges</h1>
+
+</div>
+
+
+<script>
+  addClassKlippyTo("pre.r, pre.markdown");
+  addKlippy('right', 'top', '#8B0000', '1', 'Copy code', 'Copied!');
+</script>
+<p><br> <br></p>
+<div id="data-set" class="section level3">
+<h3>Data set</h3>
+<p>A temporal multilayer network. Each layer is a host-parasite
+bipartite network. Intralayer edges between a parasite species and a
+host species are the number of parasite individuals divided by the
+number of host individuals. Interlayer coupling edges connect each
+physical node to itself in the next layer (e.g., host A in layer 1 to
+host A in layer 2), and are calculated as the number of individuals in
+layer <em>l+1</em> divided by the number of individuals in layer
+<em>l</em>. They therefore represent population dynamics. Interlayer
+edges only go one way (<em>l–&gt;l+1</em>) because time flow one way. We
+represented the undirected edges within each layer as directed edges
+that go both ways (with the same weight) to be able to have a directed
+flow. This does not affect the calculation of <span
+class="math inline">\(L\)</span>. This data set was taken from <a
+href="https://www.nature.com/articles/s41559-017-0101?proof=true19"><em>Pilosof
+S, Porter MA, Pascual M, Kéfi S. The multilayer nature of ecological
+networks. Nature Ecology &amp; Evolution. 2017;1: 0101</em></a>.</p>
+<p><strong>Data sets in infomapecology:</strong></p>
+<p>The data consists of several matrices representing the host-parasite
+bipartite network each year, an interlayer extended edge list defining
+the interlayer links between the same species in different years, and a
+table containing the attributes of the physical nodes (species).</p>
+<pre class="r"><code># Get data
+data(siberia1982_matrix)
+data(siberia1983_matrix)
+data(siberia1984_matrix)
+data(siberia1985_matrix)
+data(siberia1986_matrix)
+data(siberia1987_matrix)
+data(siberia_interlayer)
+data(siberia_nodes)</code></pre>
+<p><br></p>
+</div>
+<div id="input" class="section level3">
+<h3>Input</h3>
+<p>An <a
+href="https://www.mapequation.org/infomap/#InputMultilayer">extended
+multilayer link-list</a>. This multilayer format gives full control of
+the dynamics, and no other movements are encoded. <strong>When using
+this input format, it is expected that interlayer edges will be
+provided, otherwise there will be no inter-layer links in the final
+state network.</strong></p>
+<pre class="python"><code>*Multilayer
+#layer node layer node weight
+1 4 1 5 0.1585
+1 4 1 6 0.2143
+1 4 1 7 0.8276
+... some more links...
+4 20 4 74 0.0019
+4 23 4 10 24.6
+4 24 4 5 0.1143
+... some more links...
+2 16 3 16 1.14285714285714
+4 29 5 29 3.66666666666667
+5 57 6 57 0.841212121212121
+</code></pre>
+<p><br></p>
+</div>
+<div id="r-code" class="section level3">
+<h3>R Code</h3>
+<p>Because this is a directed bipartite network (interlayer links move
+from layer to layer in time), we will also consider the intralayer links
+as directed. To do that, we will convert each bipartite matrix to a
+symmetric unipartite matrix (see Figure 2, <a
+href="https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.14225">Practical
+guidelines and the EMLN R package for handling ecological multilayer
+networks</a>). This does not change the network itself because each link
+is exactly the same, in both directions.</p>
+<pre class="r"><code># Iterate through the layers
+for (i in 1982:1987) {
+  matrix_data &lt;- get(paste0(&quot;siberia&quot;, i, &quot;_matrix&quot;))  # Get the matrix by its name
+  
+  m &lt;- nrow(matrix_data)
+  n &lt;- ncol(matrix_data)
+  
+  # Create names for rows and columns
+  rcnames &lt;- c(colnames(matrix_data), rownames(matrix_data))
+  
+  # Create the square matrix
+  square_matrix &lt;- matrix(0, nrow = m + n, ncol = m + n, dimnames = list(rcnames, rcnames))
+  
+  # Convert the bipartite matrix to a symmetric unipartite matrix
+  # Copy the values from the rectangular matrix into the appropriate positions in the square matrix
+  square_matrix[(n + 1):(n + m), 1:n] &lt;- matrix_data
+  square_matrix[1:n, (n + 1):(n + m)] &lt;- t(matrix_data)
+  
+  # Assign a name to the matrix
+  assign(paste0(&quot;square_matrix_&quot;, i), square_matrix, envir = .GlobalEnv)
+}</code></pre>
+<p>Now, we will create the multilayer network. Although effectively it
+is a bipartite network, we will treat it as an unipartite network to be
+able to account for link directions. The description of function
+<code>create_multilayer_network</code> is in the package
+<code>emln</code>. Plotting is done using two dedicated functions in
+<code>infomapecology</code>: <code>plot_multilayer_modules</code> and
+<code>plot_multilayer_alluvial</code>.</p>
+<pre class="r"><code># Create a multilayer object
+layer_attrib &lt;- tibble(layer_id=1:6, layer_name=c(&#39;1982&#39;,&#39;1983&#39;,&#39;1984&#39;,&#39;1985&#39;,&#39;1986&#39;,&#39;1987&#39;))                                     
+
+multilayer_siberia &lt;- create_multilayer_network(list_of_layers = list(square_matrix_1982,
+                                                                      square_matrix_1983,
+                                                                      square_matrix_1984,
+                                                                      square_matrix_1985,
+                                                                      square_matrix_1986,
+                                                                      square_matrix_1987),
+                                              layer_attributes = layer_attrib,
+                                              interlayer_links = siberia_interlayer,       
+                                              bipartite = F,
+                                              directed = T, physical_node_attributes = siberia_nodes )</code></pre>
+<pre><code>## [1] &quot;Layer #1 processing.&quot;
+## [1] &quot;Some nodes have no interactions. They will appear in the node table but not in the edge list&quot;
+## [1] &quot;Done.&quot;
+## [1] &quot;Layer #2 processing.&quot;
+## [1] &quot;Some nodes have no interactions. They will appear in the node table but not in the edge list&quot;
+## [1] &quot;Done.&quot;
+## [1] &quot;Layer #3 processing.&quot;
+## [1] &quot;Some nodes have no interactions. They will appear in the node table but not in the edge list&quot;
+## [1] &quot;Done.&quot;
+## [1] &quot;Layer #4 processing.&quot;
+## [1] &quot;Some nodes have no interactions. They will appear in the node table but not in the edge list&quot;
+## [1] &quot;Done.&quot;
+## [1] &quot;Layer #5 processing.&quot;
+## [1] &quot;Some nodes have no interactions. They will appear in the node table but not in the edge list&quot;
+## [1] &quot;Done.&quot;
+## [1] &quot;Layer #6 processing.&quot;
+## [1] &quot;Some nodes have no interactions. They will appear in the node table but not in the edge list&quot;
+## [1] &quot;Done.&quot;
+## [1] &quot;Organizing state nodes&quot;
+## [1] &quot;Creating extended link list with node IDs&quot;
+## [1] &quot;Organizing state nodes&quot;</code></pre>
+<pre class="r"><code>#Run infomap
+multilayer_siberia_modules &lt;- run_infomap_multilayer(M=multilayer_siberia, relax = F, flow_model = &#39;directed&#39;, silent = T, trials = 100, seed = 497294, temporal_network = T)</code></pre>
+<pre><code>## [1] &quot;Using interlayer edge values to determine flow between layers.&quot;
+## [1] &quot;./Infomap infomap_multilayer.txt . --tree -2 -N 100 --seed 497294 -f directed --silent&quot;
+## [1] &quot;Reorganizing modules...&quot;
+## [1] &quot;Removing auxilary files...&quot;
+## [1] &quot;Partitioned into 38 modules.&quot;</code></pre>
+<pre class="r"><code>#Module persistence
+modules_persistence &lt;- multilayer_siberia_modules$modules %&gt;%
+  group_by(module) %&gt;%
+  summarise(b=min(layer_id), d=max(layer_id), persistence=d-b+1) %&gt;%
+  count(persistence) %&gt;%
+  mutate(percent=(n/max(multilayer_siberia_modules$module$module))*100)
+
+# 1. Modules&#39; persistence
+plot_multilayer_modules(multilayer_siberia_modules, type = &#39;rectangle&#39;, color_modules = T)+
+  scale_x_continuous(breaks=seq(0,6,1))+
+  scale_y_continuous(breaks=seq(0,70,5))+
+  scale_fill_viridis_c()+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title = element_text(size=20),
+        axis.text = element_text(size = 20),
+        legend.text =  element_text(size=15),
+        legend.title = element_text(size=20))</code></pre>
+<p><img src="multilayer_interlayer_emln_files/figure-html/multilayer_inter_2-1.png" width="864" /></p>
+<pre class="r"><code>#2. Species flow through modules in time
+plot_multilayer_alluvial(multilayer_siberia_modules, module_labels = F)+
+  scale_x_continuous(breaks=seq(0,6,1))+
+  scale_y_continuous(breaks=seq(0,70,5))+
+  labs(y=&#39;Number of species&#39;)+
+  theme_bw()+
+  theme(legend.position = &quot;none&quot;,
+        panel.grid = element_blank(),
+        axis.text = element_text(color=&#39;black&#39;, size = 20),
+        axis.title = element_text(size=20))</code></pre>
+<p><img src="multilayer_interlayer_emln_files/figure-html/multilayer_inter_2-2.png" width="864" /></p>
+<p><br> <br></p>
+</div>
+<div id="infomap" class="section level3">
+<h3>Infomap</h3>
+<p>Under the hood, the function <code>run_infomap_multilayer</code>
+runs:</p>
+<pre class="c++"><code>./Infomap infomap_multilayer.txt . -2 --seed 497294 -N 100 -i multilayer -f directed --silent</code></pre>
+<p>Explanation of key arguments: * <code>-i multilayer</code> indicates
+a multilayer input format, which is automatically recognized as a <a
+href="https://www.mapequation.org/infomap/#InputMultilayer">general
+multilayer link-list</a>. * <code>-f directed</code> indicates flow on a
+directed network. The visitation rates of nodes is obtained with a
+PageRank algorithm based on the direction and weight of edges. This
+includes interlayer edges.</p>
+<p><br></p>
+</div>
+<div id="output" class="section level3">
+<h3>Output</h3>
+<p>For multilayer network the output file has a <code>_states</code>
+suffix, with the following format. Note the state_id column. For
+example, node 6 in layer 5 has a state_id of 377 (last line). The
+state_ids are created by Infomap but not used in our R code.</p>
+<pre class="python"><code># path flow name state_id node_id layer_id
+1:1 0.0350053 &quot;7&quot; 334 7 6
+1:2 0.0294496 &quot;7&quot; 205 7 4
+1:3 0.0291166 &quot;7&quot; 280 7 5
+1:4 0.0283014 &quot;7&quot; 137 7 3
+1:5 0.0124629 &quot;7&quot; 69 7 2
+1:6 0.00734334 &quot;7&quot; 3 7 1
+1:7 0.00180819 &quot;33&quot; 171 33 3
+         ...
+11:1 0.00929888 &quot;52&quot; 328 52 6
+11:2 0.00861513 &quot;52&quot; 272 52 5
+11:3 0.00694999 &quot;52&quot; 211 52 4
+11:4 0.00564292 &quot;52&quot; 146 52 3
+11:5 0.00256943 &quot;52&quot; 76 52 2
+11:6 0.00101397 &quot;52&quot; 14 52 1
+12:1 0.0083305 &quot;16&quot; 340 16 6
+         ...</code></pre>
+<p>This output is parsed by <code>run_infomap_multilayer</code> to
+obtain a table in which each state node (combination of a physical node
+in a layer) is assigned to a module. This can be obtained by:</p>
+<pre class="r"><code>multilayer_siberia_modules$modules %&gt;% select(node_id, layer_id, node_name, type, module)</code></pre>
+<pre><code>## # A tibble: 378 × 5
+##    node_id layer_id node_name               type  module
+##      &lt;int&gt;    &lt;int&gt; &lt;chr&gt;                   &lt;chr&gt;  &lt;int&gt;
+##  1       1        1 Amalaraeus_penicilliger paras      2
+##  2       1        2 Amalaraeus_penicilliger paras      2
+##  3       1        3 Amalaraeus_penicilliger paras      2
+##  4       1        4 Amalaraeus_penicilliger paras      2
+##  5       1        5 Amalaraeus_penicilliger paras      2
+##  6       1        6 Amalaraeus_penicilliger paras      2
+##  7       2        1 Amerosejus_corbicula    paras     22
+##  8       2        2 Amerosejus_corbicula    paras     22
+##  9       2        3 Amerosejus_corbicula    paras     22
+## 10       3        1 Amphipsylla_sibirica    paras     19
+## # … with 368 more rows</code></pre>
+</div>
+
+
+
+</div>
+</div>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.odd').parent('tbody').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- tabsets -->
+
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+
+$(document).ready(function () {
+  $('.tabset-dropdown > .nav-tabs > li').click(function () {
+    $(this).parent().toggleClass('nav-tabs-open');
+  });
+});
+</script>
+
+<!-- code folding -->
+<script>
+$(document).ready(function () {
+  window.initializeCodeFolding("show" === "show");
+});
+</script>
+
+<script>
+$(document).ready(function ()  {
+
+    // temporarily add toc-ignore selector to headers for the consistency with Pandoc
+    $('.unlisted.unnumbered').addClass('toc-ignore')
+
+    // move toc-ignore selectors from section div to header
+    $('div.section.toc-ignore')
+        .removeClass('toc-ignore')
+        .children('h1,h2,h3,h4,h5').addClass('toc-ignore');
+
+    // establish options
+    var options = {
+      selectors: "h1,h2,h3",
+      theme: "bootstrap3",
+      context: '.toc-content',
+      hashGenerator: function (text) {
+        return text.replace(/[.\\/?&!#<>]/g, '').replace(/\s/g, '_');
+      },
+      ignoreSelector: ".toc-ignore",
+      scrollTo: 0
+    };
+    options.showAndHide = false;
+    options.smoothScroll = true;
+
+    // tocify
+    var toc = $("#TOC").tocify(options).data("toc-tocify");
+});
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

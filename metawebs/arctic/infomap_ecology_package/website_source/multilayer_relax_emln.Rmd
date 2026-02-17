@@ -1,0 +1,122 @@
+---
+title: "Temporal multilayer network with global relax rates"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 9
+    theme: flatly
+    code_folding: show
+    toc: true
+    toc_float:
+      collapsed: false
+      number_sections: true
+---
+
+```{r klippy, echo=FALSE, include=TRUE}
+# Use this to add a copy-code buttong
+klippy::klippy(position = c('top', 'right'), color = 'darkred')
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r eval=FALSE, include=FALSE}
+library(emln)
+library(infomapecology)
+```
+
+<br>
+<br>
+
+### Data set
+Load the 65th multilayer network from the [_`emln package`_](https://github.com/Ecological-Complexity-Lab/emln). This particular network is a temporal plant pollinator multilayer network without interlayer interactions, and it consists of 6 layers, corresponding to the flowering season between 2006 and 2011.
+
+```{r multilayer_emln_1}
+library(emln)
+# Load multilayer network number 65
+emln_65 <- load_emln(65)
+emln_65$layers
+head(emln_65$nodes)
+head(emln_65$extended)
+```
+
+<br>
+
+### Input
+A [multilayer link-list format](https://www.mapequation.org/infomap/#InputMultilayer). With this format, a random walker moves within a layer and with a given relax rate _r_ jumps to another layer without recording this movement, such that the constraints from moving in different layers can be gradually relaxed. If the `*Inter` exists, then interlayer edges can be used. However, if a relax rate is also used (Infomap input parameter `--multilayer-relax-rate`), the interlayer edges are ignored. Here we only include `*Intra`.
+
+```Python
+# A network in multilayer format
+*Intra
+#layer node node weight
+1 101 1 19
+1 113 1 2
+1 152 1 1
+... some more cases ...
+6 69 11 17
+6 70 11 2
+6 87 11 3
+```
+<br>
+
+### R Code
+The description of functions `create_multilayer_object` and `run_infomap_multilayer` in the `infomapecology` package contains everything you need to know. The `for` loop performs a sensitivity analysis to examine how structure changes with increasing relax rates.
+
+```{r multilayer_emln_2, echo = TRUE, results = 'hide'}
+#Run Infomap and return the network's modular structure at increasing relax-rates.
+relaxrate_modules <- NULL
+# Initialize an empty data frame to store results
+results <- data.frame(relax_rate = numeric(), module_count = numeric())
+
+for (r in seq(0.001,1, by = 0.0999)){
+  print(r)
+  modules_relax_rate <- run_infomap_multilayer(emln_65, relax = T, silent = T, trials = 50, seed = 497294,    multilayer_relax_rate = r, multilayer_relax_limit_up = 1, multilayer_relax_limit_down = 0, temporal_network = T)
+  modules_relax_rate$modules$relax_rate <- r
+  relaxrate_modules <- rbind(relaxrate_modules, modules_relax_rate$modules)
+  # Append results to the data frame
+  results <- rbind(results, data.frame(relax_rate = r, module_count = modules_relax_rate$m))
+
+}
+```
+
+
+```{r multilayer_emln_3}
+ggplot(results, aes(x = relax_rate, y = module_count)) +
+  geom_line(color = "blue") +
+  labs(x = "relax rate (r)", y = "Number of modules")+
+  theme_bw()+theme(panel.grid.minor = element_blank())
+```
+
+<br>
+<br>
+
+### Infomap
+Under the hood, the function `run_infomap_multilayer` runs:
+```C++
+./Infomap infomap_multilayer.txt . -2 --seed 497294 -N 50 -i multilayer --multilayer-relax-rate 0.15 --multilayer-relax-limit-up 1 --multilayer-relax-limit-down 0 --silent
+```
+
+Explanation of key arguments:
+* `-i multilayer` indicates a multilayer input format, which is automatically recognized as a multilayer link list (and not as a general link list).
+* `--multilayer-relax-rate 0.15` defines the relax rate (here 0.15).
+* `multilayer-relax-limit-up 1 --multilayer-relax-limit-down 0` limits relaxation to a single layer upwards (l to l+1), but never downwards, because time flows one-way.
+
+<br>
+
+### Output
+For multilayer network the output file has a `_states` suffix, with the following format. This output is as in [Temporal multilayer network with interlayer edges](multilayer_interlayer.md). 
+
+```Python
+# path flow name stateId physicalId layerId
+# path flow name state_id node_id layer_id
+1:1 0.0208474 "12" 604 12 6
+1:2 0.0166813 "100" 531 100 6
+1:3 0.0103777 "45" 600 45 6
+1:4 0.00927889 "58" 526 58 6
+```
+This output is parsed by `run_infomap_multilayer` to obtain a table in which each state node (combination of a physical node in a layer) is assigned to a module. This can be obtained by (after running the code above):
+```{r multilayer_emln_4}
+#relaxrate_modules$modules
+relaxrate_modules %>% select(node_id, layer_id, node_name, type, module, relax_rate)
+```

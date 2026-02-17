@@ -1,0 +1,16 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Test deploy.sh",
+			"type": "shell",
+			"command": "sudo ./deploy.sh --shiny-server",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$bash"
+			],
+			"group": "build"
+		}
+	]
+}

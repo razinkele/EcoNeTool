@@ -81,8 +81,8 @@ echo.
 echo Creating deployment archive...
 set TEMP_TAR=%TEMP%\econetool_deploy.tar.gz
 
-REM Use Git Bash to create tar
-"%GIT_BASH%" -c "cd '%~dp0' && tar --exclude='*.Rproj' --exclude='.Rproj.user' --exclude='.git' --exclude='.claude' --exclude='deployment' --exclude='tests' --exclude='docs' --exclude='cache' --exclude='output' --exclude='*.ewemdb' --exclude='*.eweaccdb' --exclude='archive' --exclude='*.md' --exclude='deploy*.ps1' --exclude='deploy*.bat' --exclude='deploy*.sh' --exclude='EUSeaMap*.zip' -czf '%TEMP_TAR%' app.R run_app.R R www examples/BalticFW.Rdata examples/LTCoast.Rdata metawebs data 2>/dev/null"
+REM Use Git Bash to create tar (excludes large/unnecessary files)
+"%GIT_BASH%" -c "cd '%~dp0' && tar --exclude='*.Rproj' --exclude='.Rproj.user' --exclude='.git' --exclude='.gitignore' --exclude='.gitattributes' --exclude='.DS_Store' --exclude='.claude' --exclude='deployment' --exclude='tests' --exclude='docs' --exclude='cache' --exclude='output' --exclude='archive' --exclude='*.ewemdb' --exclude='*.eweaccdb' --exclude='*.accdb' --exclude='*.xml' --exclude='*.doc' --exclude='*.zip' --exclude='*.md' --exclude='*.log' --exclude='deploy*.ps1' --exclude='deploy*.bat' --exclude='deploy*.sh' --exclude='data_conversion' -czf '%TEMP_TAR%' app.R run_app.R VERSION R www examples metawebs data config 2>/dev/null"
 
 if not exist "%TEMP_TAR%" (
     echo %RED%ERROR: Failed to create archive%NC%
@@ -123,7 +123,7 @@ echo Deploying with SCP (this may take a while)...
 
 REM Create remote directory
 if %DRY_RUN%==0 (
-    ssh %SERVER_USER%@%SERVER_HOST% "sudo mkdir -p %DEPLOY_PATH%/R %DEPLOY_PATH%/www %DEPLOY_PATH%/examples %DEPLOY_PATH%/metawebs %DEPLOY_PATH%/data"
+    ssh %SERVER_USER%@%SERVER_HOST% "sudo mkdir -p %DEPLOY_PATH%/R %DEPLOY_PATH%/www %DEPLOY_PATH%/examples %DEPLOY_PATH%/metawebs %DEPLOY_PATH%/data %DEPLOY_PATH%/config"
 )
 
 REM Copy main files
@@ -133,21 +133,27 @@ if %DRY_RUN%==0 scp "%~dp0app.R" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/
 echo Copying run_app.R...
 if %DRY_RUN%==0 scp "%~dp0run_app.R" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/
 
+echo Copying VERSION...
+if %DRY_RUN%==0 scp "%~dp0VERSION" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/
+
 echo Copying R directory...
 if %DRY_RUN%==0 scp -r "%~dp0R" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/
 
 echo Copying www directory...
 if %DRY_RUN%==0 scp -r "%~dp0www" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/
 
-echo Copying example data...
-if %DRY_RUN%==0 scp "%~dp0examples\BalticFW.Rdata" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/examples/
-if %DRY_RUN%==0 scp "%~dp0examples\LTCoast.Rdata" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/examples/
+echo Copying example data (Rdata files only)...
+if %DRY_RUN%==0 scp "%~dp0examples\*.Rdata" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/examples/
+if %DRY_RUN%==0 scp "%~dp0examples\*.csv" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/examples/
 
 echo Copying metawebs...
 if %DRY_RUN%==0 scp -r "%~dp0metawebs" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/
 
 echo Copying data directory...
 if %DRY_RUN%==0 scp -r "%~dp0data" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/
+
+echo Copying config directory...
+if %DRY_RUN%==0 scp -r "%~dp0config" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/
 
 REM Set permissions
 echo Setting permissions...

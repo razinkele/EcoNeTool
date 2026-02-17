@@ -1,0 +1,71 @@
+species,functional_group,common_name,notes
+Nodularia spumigena,Phytoplankton,Nodularia,Cyanobacteria - toxic blooms
+Aphanizomenon flos-aquae,Phytoplankton,Aphanizomenon,Cyanobacteria - nitrogen fixer
+Skeletonema marinoi,Phytoplankton,Skeletonema,Diatom - spring bloom
+Chaetoceros wighamii,Phytoplankton,Chaetoceros,Diatom - chain forming
+Thalassiosira baltica,Phytoplankton,Thalassiosira,Diatom - centric
+Diatoma tenuis,Phytoplankton,Diatoma,Diatom - pennate
+Dinophysis acuminata,Phytoplankton,Dinophysis,Dinoflagellate - DSP toxin
+Prorocentrum minimum,Phytoplankton,Prorocentrum,Dinoflagellate
+Acartia bifilosa,Zooplankton,Acartia copepod,Calanoid copepod - dominant
+Eurytemora affinis,Zooplankton,Eurytemora copepod,Calanoid copepod - estuarine
+Temora longicornis,Zooplankton,Temora copepod,Calanoid copepod
+Pseudocalanus acuspes,Zooplankton,Pseudocalanus copepod,Calanoid copepod - cold water
+Limnocalanus macrurus,Zooplankton,Limnocalanus copepod,Calanoid copepod - glacial relict
+Bosmina coregoni maritima,Zooplankton,Bosmina,Cladoceran
+Evadne nordmanni,Zooplankton,Evadne,Cladoceran - marine
+Synchaeta baltica,Zooplankton,Synchaeta rotifer,Rotifer
+Aurelia aurita,Zooplankton,Moon jellyfish,Scyphozoan jellyfish
+Macoma balthica,Benthos,Baltic tellin,Bivalve - deposit feeder
+Mytilus trossulus,Benthos,Baltic mussel,Bivalve - filter feeder
+Cerastoderma glaucum,Benthos,Lagoon cockle,Bivalve - filter feeder
+Mya arenaria,Benthos,Soft-shell clam,Bivalve - filter feeder
+Saduria entomon,Benthos,Baltic isopod,Isopod - predator/scavenger
+Monoporeia affinis,Benthos,Monoporeia amphipod,Amphipod - glacial relict
+Pontoporeia femorata,Benthos,Pontoporeia amphipod,Amphipod - deep water
+Gammarus salinus,Benthos,Baltic gammarid,Amphipod - littoral
+Bathyporeia pilosa,Benthos,Bathyporeia amphipod,Amphipod - sand dwelling
+Corophium volutator,Benthos,Corophium amphipod,Amphipod - tube builder
+Hediste diversicolor,Benthos,Ragworm,Polychaete - omnivore
+Marenzelleria viridis,Benthos,Red-gilled mudworm,Polychaete - invasive
+Pygospio elegans,Benthos,Pygospio polychaete,Polychaete - spionid
+Bylgides sarsi,Benthos,Bylgides polychaete,Polychaete
+Hydrobia ulvae,Benthos,Laver spire shell,Gastropod - grazer
+Theodoxus fluviatilis,Benthos,River nerite,Gastropod - grazer
+Amphibalanus improvisus,Benthos,Bay barnacle,Cirripede - filter feeder
+Idotea balthica,Benthos,Baltic isopod,Isopod - herbivore
+Clupea harengus,Fish,Atlantic herring,Pelagic planktivore
+Sprattus sprattus,Fish,European sprat,Pelagic planktivore
+Gadus morhua,Fish,Atlantic cod,Demersal predator
+Platichthys flesus,Fish,European flounder,Demersal - benthivore
+Perca fluviatilis,Fish,European perch,Coastal predator
+Sander lucioperca,Fish,Pikeperch,Predator - piscivore
+Esox lucius,Fish,Northern pike,Top predator
+Gasterosteus aculeatus,Fish,Three-spined stickleback,Coastal omnivore
+Pungitius pungitius,Fish,Nine-spined stickleback,Coastal omnivore
+Neogobius melanostomus,Fish,Round goby,Invasive - benthivore
+Osmerus eperlanus,Fish,European smelt,Anadromous planktivore
+Coregonus lavaretus,Fish,European whitefish,Pelagic planktivore
+Salmo salar,Fish,Atlantic salmon,Anadromous predator
+Salmo trutta,Fish,Sea trout,Anadromous predator
+Anguilla anguilla,Fish,European eel,Catadromous predator
+Rutilus rutilus,Fish,Common roach,Omnivore
+Abramis brama,Fish,Common bream,Benthivore
+Gymnocephalus cernua,Fish,Ruffe,Benthivore
+Myoxocephalus scorpius,Fish,Shorthorn sculpin,Demersal predator
+Zoarces viviparus,Fish,Eelpout,Demersal predator
+Somateria mollissima,Bird,Common eider,Sea duck - molluscivore
+Clangula hyemalis,Bird,Long-tailed duck,Sea duck - benthivore
+Melanitta fusca,Bird,Velvet scoter,Sea duck - molluscivore
+Mergus serrator,Bird,Red-breasted merganser,Piscivore
+Mergus merganser,Bird,Common merganser,Piscivore
+Phalacrocorax carbo,Bird,Great cormorant,Piscivore
+Larus argentatus,Bird,Herring gull,Generalist
+Larus ridibundus,Bird,Black-headed gull,Generalist
+Sterna hirundo,Bird,Common tern,Piscivore
+Haematopus ostralegus,Bird,Eurasian oystercatcher,Molluscivore
+Arenaria interpres,Bird,Ruddy turnstone,Invertebrate feeder
+Cygnus olor,Bird,Mute swan,Herbivore
+Phocoena phocoena,Mammal,Harbour porpoise,Piscivore
+Phoca vitulina,Mammal,Harbour seal,Piscivore
+Halichoerus grypus,Mammal,Grey seal,Piscivore

@@ -1,0 +1,11 @@
+taxon_name,aphia_id,trait_category,trait_name,trait_modality,trait_score,ontology,ontology_id,source,notes
+Mytilus edulis,140480,morphology,body_protection,shell,3,PATO,PATO:0002258,Literature,Thick calcareous shell
+Macoma balthica,141579,morphology,body_protection,shell,2,PATO,PATO:0002258,Literature,Thin shell + burrowing
+Mya arenaria,140430,morphology,body_protection,shell,3,PATO,PATO:0002258,Literature,Thick shell + deep burrowing
+Crangon crangon,107381,morphology,body_protection,exoskeleton,2,UBERON,UBERON:0006612,Literature,Light chitinous exoskeleton
+Asterias rubens,123776,morphology,body_protection,ossicles_spines,2,PATO,PATO:0002266,Literature,Calcareous ossicles and spines
+Carcinus maenas,107381,morphology,body_protection,exoskeleton,3,UBERON,UBERON:0006612,Literature,Heavy carapace
+Arenicola marina,129868,morphology,body_protection,soft_bodied,0,PATO,PATO:0001416,Literature,Soft-bodied + burrowing behavior
+Hediste diversicolor,130443,morphology,body_protection,soft_bodied,0,PATO,PATO:0001416,Literature,Soft-bodied polychaete
+Gadus morhua,126436,morphology,body_protection,soft_bodied,0,PATO,PATO:0001416,Literature,Soft-bodied fish
+Gasterosteus aculeatus,126141,morphology,body_protection,spines,2,PATO,PATO:0002266,Literature,Dorsal spines + lateral plates
