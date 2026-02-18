@@ -570,13 +570,13 @@ server <- function(input, output, session) {
   trophic_levels_cached <- reactive({
     req(net_reactive())
     calculate_trophic_levels(net_reactive())
-  }) %>% bindCache(net_reactive())
+  })
 
   # Cached topological metrics calculation
   topological_metrics_cached <- reactive({
     req(net_reactive())
     get_topological_indicators(net_reactive())
-  }) %>% bindCache(net_reactive())
+  })
 
   # Metaweb Manager (Phase 2) - used by Spatial Analysis (Phase 1)
   # Note: METAWEB_PATHS is now defined in R/config.R and validated at startup

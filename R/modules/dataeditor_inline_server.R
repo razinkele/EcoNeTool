@@ -14,15 +14,15 @@ dataeditor_inline_server <- function(input, output, session, net_reactive, info_
                                       dashboard_trigger) {
 
   # Reactive values to store editable data
-  # Initialize directly with data
+  # Initialize with current data using isolate() to read reactives outside reactive context
   species_data <- reactiveVal({
-    info <- info_reactive()
+    info <- isolate(info_reactive())
     info_copy <- info[, !names(info) %in% c("colfg"), drop = FALSE]
     info_copy
   })
 
   network_matrix_data <- reactiveVal({
-    net <- net_reactive()
+    net <- isolate(net_reactive())
     adj_matrix <- as.matrix(as_adjacency_matrix(net, sparse = FALSE))
     adj_matrix
   })
