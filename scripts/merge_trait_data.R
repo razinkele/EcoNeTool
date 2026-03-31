@@ -6,7 +6,7 @@
 #
 # Usage:
 #   1. Fill in data/size_traits_template.csv
-#   2. Fill in data/protection_traits_template.csv
+#   2. Fill in data/protection_traits.csv (or add protection records directly to ontology_traits.csv)
 #   3. Run this script
 #
 # =============================================================================
@@ -36,7 +36,7 @@ if (file.exists(size_file)) {
 }
 
 # Read protection traits
-protection_file <- "data/protection_traits_template.csv"
+protection_file <- "data/protection_traits.csv"
 if (file.exists(protection_file)) {
   protection_traits <- read.csv(protection_file, stringsAsFactors = FALSE)
   cat("Protection traits to add:\n")

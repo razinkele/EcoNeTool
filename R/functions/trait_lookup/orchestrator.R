@@ -807,7 +807,9 @@ lookup_species_traits <- function(species_name,
     message("  \U0001f6e1\ufe0f  Protection Info: ", paste(protection_info, collapse = ", "))
     result$PR <- harmonize_protection(protection_info, raw_traits$worms)
     message("  \u2713 Output: ", result$PR)
-    pr_labels <- c("PR1"="Soft-bodied", "PR2"="Moderately Protected", "PR3"="Well Protected")
+    pr_labels <- c("PR0"="Unprotected", "PR2"="Tube", "PR3"="Burrow",
+                   "PR4"="Exoskeleton", "PR5"="Soft Shell", "PR6"="Hard Shell",
+                   "PR7"="Spines", "PR8"="Armoured")
     if (!is.na(result$PR) && result$PR %in% names(pr_labels)) {
       message("     (", pr_labels[result$PR], ")")
     }
