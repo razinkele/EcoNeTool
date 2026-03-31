@@ -45,11 +45,16 @@ HARMONIZATION_CONFIG <- list(
   ),
 
   # PROTECTION MECHANISM PATTERNS
+  # PROTECTION MECHANISM PATTERNS (8-level, matching harmonize_protection())
   protection_patterns = list(
-    PR1_none = "soft.?body|naked|unprotected|no shell|no armor",
-    PR2_partial = "partial|thin shell|soft shell|flexible|cartilage",
-    PR3_shell = "shell|mollusc|bivalve|gastropod|calcified|armored|exoskeleton|carapace|test",
-    PR4_spines = "spine|spiny|prickle|thorn|ray|venomous"
+    PR0_none = "soft.?body|naked|unprotected|no shell|no armor|jellyfish|cephalopod",
+    PR2_tube = "tube|tube.?dwell|calcareous tube|parchment tube",
+    PR3_burrow = "deep burrow|permanent burrow|burrow refuge",
+    PR4_exoskeleton = "exoskeleton|chitinous|thin carapace|small arthropod",
+    PR5_soft_shell = "soft shell|partial shell|flexible shell|cartilage|thin shell",
+    PR6_hard_shell = "shell|calcified|calcareous|bivalve shell|gastropod shell|hard carapace|test|barnacle",
+    PR7_spines = "spine|spiny|spicule|prickle|thorn|ossicle|urchin",
+    PR8_armoured = "armoured|armored|heavy carapace|thick carapace|lobster|crab carapace"
   ),
 
   # TAXONOMIC INFERENCE RULES
