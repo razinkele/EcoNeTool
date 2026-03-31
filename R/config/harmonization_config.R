@@ -46,14 +46,10 @@ HARMONIZATION_CONFIG <- list(
 
   # PROTECTION MECHANISM PATTERNS
   protection_patterns = list(
-    PR0_none = "soft.?body|naked|unprotected|no shell|no armor|jellyfish|cephalopod",
-    PR2_tube = "tube|tube.?dwell|calcareous tube|parchment tube",
-    PR3_burrow = "deep burrow|permanent burrow|burrow refuge",
-    PR4_exoskeleton = "exoskeleton|chitinous|thin carapace|small arthropod",
-    PR5_soft_shell = "soft shell|partial shell|flexible shell|cartilage|thin shell",
-    PR6_hard_shell = "shell|calcified|calcareous|bivalve shell|gastropod shell|hard carapace|test|barnacle",
-    PR7_spines = "spine|spiny|spicule|prickle|thorn|ossicle|urchin",
-    PR8_armoured = "armoured|armored|heavy carapace|thick carapace|lobster|crab carapace"
+    PR1_none = "soft.?body|naked|unprotected|no shell|no armor",
+    PR2_partial = "partial|thin shell|soft shell|flexible|cartilage",
+    PR3_shell = "shell|mollusc|bivalve|gastropod|calcified|armored|exoskeleton|carapace|test",
+    PR4_spines = "spine|spiny|prickle|thorn|ray|venomous"
   ),
 
   # TAXONOMIC INFERENCE RULES
@@ -95,10 +91,25 @@ HARMONIZATION_CONFIG <- list(
       description = "Tropical and subtropical ecosystems",
       size_multiplier = 0.9,
       size_thresholds_adjust = list(MS3_MS4 = 4.5, MS4_MS5 = 18.0)
+    ),
+    mediterranean = list(
+      description = "Mediterranean marine ecosystems",
+      size_multiplier = 0.95,
+      size_thresholds_adjust = list(MS3_MS4 = 4.5, MS4_MS5 = 18.0)
+    ),
+    atlantic_ne = list(
+      description = "NE Atlantic / Celtic Sea / Bay of Biscay",
+      size_multiplier = 1.05,
+      size_thresholds_adjust = list()
+    ),
+    deep_sea = list(
+      description = "Deep-sea and bathyal ecosystems (>200m)",
+      size_multiplier = 1.3,
+      size_thresholds_adjust = list(MS4_MS5 = 25.0, MS5_MS6 = 60.0)
     )
   ),
 
-  version = "1.2.0",
+  version = "1.3.0",
   last_modified = Sys.Date()
 )
 
