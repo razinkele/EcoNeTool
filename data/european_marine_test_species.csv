@@ -1,0 +1,193 @@
+species,functional_group,common_name,region,notes
+Skeletonema marinoi,Phytoplankton,Chain-forming diatom,Baltic,Dominant spring bloom diatom
+Nodularia spumigena,Phytoplankton,Baltic cyanobacterium,Baltic,Nitrogen-fixing summer bloom species
+Aphanizomenon flosaquae,Phytoplankton,Blue-green alga,Baltic,Common cyanobacterium in Baltic
+Diatoma tenuis,Phytoplankton,Freshwater-brackish diatom,Baltic,Brackish water indicator
+Chaetoceros wighamii,Phytoplankton,Bristle diatom,Baltic,Spring bloom species
+Thalassiosira baltica,Phytoplankton,Centric diatom,Baltic,Cold-water bloom diatom
+Acartia tonsa,Zooplankton,Calanoid copepod,Baltic,Dominant Baltic copepod
+Eurytemora affinis,Zooplankton,Estuarine copepod,Baltic,Brackish water specialist
+Bosmina coregoni,Zooplankton,Water flea,Baltic,Freshwater-brackish cladoceran
+Synchaeta baltica,Zooplankton,Baltic rotifer,Baltic,Common rotifer in low salinity
+Evadne nordmanni,Zooplankton,Marine cladoceran,Baltic,Seasonal zooplankton
+Acartia bifilosa,Zooplankton,Baltic copepod,Baltic,Dominant mesozooplankton
+Temora longicornis,Zooplankton,Calanoid copepod,Baltic,Common copepod
+Macoma balthica,Benthos,Baltic tellin,Baltic,Key deposit-feeding bivalve
+Marenzelleria viridis,Benthos,Red-gilled mudworm,Baltic,Invasive polychaete
+Hediste diversicolor,Benthos,Ragworm,Baltic,Common estuarine polychaete
+Saduria entomon,Benthos,Baltic isopod,Baltic,Glacial relict crustacean
+Mytilus trossulus,Benthos,Baltic mussel,Baltic,Foundation species in Baltic
+Monoporeia affinis,Benthos,Baltic amphipod,Baltic,Glacial relict amphipod
+Bathyporeia pilosa,Benthos,Sand amphipod,Baltic,Sandy sediment specialist
+Cerastoderma glaucum,Benthos,Lagoon cockle,Baltic,Brackish bivalve
+Corophium volutator,Benthos,Mud shrimp,Baltic,Tube-building amphipod
+Amphibalanus improvisus,Benthos,Bay barnacle,Baltic,Brackish barnacle
+Clupea harengus membras,Fish,Baltic herring,Baltic,Subspecies of Atlantic herring
+Gadus morhua callarias,Fish,Baltic cod,Baltic,Eastern Baltic stock
+Platichthys flesus,Fish,European flounder,Baltic,Common Baltic flatfish
+Perca fluviatilis,Fish,European perch,Baltic,Freshwater-brackish fish
+Sprattus sprattus balticus,Fish,Baltic sprat,Baltic,Small pelagic in Baltic
+Sander lucioperca,Fish,Zander,Baltic,Brackish predatory fish
+Limanda limanda,Fish,Common dab,Baltic,Demersal flatfish
+Abramis brama,Fish,Common bream,Baltic,Brackish water fish
+Gymnocephalus cernua,Fish,Ruffe,Baltic,Freshwater-brackish percid
+Sterna paradisaea,Bird,Arctic tern,Baltic,Long-distance migrant seabird
+Somateria mollissima,Bird,Common eider,Baltic,Large sea duck
+Melanitta fusca,Bird,Velvet scoter,Baltic,Wintering sea duck
+Cepphus grylle,Bird,Black guillemot,Baltic,Resident Baltic seabird
+Mergus serrator,Bird,Red-breasted merganser,Baltic,Fish-eating duck
+Halichoerus grypus,Mammal,Grey seal,Baltic,Baltic subpopulation
+Phocoena phocoena,Mammal,Harbour porpoise,Baltic,Critically endangered in Baltic
+Phoca vitulina,Mammal,Harbour seal,Baltic,Recovering Baltic population
+Phaeocystis globosa,Phytoplankton,Colony-forming haptophyte,North_Sea,Foam-producing blooms
+Emiliania huxleyi,Phytoplankton,Coccolithophore,North_Sea,Calcifying phytoplankton
+Noctiluca scintillans,Phytoplankton,Sea sparkle,North_Sea,Bioluminescent dinoflagellate
+Guinardia delicatula,Phytoplankton,Chain diatom,North_Sea,Common North Sea diatom
+Pseudo-nitzschia pungens,Phytoplankton,Toxic diatom,North_Sea,Domoic acid producer
+Calanus finmarchicus,Zooplankton,Calanoid copepod,North_Sea,Key zooplankton species
+Oithona similis,Zooplankton,Cyclopoid copepod,North_Sea,Abundant small copepod
+Sagitta elegans,Zooplankton,Arrow worm,North_Sea,Indicator of Atlantic water
+Meganyctiphanes norvegica,Zooplankton,Northern krill,North_Sea,Important euphausiid
+Mnemiopsis leidyi,Zooplankton,Sea walnut,North_Sea,Invasive ctenophore
+Arenicola marina,Benthos,Lugworm,North_Sea,Ecosystem engineer
+Crangon crangon,Benthos,Brown shrimp,North_Sea,Commercial decapod
+Mytilus edulis,Benthos,Blue mussel,North_Sea,Foundation bivalve species
+Carcinus maenas,Benthos,Shore crab,North_Sea,Common predatory crab
+Lanice conchilega,Benthos,Sand mason worm,North_Sea,Reef-building polychaete
+Asterias rubens,Benthos,Common starfish,North_Sea,Keystone predator
+Ophiura ophiura,Benthos,Serpent star,North_Sea,Common brittle star
+Buccinum undatum,Benthos,Common whelk,North_Sea,Predatory gastropod
+Cancer pagurus,Benthos,Edible crab,North_Sea,Commercial crustacean
+Ensis leei,Benthos,American razor clam,North_Sea,Invasive bivalve
+Nephrops norvegicus,Benthos,Norway lobster,North_Sea,Burrowing decapod
+Gadus morhua,Fish,Atlantic cod,North_Sea,Commercially important demersal fish
+Pleuronectes platessa,Fish,European plaice,North_Sea,Commercial flatfish
+Melanogrammus aeglefinus,Fish,Haddock,North_Sea,Demersal gadoid
+Solea solea,Fish,Common sole,North_Sea,High-value flatfish
+Merlangius merlangus,Fish,Whiting,North_Sea,Abundant gadoid
+Trachurus trachurus,Fish,Horse mackerel,North_Sea,Pelagic schooling fish
+Ammodytes marinus,Fish,Lesser sandeel,North_Sea,Forage fish species
+Scomber scombrus,Fish,Atlantic mackerel,North_Sea,Migratory pelagic fish
+Clupea harengus,Fish,Atlantic herring,North_Sea,Key pelagic species
+Rissa tridactyla,Bird,Black-legged kittiwake,North_Sea,Declining cliff-nesting gull
+Morus bassanus,Bird,Northern gannet,North_Sea,Large plunge-diving seabird
+Fratercula arctica,Bird,Atlantic puffin,North_Sea,Iconic alcid
+Uria aalge,Bird,Common guillemot,North_Sea,Abundant auk
+Larus argentatus,Bird,Herring gull,North_Sea,Common coastal gull
+Phocoena phocoena relicta,Mammal,North Sea porpoise,North_Sea,Most common cetacean
+Halichoerus grypus atlantica,Mammal,Atlantic grey seal,North_Sea,Large breeding colonies
+Tursiops truncatus,Mammal,Bottlenose dolphin,North_Sea,Coastal cetacean
+Cetorhinus maximus,Fish,Basking shark,Atlantic,Second largest fish
+Sardina pilchardus,Fish,European pilchard,Atlantic,Epipelagic shoaling fish
+Merluccius merluccius,Fish,European hake,Atlantic,Demersal predator
+Lophius piscatorius,Fish,Monkfish,Atlantic,Benthic ambush predator
+Micromesistius poutassou,Fish,Blue whiting,Atlantic,Mesopelagic gadoid
+Molva molva,Fish,Common ling,Atlantic,Deep demersal fish
+Pollachius virens,Fish,Saithe,Atlantic,Pelagic gadoid
+Dicentrarchus labrax,Fish,European sea bass,Atlantic,Coastal predator
+Conger conger,Fish,European conger eel,Atlantic,Large benthic predator
+Trisopterus luscus,Fish,Pouting,Atlantic,Small coastal gadoid
+Calanus helgolandicus,Zooplankton,Southern calanoid copepod,Atlantic,Warm-water indicator
+Centropages typicus,Zooplankton,Calanoid copepod,Atlantic,Common Atlantic copepod
+Nyctiphanes couchii,Zooplankton,Atlantic krill,Atlantic,NE Atlantic euphausiid
+Aurelia aurita,Zooplankton,Moon jellyfish,Atlantic,Common scyphozoan
+Coscinodiscus wailesii,Phytoplankton,Giant diatom,Atlantic,Large centric diatom
+Karenia mikimotoi,Phytoplankton,Harmful dinoflagellate,Atlantic,Fish-killing blooms
+Dinophysis acuminata,Phytoplankton,DSP dinoflagellate,Atlantic,Diarrhetic shellfish poisoning
+Chaetoceros socialis,Phytoplankton,Colonial diatom,Atlantic,Spring bloom former
+Echinus esculentus,Benthos,Edible sea urchin,Atlantic,Large regular echinoid
+Pecten maximus,Benthos,Great scallop,Atlantic,Commercial bivalve
+Homarus gammarus,Benthos,European lobster,Atlantic,High-value crustacean
+Ostrea edulis,Benthos,European flat oyster,Atlantic,Native oyster species
+Maja brachydactyla,Benthos,Spider crab,Atlantic,Large migratory crab
+Laminaria hyperborea,Benthos,Tangle kelp,Atlantic,Kelp forest foundation
+Modiolus modiolus,Benthos,Horse mussel,Atlantic,Biogenic reef builder
+Fulmarus glacialis,Bird,Northern fulmar,Atlantic,Pelagic procellarid
+Hydrobates pelagicus,Bird,European storm petrel,Atlantic,Smallest European seabird
+Puffinus puffinus,Bird,Manx shearwater,Atlantic,Long-distance oceanic migrant
+Balaenoptera acutorostrata,Mammal,Minke whale,Atlantic,Common baleen whale
+Delphinus delphis,Mammal,Common dolphin,Atlantic,Abundant oceanic cetacean
+Posidonia oceanica,Benthos,Neptune grass,Mediterranean,Endemic seagrass meadows
+Paracentrotus lividus,Benthos,Purple sea urchin,Mediterranean,Key grazer in Mediterranean
+Corallium rubrum,Benthos,Red coral,Mediterranean,Precious octocoral
+Cladocora caespitosa,Benthos,Cushion coral,Mediterranean,Endemic Mediterranean coral
+Lithophaga lithophaga,Benthos,Date mussel,Mediterranean,Rock-boring bivalve
+Aplysina aerophoba,Benthos,Yellow tube sponge,Mediterranean,Common Mediterranean sponge
+Arbacia lixula,Benthos,Black sea urchin,Mediterranean,Barren-forming echinoid
+Pinna nobilis,Benthos,Noble pen shell,Mediterranean,Critically endangered bivalve
+Cymodocea nodosa,Benthos,Little Neptune grass,Mediterranean,Seagrass species
+Cystoseira compressa,Benthos,Brown macroalga,Mediterranean,Canopy-forming alga
+Engraulis encrasicolus,Fish,European anchovy,Mediterranean,Key small pelagic
+Sparus aurata,Fish,Gilthead sea bream,Mediterranean,Commercial sparid
+Mullus barbatus,Fish,Red mullet,Mediterranean,Demersal sparid
+Diplodus sargus,Fish,White sea bream,Mediterranean,Coastal reef fish
+Epinephelus marginatus,Fish,Dusky grouper,Mediterranean,Large predatory serranid
+Boops boops,Fish,Bogue,Mediterranean,Abundant planktivore
+Coris julis,Fish,Mediterranean rainbow wrasse,Mediterranean,Common labrid
+Scorpaena porcus,Fish,Black scorpionfish,Mediterranean,Cryptic benthic predator
+Mugil cephalus,Fish,Flathead grey mullet,Mediterranean,Coastal detritivore
+Thunnus thynnus,Fish,Atlantic bluefin tuna,Mediterranean,Top pelagic predator
+Xiphias gladius,Fish,Swordfish,Mediterranean,Large billfish
+Alexandrium minutum,Phytoplankton,Toxic dinoflagellate,Mediterranean,PSP toxin producer
+Ostreopsis ovata,Phytoplankton,Benthic dinoflagellate,Mediterranean,Palytoxin producer
+Trichodesmium erythraeum,Phytoplankton,Sea sawdust,Mediterranean,Tropical cyanobacterium
+Gonyaulax polygramma,Phytoplankton,Chain dinoflagellate,Mediterranean,Red tide former
+Penilia avirostris,Zooplankton,Marine cladoceran,Mediterranean,Warm-water zooplankton
+Pelagia noctiluca,Zooplankton,Mauve stinger,Mediterranean,Stinging jellyfish
+Clausocalanus arcuicornis,Zooplankton,Small calanoid copepod,Mediterranean,Dominant Mediterranean copepod
+Acartia clausi,Zooplankton,Calanoid copepod,Mediterranean,Coastal zooplankton
+Calonectris diomedea,Bird,Scopoli shearwater,Mediterranean,Endemic breeding seabird
+Phalacrocorax aristotelis desmarestii,Bird,Mediterranean shag,Mediterranean,Endemic subspecies
+Larus audouinii,Bird,Audouin gull,Mediterranean,Near-endemic Mediterranean gull
+Ichthyaetus melanocephalus,Bird,Mediterranean gull,Mediterranean,Expanding breeding range
+Monachus monachus,Mammal,Mediterranean monk seal,Mediterranean,Critically endangered pinniped
+Stenella coeruleoalba,Mammal,Striped dolphin,Mediterranean,Most common Med cetacean
+Physeter macrocephalus,Mammal,Sperm whale,Mediterranean,Deep-diving cetacean
+Ziphius cavirostris,Mammal,Cuvier beaked whale,Mediterranean,Deep-diving cetacean
+Grampus griseus,Mammal,Risso dolphin,Mediterranean,Pelagic cetacean
+Caretta caretta,Benthos,Loggerhead sea turtle,Mediterranean,Nesting marine reptile
+Calanus glacialis,Zooplankton,Arctic calanoid copepod,Arctic,Key Arctic grazer
+Calanus hyperboreus,Zooplankton,Large Arctic copepod,Arctic,Lipid-rich Arctic copepod
+Themisto libellula,Zooplankton,Arctic hyperiid amphipod,Arctic,Under-ice zooplankton
+Thysanoessa inermis,Zooplankton,Arctic krill,Arctic,Important euphausiid
+Clione limacina,Zooplankton,Sea angel,Arctic,Pelagic pteropod
+Limacina helicina,Zooplankton,Sea butterfly,Arctic,Shelled pteropod
+Thalassiosira nordenskioeldii,Phytoplankton,Arctic diatom,Arctic,Spring bloom diatom
+Melosira arctica,Phytoplankton,Ice diatom,Arctic,Under-ice algae
+Phaeocystis pouchetii,Phytoplankton,Colony-forming prymnesiophyte,Arctic,Arctic bloom species
+Nitzschia frigida,Phytoplankton,Ice-associated diatom,Arctic,Sea-ice specialist
+Strongylocentrotus droebachiensis,Benthos,Green sea urchin,Arctic,Key Arctic grazer
+Chlamys islandica,Benthos,Iceland scallop,Arctic,Arctic-boreal bivalve
+Boreogadus saida,Fish,Polar cod,Arctic,Key Arctic forage fish
+Gadus ogac,Fish,Greenland cod,Arctic,Arctic demersal gadoid
+Reinhardtius hippoglossoides,Fish,Greenland halibut,Arctic,Deep-water flatfish
+Mallotus villosus,Fish,Capelin,Arctic,Arctic forage fish
+Salvelinus alpinus,Fish,Arctic char,Arctic,Anadromous salmonid
+Anarhichas lupus,Fish,Atlantic wolffish,Arctic,Benthic predator
+Hippoglossus hippoglossus,Fish,Atlantic halibut,Arctic,Large demersal flatfish
+Alle alle,Bird,Little auk,Arctic,Abundant Arctic alcid
+Uria lomvia,Bird,Brunnich guillemot,Arctic,Arctic auk
+Pagophila eburnea,Bird,Ivory gull,Arctic,High Arctic specialist
+Odobenus rosmarus,Mammal,Walrus,Arctic,Large Arctic pinniped
+Erignathus barbatus,Mammal,Bearded seal,Arctic,Benthic-feeding seal
+Pagophilus groenlandicus,Mammal,Harp seal,Arctic,Pack-ice breeding seal
+Ceratium furca,Phytoplankton,Horned dinoflagellate,Widespread,Cosmopolitan dinoflagellate
+Prorocentrum micans,Phytoplankton,Common dinoflagellate,Widespread,Widespread coastal species
+Thalassiosira weissflogii,Phytoplankton,Centric diatom,Widespread,Model diatom species
+Littorina littorea,Benthos,Common periwinkle,Widespread,Intertidal gastropod
+Semibalanus balanoides,Benthos,Acorn barnacle,Widespread,Intertidal indicator species
+Nereis pelagica,Benthos,Pelagic ragworm,Widespread,Common errant polychaete
+Abra alba,Benthos,White furrow shell,Widespread,Opportunistic bivalve
+Pagurus bernhardus,Benthos,Common hermit crab,Widespread,Ubiquitous decapod
+Calanus finmarchicus sensu lato,Zooplankton,Widespread calanoid,Widespread,Dominant North Atlantic copepod
+Oithona nana,Zooplankton,Small cyclopoid,Widespread,Ubiquitous copepod
+Creseis acicula,Zooplankton,Straight-needle pteropod,Widespread,Pelagic gastropod
+Galeorhinus galeus,Fish,Tope shark,Widespread,Pelagic coastal shark
+Squalus acanthias,Fish,Spiny dogfish,Widespread,Small demersal shark
+Raja clavata,Fish,Thornback ray,Widespread,Common European skate
+Sprattus sprattus,Fish,European sprat,Widespread,Abundant small pelagic
+Larus marinus,Bird,Great black-backed gull,Widespread,Large predatory gull
+Stercorarius parasiticus,Bird,Arctic skua,Widespread,Kleptoparasitic seabird
+Alca torda,Bird,Razorbill,Widespread,North Atlantic auk
+Balaenoptera physalus,Mammal,Fin whale,Widespread,Large rorqual
+Globicephala melas,Mammal,Long-finned pilot whale,Widespread,Social oceanic cetacean
