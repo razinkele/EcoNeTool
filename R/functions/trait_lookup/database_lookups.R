@@ -691,12 +691,46 @@ lookup_ptdb_traits <- function(species_name, ptdb_file = NULL) {
 
     traits <- list()
 
+    # Trophic strategy -> feeding mode
+    if ("Trophic_strategy" %in% names(species_row) && !is.na(species_row$Trophic_strategy)) {
+      strategy <- trimws(species_row$Trophic_strategy)
+      traits$trophic_strategy <- strategy
+      traits$feeding_mode <- switch(strategy,
+        "autotroph" = "primary_producer",
+        "mixotroph" = "mixotroph",
+        "heterotroph" = "predator",
+        {
+          message("  [PTDB] Unrecognized Trophic_strategy '", strategy, "' for ", species_name)
+          "primary_producer"
+        }
+      )
+      traits$trophic_level <- switch(strategy,
+        "autotroph" = 1.0,
+        "mixotroph" = 1.5,
+        "heterotroph" = 2.0,
+        1.0
+      )
+    } else {
+      traits$feeding_mode <- "primary_producer"
+      traits$trophic_level <- 1.0
+    }
+
     # Cell size
-    if ("Cell_volume_um3" %in% names(species_row) && !is.na(species_row$Cell_volume_um3)) {
+    if ("Cell_volume_um3" %in% names(species_row) &&
+        !is.na(species_row$Cell_volume_um3) &&
+        species_row$Cell_volume_um3 > 0) {
       traits$cell_volume_um3 <- species_row$Cell_volume_um3
-      # Approximate diameter from volume
-      traits$size_um <- (6 * species_row$Cell_volume_um3 / pi)^(1/3)
-      traits$max_length_cm <- traits$size_um / 10000
+      traits$max_length_cm <- (species_row$Cell_volume_um3^(1/3)) / 10000
+    } else if ("Cell_length_um" %in% names(species_row) &&
+               !is.na(species_row$Cell_length_um) &&
+               species_row$Cell_length_um > 0) {
+      traits$cell_length_um <- species_row$Cell_length_um
+      traits$max_length_cm <- species_row$Cell_length_um / 10000
+    }
+
+    # Motility
+    if ("Motility" %in% names(species_row) && !is.na(species_row$Motility)) {
+      traits$motility <- species_row$Motility
     }
 
     # Growth form
@@ -704,14 +738,10 @@ lookup_ptdb_traits <- function(species_name, ptdb_file = NULL) {
       traits$growth_form <- species_row$Growth_form
     }
 
-    # Taxonomic class
-    if ("Class" %in% names(species_row) && !is.na(species_row$Class)) {
-      traits$taxonomic_class <- species_row$Class
+    # Habitat
+    if ("Habitat" %in% names(species_row) && !is.na(species_row$Habitat)) {
+      traits$habitat <- species_row$Habitat
     }
-
-    # All phytoplankton are primary producers
-    traits$trophic_level <- 1.0
-    traits$feeding_mode <- "photosynthesis"
 
     result$traits <- traits
     result$success <- length(traits) > 0
