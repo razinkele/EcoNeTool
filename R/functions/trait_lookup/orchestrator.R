@@ -38,6 +38,47 @@ if (!exists("HARMONIZATION_CONFIG")) {
 # HIERARCHICAL WORKFLOW ORCHESTRATOR
 # ============================================================================
 
+#' Quick lookup from offline pre-computed trait database
+#'
+#' @param species_name Scientific name
+#' @param db_path Path to offline SQLite database
+#' @return Data frame row with trait codes, or NULL if not found
+lookup_offline_traits <- function(species_name, db_path = "cache/offline_traits.db") {
+  if (!file.exists(db_path)) return(NULL)
+
+  if (!requireNamespace("RSQLite", quietly = TRUE)) {
+    message("  [OFFLINE] RSQLite not installed - offline database unavailable. Install: install.packages('RSQLite')")
+    return(NULL)
+  }
+
+  tryCatch({
+    con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+    on.exit(DBI::dbDisconnect(con))
+
+    # Check staleness
+    meta <- DBI::dbGetQuery(con, "SELECT value FROM metadata WHERE key = 'build_timestamp'")
+    if (nrow(meta) > 0) {
+      build_time <- as.POSIXct(meta$value[1])
+      age_days <- as.numeric(difftime(Sys.time(), build_time, units = "days"))
+      if (age_days > 90) {
+        message("  [OFFLINE] Warning: trait database is ", round(age_days),
+                " days old. Re-run build_offline_trait_db.R to update.")
+      }
+    }
+
+    result <- DBI::dbGetQuery(con,
+      "SELECT species, MS, FS, MB, EP, PR, MS_confidence, FS_confidence, MB_confidence, EP_confidence, PR_confidence, primary_source FROM species_traits WHERE species = ?",
+      params = list(species_name))
+
+    if (nrow(result) == 0) return(NULL)
+    return(result[1, ])
+  }, error = function(e) {
+    warning("Offline trait database error: ", e$message,
+            " - falling back to API lookups. Re-run build_offline_trait_db.R to rebuild.")
+    return(NULL)
+  })
+}
+
 #' Automated trait lookup using hierarchical database workflow
 #'
 #' @param species_name Scientific name
@@ -198,6 +239,49 @@ lookup_species_traits <- function(species_name,
   body_shape <- NULL
   depth_min <- NULL
   depth_max <- NULL
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # STEP 0: Offline pre-computed trait database (instant lookup)
+  # ═══════════════════════════════════════════════════════════════════════
+  message("\n[0/12] Offline trait database check...")
+  offline <- lookup_offline_traits(species_name)
+  offline_prefilled <- character()  # Track which traits came from offline
+
+  if (!is.null(offline)) {
+    has_all <- !is.na(offline$MS) && !is.na(offline$FS) && !is.na(offline$MB) && !is.na(offline$EP) && !is.na(offline$PR)
+
+    if (has_all) {
+      message("  Complete traits found offline (source: ", offline$primary_source, ")")
+      result$MS <- offline$MS
+      result$FS <- offline$FS
+      result$MB <- offline$MB
+      result$EP <- offline$EP
+      result$PR <- offline$PR
+      result$source <- paste0("offline:", offline$primary_source)
+      result$confidence <- "high"
+
+      # Cache result
+      if (!is.null(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+        cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species_name), ".rds"))
+        saveRDS(list(traits = result, timestamp = Sys.time()), cache_file)
+      }
+
+      total_time <- round(as.numeric(difftime(Sys.time(), total_start, units = "secs")), 2)
+      message("\nTotal lookup time: ", total_time, " seconds (offline)")
+      return(result)
+    } else {
+      message("  Partial traits found offline - will fill gaps via API lookups")
+      if (!is.na(offline$MS)) { result$MS <- offline$MS; offline_prefilled <- c(offline_prefilled, "MS") }
+      if (!is.na(offline$FS)) { result$FS <- offline$FS; offline_prefilled <- c(offline_prefilled, "FS") }
+      if (!is.na(offline$MB)) { result$MB <- offline$MB; offline_prefilled <- c(offline_prefilled, "MB") }
+      if (!is.na(offline$EP)) { result$EP <- offline$EP; offline_prefilled <- c(offline_prefilled, "EP") }
+      if (!is.na(offline$PR)) { result$PR <- offline$PR; offline_prefilled <- c(offline_prefilled, "PR") }
+      message("  Pre-filled: ", paste(offline_prefilled, collapse = ", "))
+    }
+  } else {
+    message("  No offline data available")
+  }
 
   # ═══════════════════════════════════════════════════════════════════════
   # TAXONOMIC PRE-FILTERING - Smart database routing
@@ -678,7 +762,11 @@ lookup_species_traits <- function(species_name,
   message("\n[MS] Max Size Class:")
   if (!is.null(size_cm)) {
     message("  \U0001f4cf Input: ", size_cm, " cm")
-    result$MS <- harmonize_size_class(size_cm)
+    if (!"MS" %in% offline_prefilled) {
+      result$MS <- harmonize_size_class(size_cm)
+    } else {
+      message("  Kept offline value: ", result$MS)
+    }
     message("  \u2713 Output: ", result$MS)
     if (size_cm < 0.1) message("     (< 0.1 cm = Tiny - MS1)")
     else if (size_cm < 1.0) message("     (0.1-1 cm = Very Small - MS2)")
@@ -697,7 +785,11 @@ lookup_species_traits <- function(species_name,
   if (length(feeding_mode) > 0 || !is.null(trophic_level)) {
     if (!is.null(trophic_level)) message("  \U0001f374 Trophic Level: ", trophic_level)
     if (length(feeding_mode) > 0) message("  \U0001f374 Feeding Modes: ", paste(feeding_mode, collapse = ", "))
-    result$FS <- harmonize_foraging_strategy(feeding_mode, trophic_level)
+    if (!"FS" %in% offline_prefilled) {
+      result$FS <- harmonize_foraging_strategy(feeding_mode, trophic_level)
+    } else {
+      message("  Kept offline value: ", result$FS)
+    }
     message("  \u2713 Output: ", result$FS)
     fs_labels <- c("FS0"="Primary Producer", "FS1"="Predator", "FS2"="Scavenger",
                    "FS3"="Omnivore", "FS4"="Grazer", "FS5"="Deposit Feeder", "FS6"="Filter Feeder")
@@ -719,13 +811,17 @@ lookup_species_traits <- function(species_name,
           message("     (", fs_labels[result$FS], ")")
         }
         message("     Modalities: ", paste(fuzzy_fs$modalities, collapse = ", "))
-      } else {
+      } else if (!"FS" %in% offline_prefilled) {
         message("  \u274c No feeding/trophic data available (including ontology)")
         result$FS <- NA_character_
+      } else {
+        message("  Kept offline value: ", result$FS)
       }
-    } else {
+    } else if (!"FS" %in% offline_prefilled) {
       message("  \u274c No feeding/trophic data available")
       result$FS <- NA_character_
+    } else {
+      message("  Kept offline value: ", result$FS)
     }
   }
 
@@ -734,7 +830,11 @@ lookup_species_traits <- function(species_name,
   if (length(mobility_info) > 0 || !is.null(body_shape)) {
     if (!is.null(body_shape)) message("  \U0001f3ca Body Shape: ", body_shape)
     if (length(mobility_info) > 0) message("  \U0001f3ca Mobility Info: ", paste(mobility_info, collapse = ", "))
-    result$MB <- harmonize_mobility(mobility_info, body_shape, raw_traits$worms)
+    if (!"MB" %in% offline_prefilled) {
+      result$MB <- harmonize_mobility(mobility_info, body_shape, raw_traits$worms)
+    } else {
+      message("  Kept offline value: ", result$MB)
+    }
     message("  \u2713 Output: ", result$MB)
     mb_labels <- c("MB1"="Sessile", "MB2"="Limited Movement", "MB3"="Floater/Drifter",
                    "MB4"="Crawler/Walker", "MB5"="Swimmer")
@@ -756,13 +856,17 @@ lookup_species_traits <- function(species_name,
           message("     (", mb_labels[result$MB], ")")
         }
         message("     Modalities: ", paste(fuzzy_mb$modalities, collapse = ", "))
-      } else {
+      } else if (!"MB" %in% offline_prefilled) {
         message("  \u274c No mobility data available (including ontology)")
         result$MB <- NA_character_
+      } else {
+        message("  Kept offline value: ", result$MB)
       }
-    } else {
+    } else if (!"MB" %in% offline_prefilled) {
       message("  \u274c No mobility data available")
       result$MB <- NA_character_
+    } else {
+      message("  Kept offline value: ", result$MB)
     }
   }
 
@@ -771,7 +875,11 @@ lookup_species_traits <- function(species_name,
   if (!is.null(depth_min) || length(habitat_info) > 0) {
     if (!is.null(depth_min)) message("  \U0001f30a Depth Range: ", depth_min, "-", depth_max, " m")
     if (length(habitat_info) > 0) message("  \U0001f30a Habitat Info: ", paste(habitat_info, collapse = ", "))
-    result$EP <- harmonize_environmental_position(depth_min, depth_max, habitat_info, raw_traits$worms)
+    if (!"EP" %in% offline_prefilled) {
+      result$EP <- harmonize_environmental_position(depth_min, depth_max, habitat_info, raw_traits$worms)
+    } else {
+      message("  Kept offline value: ", result$EP)
+    }
     message("  \u2713 Output: ", result$EP)
     ep_labels <- c("EP1"="Pelagic", "EP2"="Epibenthic", "EP3"="Endobenthic", "EP4"="Interstitial")
     if (!is.na(result$EP) && result$EP %in% names(ep_labels)) {
@@ -791,13 +899,17 @@ lookup_species_traits <- function(species_name,
           message("     (", ep_labels[result$EP], ")")
         }
         message("     Modalities: ", paste(fuzzy_ep$modalities, collapse = ", "))
-      } else {
+      } else if (!"EP" %in% offline_prefilled) {
         message("  \u274c No depth/habitat data available (including ontology)")
         result$EP <- NA_character_
+      } else {
+        message("  Kept offline value: ", result$EP)
       }
-    } else {
+    } else if (!"EP" %in% offline_prefilled) {
       message("  \u274c No depth/habitat data available")
       result$EP <- NA_character_
+    } else {
+      message("  Kept offline value: ", result$EP)
     }
   }
 
@@ -805,7 +917,11 @@ lookup_species_traits <- function(species_name,
   message("\n[PR] Predator Resistance:")
   if (length(protection_info) > 0) {
     message("  \U0001f6e1\ufe0f  Protection Info: ", paste(protection_info, collapse = ", "))
-    result$PR <- harmonize_protection(protection_info, raw_traits$worms)
+    if (!"PR" %in% offline_prefilled) {
+      result$PR <- harmonize_protection(protection_info, raw_traits$worms)
+    } else {
+      message("  Kept offline value: ", result$PR)
+    }
     message("  \u2713 Output: ", result$PR)
     pr_labels <- c("PR0"="Unprotected", "PR2"="Tube", "PR3"="Burrow",
                    "PR4"="Exoskeleton", "PR5"="Soft Shell", "PR6"="Hard Shell",
@@ -815,7 +931,11 @@ lookup_species_traits <- function(species_name,
     }
   } else {
     message("  \U0001f6e1\ufe0f  Using taxonomic inference from WoRMS")
-    result$PR <- harmonize_protection(protection_info, raw_traits$worms)
+    if (!"PR" %in% offline_prefilled) {
+      result$PR <- harmonize_protection(protection_info, raw_traits$worms)
+    } else {
+      message("  Kept offline value: ", result$PR)
+    }
     message("  \u2713 Output: ", result$PR)
   }
 
