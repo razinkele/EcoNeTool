@@ -59,12 +59,14 @@ FILES=(
   "BalticFW.Rdata"
   "README.md"
   "LICENSE"
+  "VERSION"
   "run_app.R"
-  "functions.R"
   "www/"
   "examples/"
   "R/"
   "metawebs/"
+  "data/"
+  "config/"
 )
 
 # Files/directories to exclude
@@ -75,19 +77,34 @@ EXCLUDE_PATTERNS=(
   ".RData"
   ".git/*"
   ".gitignore"
+  ".gitattributes"
+  ".DS_Store"
   ".claude/*"
   "*backup*"
   "*test*.R"
-  "deploy.sh"
+  "deploy*.sh"
+  "deploy*.ps1"
+  "deploy*.bat"
   "deployment/*"
+  "deployment_logs/*"
   "Script.R"
   "create_example_datasets.R"
   "*.ewemdb"
+  "*.eweaccdb"
+  "*.accdb"
   "*.xml"
+  "*.doc"
+  "*.zip"
+  "*.log"
+  "CHANGELOG.md"
   "cache/*"
   "output/*"
   "docs/*"
   "tests/*"
+  "scripts/*"
+  "models/*"
+  "archive/*"
+  "data_conversion/*"
 )
 
 # Flags
@@ -286,8 +303,9 @@ check_prerequisites() {
   log_info "Checking required files..."
   local missing_files=()
   for file in "${FILES[@]}"; do
-    if [ ! -f "$file" ]; then
-      log_warn "File not found: $file"
+    # Use -e to check both files and directories (e.g. www/, R/)
+    if [ ! -e "$file" ]; then
+      log_warn "Not found: $file"
       missing_files+=("$file")
     fi
   done

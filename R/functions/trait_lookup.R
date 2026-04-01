@@ -2705,10 +2705,11 @@ lookup_species_traits <- function(species_name,
     message("\n🤖 Attempting ML prediction for: ", paste(missing_traits, collapse = ", "))
 
     # Source ML prediction functions if not already loaded
+    # Note: Using local = FALSE (default) so that %||% operator from validation_utils.R is available
     if (!exists("apply_ml_fallback")) {
       ml_file <- "R/functions/ml_trait_prediction.R"
       if (file.exists(ml_file)) {
-        source(ml_file, local = TRUE)
+        source(ml_file)
       } else {
         message("  ⚠️  ML prediction functions not found at: ", ml_file)
       }
@@ -2774,12 +2775,17 @@ lookup_species_traits <- function(species_name,
   # =================================================================
 
   # Source uncertainty quantification functions
+  # Note: Using local = FALSE (default) so that %||% operator from validation_utils.R is available
   if (!exists("calculate_all_trait_confidence")) {
+    message("  [DEBUG] Sourcing uncertainty_quantification.R...")
     tryCatch({
-      source("R/functions/uncertainty_quantification.R", local = TRUE)
+      source("R/functions/uncertainty_quantification.R")
+      message("  [DEBUG] uncertainty_quantification.R sourced successfully")
     }, error = function(e) {
       message("  ⚠️  Uncertainty quantification not available: ", e$message)
     })
+  } else {
+    message("  [DEBUG] calculate_all_trait_confidence already exists in environment")
   }
 
   # Calculate confidence for all traits
@@ -2813,7 +2819,9 @@ lookup_species_traits <- function(species_name,
     )
 
     # Calculate confidence for all traits
+    message("  [DEBUG] Calling calculate_all_trait_confidence...")
     confidence_data <- calculate_all_trait_confidence(trait_record)
+    message("  [DEBUG] calculate_all_trait_confidence completed")
 
     # Merge confidence data into result
     for (field in names(confidence_data)) {
@@ -2881,9 +2889,10 @@ lookup_species_traits <- function(species_name,
 
   if (length(missing_after_ml) > 0 && !is.null(raw_traits$worms) && !is.null(cache_dir)) {
     # Source phylogenetic imputation functions
+    # Note: Using local = FALSE (default) so that %||% operator from validation_utils.R is available
     if (!exists("apply_phylogenetic_imputation")) {
       tryCatch({
-        source("R/functions/phylogenetic_imputation.R", local = TRUE)
+        source("R/functions/phylogenetic_imputation.R")
       }, error = function(e) {
         message("  ⚠️  Phylogenetic imputation not available: ", e$message)
       })

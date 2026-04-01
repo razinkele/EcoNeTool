@@ -82,7 +82,7 @@ echo Creating deployment archive...
 set TEMP_TAR=%TEMP%\econetool_deploy.tar.gz
 
 REM Use Git Bash to create tar (excludes large/unnecessary files)
-"%GIT_BASH%" -c "cd '%~dp0' && tar --exclude='*.Rproj' --exclude='.Rproj.user' --exclude='.git' --exclude='.gitignore' --exclude='.gitattributes' --exclude='.DS_Store' --exclude='.claude' --exclude='deployment' --exclude='tests' --exclude='docs' --exclude='cache' --exclude='output' --exclude='archive' --exclude='*.ewemdb' --exclude='*.eweaccdb' --exclude='*.accdb' --exclude='*.xml' --exclude='*.doc' --exclude='*.zip' --exclude='*.md' --exclude='*.log' --exclude='deploy*.ps1' --exclude='deploy*.bat' --exclude='deploy*.sh' --exclude='data_conversion' -czf '%TEMP_TAR%' app.R run_app.R VERSION R www examples metawebs data config 2>/dev/null"
+"%GIT_BASH%" -c "cd '%~dp0' && tar --exclude='*.Rproj' --exclude='.Rproj.user' --exclude='.git' --exclude='.gitignore' --exclude='.gitattributes' --exclude='.DS_Store' --exclude='.claude' --exclude='deployment' --exclude='tests' --exclude='docs' --exclude='cache' --exclude='output' --exclude='archive' --exclude='*.ewemdb' --exclude='*.eweaccdb' --exclude='*.accdb' --exclude='*.xml' --exclude='*.doc' --exclude='*.zip' --exclude='CHANGELOG.md' --exclude='HABITAT_*.md' --exclude='MAP_*.md' --exclude='*.log' --exclude='deploy*.ps1' --exclude='deploy*.bat' --exclude='deploy*.sh' --exclude='data_conversion' -czf '%TEMP_TAR%' app.R run_app.R VERSION README.md LICENSE R www examples metawebs data config 2>/dev/null"
 
 if not exist "%TEMP_TAR%" (
     echo %RED%ERROR: Failed to create archive%NC%
@@ -123,7 +123,7 @@ echo Deploying with SCP (this may take a while)...
 
 REM Create remote directory
 if %DRY_RUN%==0 (
-    ssh %SERVER_USER%@%SERVER_HOST% "sudo mkdir -p %DEPLOY_PATH%/R %DEPLOY_PATH%/www %DEPLOY_PATH%/examples %DEPLOY_PATH%/metawebs %DEPLOY_PATH%/data %DEPLOY_PATH%/config"
+    ssh %SERVER_USER%@%SERVER_HOST% "sudo mkdir -p %DEPLOY_PATH%/{R,www,examples,metawebs,data,config}"
 )
 
 REM Copy main files
@@ -153,7 +153,9 @@ echo Copying data directory...
 if %DRY_RUN%==0 scp -r "%~dp0data" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/
 
 echo Copying config directory...
-if %DRY_RUN%==0 scp -r "%~dp0config" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/
+if exist "%~dp0config" (
+    if %DRY_RUN%==0 scp -r "%~dp0config" %SERVER_USER%@%SERVER_HOST%:%DEPLOY_PATH%/
+)
 
 REM Set permissions
 echo Setting permissions...
@@ -179,8 +181,18 @@ echo %GREEN%====================================================================
 echo.
 echo  Application URL: http://%SERVER_HOST%/%APP_NAME%/
 echo.
-echo  To restart Shiny Server (if needed):
-echo    ssh %SERVER_USER%@%SERVER_HOST% "sudo systemctl restart shiny-server"
+
+REM Restart Shiny Server
+echo Restarting Shiny Server...
+if %DRY_RUN%==0 (
+    ssh %SERVER_USER%@%SERVER_HOST% "sudo systemctl restart shiny-server"
+    if %errorlevel%==0 (
+        echo %GREEN%v Shiny Server restarted%NC%
+    ) else (
+        echo %YELLOW%! Could not restart Shiny Server automatically%NC%
+        echo   Try manually: ssh %SERVER_USER%@%SERVER_HOST% "sudo systemctl restart shiny-server"
+    )
+)
 echo.
 
 exit /b 0

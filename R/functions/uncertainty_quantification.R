@@ -408,6 +408,7 @@ map_confidence_to_opacity <- function(confidence, min_opacity = 0.3, max_opacity
 #' calculate_all_trait_confidence(record)
 #'
 calculate_all_trait_confidence <- function(trait_record) {
+  message("  [DEBUG] Inside calculate_all_trait_confidence function")
 
   result <- list()
 

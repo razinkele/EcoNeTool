@@ -170,6 +170,18 @@ deploy_shiny_server() {
     print_status "Deployment directory status:"
     ls -ld /srv/shiny-server/EcoNeTool
 
+    # Backup existing deployment before removing
+    BACKUP_DIR="/srv/shiny-server/backups/EcoNeTool"
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    mkdir -p "$BACKUP_DIR"
+    if [ -f /srv/shiny-server/EcoNeTool/app.R ]; then
+        print_status "Creating timestamped backup..."
+        tar -czf "${BACKUP_DIR}/EcoNeTool_${TIMESTAMP}.tar.gz" -C /srv/shiny-server EcoNeTool
+        print_success "Backup created: EcoNeTool_${TIMESTAMP}.tar.gz"
+        # Keep last 5 backups
+        cd "$BACKUP_DIR" && ls -t *.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm
+    fi
+
     # Remove old deployment contents
     print_status "Removing old deployment contents..."
     rm -rf /srv/shiny-server/EcoNeTool/*
@@ -182,18 +194,12 @@ deploy_shiny_server() {
         "README.md"
         "LICENSE"
         "VERSION"
-        "CHANGELOG.md"
         "R"
-        "R/functions"
         "www"
         "examples"
         "metawebs"
-        "output"
-        "docs"
-        "scripts"
-        "cache"
-        "archive"
-        "tests"
+        "data"
+        "config"
     )
 
     ERRORS=()
@@ -205,7 +211,11 @@ deploy_shiny_server() {
         if [ -e "$SRC" ]; then
             print_status "Copying $ITEM..."
             if [ -d "$SRC" ]; then
-                cp -rv "$SRC" "$DEST" 2>err.log
+                # Exclude large/sensitive data files to match root deploy.sh
+                rsync -av --exclude='*.zip' --exclude='*.csv' --exclude='*.ewemdb' \
+                      --exclude='*.eweaccdb' --exclude='*.accdb' --exclude='*.xml' \
+                      --exclude='*.doc' --exclude='.claude' \
+                      "$SRC" "$DEST" 2>err.log
             else
                 cp -vf "$SRC" "$DEST" 2>err.log
             fi
@@ -248,70 +258,6 @@ deploy_shiny_server() {
         exit 1
     fi
 
-    # Copy optional R files if they exist
-    if [ -f "$APP_DIR/run_app.R" ]; then
-        if cp -v "$APP_DIR/run_app.R" /srv/shiny-server/EcoNeTool/; then
-            print_success "Copied: run_app.R (optional)"
-            log_message "DEPLOY" "Copied run_app.R from $APP_DIR"
-        else
-            print_warning "Failed to copy run_app.R (optional)"
-            log_message "WARNING" "Failed to copy run_app.R from $APP_DIR"
-        fi
-    fi
-
-    # Copy www directory (contains images and web assets)
-    if [ -d "$APP_DIR/www" ]; then
-        print_status "Copying www directory..."
-        if cp -rv "$APP_DIR/www" /srv/shiny-server/EcoNeTool/; then
-            print_success "Copied: www directory"
-            log_message "DEPLOY" "Copied www directory from $APP_DIR"
-        else
-            print_warning "Failed to copy www directory"
-            log_message "WARNING" "Failed to copy www directory from $APP_DIR"
-        fi
-    fi
-
-    # Copy examples directory (contains example datasets)
-    if [ -d "$APP_DIR/examples" ]; then
-        print_status "Copying examples directory..."
-        if cp -rv "$APP_DIR/examples" /srv/shiny-server/EcoNeTool/; then
-            print_success "Copied: examples directory"
-            log_message "DEPLOY" "Copied examples directory from $APP_DIR"
-        else
-            print_warning "Failed to copy examples directory"
-            log_message "WARNING" "Failed to copy examples directory from $APP_DIR"
-        fi
-    fi
-
-    # Copy metawebs directory (contains metaweb data)
-    if [ -d "$APP_DIR/metawebs" ]; then
-        print_status "Copying metawebs directory..."
-        if cp -rv "$APP_DIR/metawebs" /srv/shiny-server/EcoNeTool/; then
-            print_success "Copied: metawebs directory"
-            log_message "DEPLOY" "Copied metawebs directory from $APP_DIR"
-        else
-            print_warning "Failed to copy metawebs directory"
-            log_message "WARNING" "Failed to copy metawebs directory from $APP_DIR"
-        fi
-    fi
-
-    # Copy R directory (contains all modular application code)
-    if [ -d "$APP_DIR/R" ]; then
-        print_status "Copying R directory..."
-        if cp -rv "$APP_DIR/R" /srv/shiny-server/EcoNeTool/; then
-            print_success "Copied: R directory (config, functions, modules, UI)"
-            log_message "DEPLOY" "Copied R directory from $APP_DIR"
-        else
-            print_error "Failed to copy R directory (CRITICAL)"
-            log_message "ERROR" "Failed to copy R directory from $APP_DIR"
-            exit 1
-        fi
-    else
-        print_error "R directory not found (CRITICAL)"
-        log_message "ERROR" "R directory not found at $APP_DIR/R"
-        exit 1
-    fi
-
     # Set permissions
     print_status "Setting file permissions..."
     if chown -R shiny:shiny /srv/shiny-server/EcoNeTool; then
@@ -325,6 +271,26 @@ deploy_shiny_server() {
 
     print_success "Application files deployed"
     log_message "DEPLOY" "All application files deployed successfully"
+
+    # Install required R packages
+    print_status "Checking/installing required R packages..."
+    Rscript -e "
+    packages <- c(
+      'shiny', 'bs4Dash', 'shinyjs', 'shinyWidgets', 'shinyBS',
+      'igraph', 'visNetwork', 'fluxweb',
+      'DT', 'ggplot2', 'plotly',
+      'dplyr', 'tidyr', 'readr', 'tibble', 'stringr',
+      'jsonlite', 'openxlsx', 'readxl',
+      'MASS', 'RCurl', 'XML', 'plyr'
+    )
+    new_packages <- packages[!(packages %in% installed.packages()[,'Package'])]
+    if(length(new_packages)) {
+      cat('Installing packages:', paste(new_packages, collapse=', '), '\n')
+      install.packages(new_packages, repos='https://cloud.r-project.org')
+    } else {
+      cat('All required packages already installed\n')
+    }
+    " && print_success "R packages OK" || print_warning "Package installation had issues (may need manual check)"
 
     # Configure Shiny Server
     print_status "Configuring Shiny Server..."
