@@ -233,7 +233,7 @@ validate_packages <- function(pkg_names, purpose = NULL) {
 #' }
 validate_parameter <- function(param, param_name, allow_na = FALSE) {
   # Check if missing (using substitute to detect missing in parent frame)
-  if (substitute(missing(param), parent.frame()) || is.null(param)) {
+  if (eval(substitute(missing(param), parent.frame())) || is.null(param)) {
     stop(sprintf(
       "Parameter '%s' is required and cannot be NULL",
       param_name

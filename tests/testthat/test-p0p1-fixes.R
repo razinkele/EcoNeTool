@@ -26,3 +26,17 @@ test_that("endotherm vertebrates get nonzero metabolic losses", {
   expect_true(all(losses > 0), info = "All metabolic losses must be positive")
   expect_true(losses[2] > losses[1], info = "Endotherm (5kg mammal) should have higher losses than invertebrate (100g)")
 })
+
+test_that("fluxind handles zero-flux matrix without NaN/Inf", {
+  zero_mat <- matrix(0, nrow = 3, ncol = 3)
+  result <- fluxind(zero_mat)
+  expect_false(any(is.nan(unlist(result))), info = "No NaN values in result")
+  expect_false(any(is.infinite(unlist(result))), info = "No Inf values in result")
+})
+
+test_that("fluxind handles single-species matrix", {
+  one_mat <- matrix(0, nrow = 1, ncol = 1)
+  result <- fluxind(one_mat, loop = FALSE)
+  expect_false(any(is.nan(unlist(result))))
+  expect_false(any(is.infinite(unlist(result))))
+})

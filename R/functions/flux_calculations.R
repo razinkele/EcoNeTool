@@ -12,6 +12,12 @@ fluxind <- function(fluxes, loop = FALSE) {
     # The flux matrix
     W.net <- as.matrix(fluxes)
 
+    # Guard: zero total flux
+    tot_sum <- sum(W.net)
+    if (tot_sum == 0) {
+      return(list(lwC = 0, lwG = 0, lwV = 0))
+    }
+
   ### Taxon-specific Shannon indices of inflows
   # sum of k species inflows --> colsums
   sum.in <- apply(W.net, 2, sum)
@@ -46,26 +52,28 @@ fluxind <- function(fluxes, loop = FALSE) {
   # The weighted link density (LDw) is:
   # In the weighted version the effective number of predators for species i is weighted by i's
   # contribution to the total outflow the same is the case for the inflows
-  tot.mat <- sum(W.net)
+  tot.mat <- tot_sum
   # LD.w <- (sum((sum.in/tot.mat)*N.res) + sum((sum.out/tot.mat)*N.con))/2
   # equivalent to next formula, but next one is closer to manuscript
   LD <- 1 / (2 * tot.mat) * (sum(sum.in * N.res) + sum(sum.out * N.con))
 
   # Weighted connectance
-  res$lwC <- LD / ifelse(loop, no.species, no.species - 1)
+  denominator <- ifelse(loop, no.species, no.species - 1)
+  res$lwC <- if (denominator == 0) 0 else LD / denominator
 
   # positional.index
-  pos.ind <- sum.in * N.res / (sum.in * N.res + sum.out * N.con)  # positional index
+  denom <- sum.in * N.res + sum.out * N.con
+  pos.ind <- ifelse(denom == 0, 0, sum.in * N.res / denom)  # positional index
   basal.sp <- pos.ind[pos.ind == 0]  # basal species = 0
   top.sp <- pos.ind[pos.ind == 1]  # definition according to Bersier et al. 2002 top species = [0.99, 1]
 
   con.sp <- length(pos.ind) - length(basal.sp)  # all consumer taxa except basal
   # weighted quantitative Generality
-  res$lwG <- sum(sum.in * N.res / sum(W.net))
+  res$lwG <- sum(sum.in * N.res / tot.mat)
 
   res.sp <- length(pos.ind) - length(top.sp)
   # weighted quantitative Vulnerability
-  res$lwV <- sum(sum.out * N.con / sum(W.net))
+  res$lwV <- sum(sum.out * N.con / tot.mat)
 
   return(res)
 
