@@ -40,3 +40,21 @@ test_that("fluxind handles single-species matrix", {
   expect_false(any(is.nan(unlist(result))))
   expect_false(any(is.infinite(unlist(result))))
 })
+
+test_that("parse_adjacency_df creates prey-to-predator edges for diet matrix", {
+  # Diet matrix: rows = prey, columns = predators
+  # Prey A is eaten by Predator C (mat[1,2] = 0.5)
+  mat_df <- data.frame(
+    Species = c("PreyA", "PreyB"),
+    PredatorC = c(0.5, 0.3),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  result <- parse_adjacency_df(mat_df)
+  net <- result$net
+
+  # Edge should go from PreyA -> PredatorC (energy flow: prey to predator)
+  edges <- as_edgelist(net)
+  expect_true(any(edges[,1] == "PreyA" & edges[,2] == "PredatorC"),
+              info = "Edge direction must be prey -> predator (energy flow)")
+})
