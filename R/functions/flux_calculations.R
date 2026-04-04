@@ -121,6 +121,7 @@ calculate_losses <- function(info, temp = DEFAULT_TEMPERATURE) {
     losses_param <- list(
       "invertebrates" = METABOLIC_X0_INVERTEBRATES,
       "ectotherm vertebrates" = METABOLIC_X0_VERTEBRATES,
+      "endotherm vertebrates" = METABOLIC_X0_ENDOTHERMS,
       "Other" = 0
     )
 

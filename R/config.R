@@ -71,6 +71,7 @@ DEFAULT_TEMPERATURE <- 3.5
 # Metabolic scaling constants
 METABOLIC_X0_INVERTEBRATES <- 17.17  # Normalization constant for invertebrates
 METABOLIC_X0_VERTEBRATES <- 18.47    # Normalization constant for vertebrates
+METABOLIC_X0_ENDOTHERMS <- 19.5      # Normalization constant for endotherms (mammals, birds)
 METABOLIC_E <- 0.69                   # Activation energy
 METABOLIC_A <- -0.29                  # Allometric exponent
 
