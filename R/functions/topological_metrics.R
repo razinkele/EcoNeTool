@@ -63,9 +63,15 @@ get_node_weighted_indicators <- function(net, info) {
     validate_network(net, require_directed = FALSE, min_vertices = 1)
     validate_dataframe(info, required_cols = "meanB")
 
-    if (nrow(info) != vcount(net)) {
+    S <- vcount(net)
+    if (S <= 1) {
+      warning("Network has only one or zero species. Node-weighted metrics may be undefined.")
+      return(list(nwC = 0, nwG = 0, nwV = 0, nwTL = 1))
+    }
+
+    if (nrow(info) != S) {
       stop(sprintf("Number of rows in 'info' (%d) must match number of vertices in 'net' (%d)",
-                   nrow(info), vcount(net)), call. = FALSE)
+                   nrow(info), S), call. = FALSE)
     }
 
     biomass <- info$meanB

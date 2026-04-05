@@ -136,6 +136,13 @@ calculate_losses <- function(info, temp = DEFAULT_TEMPERATURE) {
     # Get x0 for each species based on metabolic type
     x0 <- unlist(losses_param[info$met.types])
 
+    # Guard: unknown metabolic types get x0=0 with warning
+    if (any(is.na(x0))) {
+      unknown <- unique(info$met.types[is.na(x0)])
+      warning(sprintf("Unknown metabolic types (x0=0): %s", paste(unknown, collapse = ", ")), call. = FALSE)
+      x0[is.na(x0)] <- 0
+    }
+
     # Validate body masses
     if (any(info$bodymasses <= 0, na.rm = TRUE)) {
       stop("Body masses must be positive (log transformation requires positive values)", call. = FALSE)
