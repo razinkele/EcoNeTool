@@ -266,6 +266,7 @@ data_import_server <- function(input, output, session, net_reactive, info_reacti
       paste0("diet_matrix_", format(Sys.time(), "%Y%m%d"), ".csv")
     },
     content = function(file) {
+      req(diet_matrix_reactive())
       mat <- diet_matrix_reactive()
       df <- data.frame(ScientificName = rownames(mat), mat, check.names = FALSE)
       write.csv(df, file, row.names = FALSE)
@@ -278,6 +279,9 @@ data_import_server <- function(input, output, session, net_reactive, info_reacti
       paste0("diet_matrix_", format(Sys.time(), "%Y%m%d"), ".xlsx")
     },
     content = function(file) {
+      req(diet_matrix_reactive())
+      if (!requireNamespace("openxlsx", quietly = TRUE))
+        stop("Package 'openxlsx' required for Excel export.\nInstall with: install.packages('openxlsx')")
       mat <- diet_matrix_reactive()
       df <- data.frame(ScientificName = rownames(mat), mat, check.names = FALSE)
       openxlsx::write.xlsx(df, file)
