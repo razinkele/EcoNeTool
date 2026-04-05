@@ -6,6 +6,7 @@ get_topological_indicators <- function(net) {
     S <- vcount(net)
     if (S <= 1) {
       warning("Network has only one or zero species. Metrics may be undefined.")
+      return(list(S = S, C = 0, G = 0, V = 0, ShortPath = 0, TL = 1, Omni = 0))
     }
 
     C <- ecount(net) / (S * (S - 1))

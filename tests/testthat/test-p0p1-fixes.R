@@ -74,3 +74,11 @@ test_that("get_shark_datasets returns info df on error, not fake data", {
                 info = "Should not return fake dataset list (6 rows)")
   }
 })
+
+test_that("topological indicators handle single-species network", {
+  net <- make_empty_graph(n = 1, directed = TRUE)
+  V(net)$name <- "Solo"
+  result <- get_topological_indicators(net)
+  expect_false(any(is.nan(unlist(result))))
+  expect_false(any(is.infinite(unlist(result))))
+})
