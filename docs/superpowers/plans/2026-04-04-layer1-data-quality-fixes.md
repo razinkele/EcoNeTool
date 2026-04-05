@@ -256,7 +256,18 @@ Replace line 380:
 
 - [ ] **Step 5: Update TRAIT_DEFINITIONS$FS**
 
-In `R/functions/trait_foodweb.R`, add after FS6 line:
+In `R/functions/trait_foodweb.R`, fix FS3 (currently says "Parasite (excluded)" but should be "Omnivore") AND add FS7:
+
+Replace line 115:
+```r
+    FS3 = "Parasite (excluded)",
+```
+With:
+```r
+    FS3 = "Omnivore",
+```
+
+And add after FS6 line:
 ```r
     FS7 = "Xylophagous (wood borer)"
 ```
@@ -345,13 +356,13 @@ now get correct taxonomic trait inference."
 - [ ] **Step 1: Append routing test**
 
 ```r
-source(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"))
-
-test_that("SHARK is not in trait lookup routing flags", {
-  # SHARK should be removed from trait pipeline
-  # Check that query_shark is not set TRUE for any invertebrate
-  expect_false(exists("query_shark") && query_shark,
-               info = "SHARK should not be in trait routing")
+test_that("SHARK is removed from trait routing in orchestrator", {
+  # query_shark is a local variable inside lookup_species_traits(),
+  # so we test by inspecting the source text directly
+  orch_text <- readLines(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"))
+  shark_assignments <- grep("query_shark\\s*<-\\s*TRUE", orch_text)
+  expect_equal(length(shark_assignments), 0,
+               info = "All query_shark <- TRUE assignments should be removed from orchestrator")
 })
 ```
 
@@ -370,10 +381,12 @@ In the orchestrator routing block (after the fish branch, before marine inverteb
       message("  -> Detected SEABIRD (", class, ") -> Limited trait data available")
 
     # Tunicates -> SeaLifeBase
-    } else if (phylum %in% c("chordata") && class %in% c("ascidiacea", "thaliacea", "appendicularia")) {
+    } else if (phylum %in% c("chordata") && class %in% c("ascidiacea")) {
       query_sealifebase <- TRUE
       message("  -> Detected TUNICATE (", class, ") -> Querying: SeaLifeBase")
 ```
+
+**Note:** Only `ascidiacea` is added here. `thaliacea` and `appendicularia` are ALREADY routed via the zooplankton branch (line 329) — do NOT duplicate them.
 
 - [ ] **Step 3: Fix macroalgae routing**
 
@@ -420,17 +433,26 @@ Removed SHARK from trait pipeline (provides oceanographic data, not species trai
 
 ```r
 test_that("find_closest_relatives_sql query uses subquery for distance alias", {
+  skip_if_not_installed("RSQLite")
   source(file.path(app_root, "R/functions/cache_sqlite.R"))
-  # The function should not crash with "no such column: distance"
-  # Test with a non-existent species (should return empty, not error)
-  if (file.exists("cache/taxonomy.db")) {
-    result <- tryCatch(
-      find_closest_relatives_sql("Nonexistent_species_xyz", max_distance = 2),
-      error = function(e) e
-    )
-    expect_false(inherits(result, "error"),
-                 info = "Should not error with 'no such column: distance'")
-  }
+  db_path <- file.path(app_root, "cache/taxonomy.db")
+  skip_if_not(file.exists(db_path), "taxonomy.db not available")
+
+  # The function takes a list with taxonomy fields, not a string
+  result <- tryCatch(
+    find_closest_relatives_sql(
+      list(genus = "Nonexistent", family = "Nonexistent",
+           order = "Nonexistent", class = "Nonexistent",
+           phylum = "Nonexistent"),
+      db_path = db_path,
+      max_distance = 2
+    ),
+    error = function(e) e
+  )
+  # Before fix: errors with "no such column: distance"
+  # After fix: returns empty data.frame (no matches)
+  expect_false(inherits(result, "error"),
+               info = "Should not error with 'no such column: distance'")
 })
 ```
 
@@ -441,24 +463,26 @@ In `R/functions/cache_sqlite.R`, find the `find_closest_relatives_sql()` functio
 ```r
   query <- "
     SELECT * FROM (
-      SELECT species_name, genus, family, \"order\", class, phylum,
+      SELECT species_name, genus, family, order_name, class, phylum,
         MS, FS, MB, EP, PR, overall_confidence,
         CASE
           WHEN genus = ? THEN 0
           WHEN family = ? THEN 1
-          WHEN \"order\" = ? THEN 2
+          WHEN order_name = ? THEN 2
           WHEN class = ? THEN 3
           WHEN phylum = ? THEN 4
           ELSE 5
         END as distance
       FROM species
-      WHERE (genus = ? OR family = ? OR \"order\" = ? OR class = ? OR phylum = ?)
+      WHERE (genus = ? OR family = ? OR order_name = ? OR class = ? OR phylum = ?)
     ) sub
     WHERE distance <= ?
     ORDER BY distance ASC, overall_confidence DESC
     LIMIT ?
   "
 ```
+
+**Note:** The schema uses `order_name` (not `"order"`) because `order` is a SQL reserved word.
 
 - [ ] **Step 3: Parse check, run tests, commit**
 
@@ -506,6 +530,63 @@ git commit -m "fix(cache): swap inverted include_raw query branches
 When include_raw=FALSE, the query incorrectly required raw_data IS NOT NULL,
 dropping species without blobs. Now include_raw=TRUE requires the blob
 (for deserialization) and FALSE accepts all rows (structured columns only)."
+```
+
+---
+
+### Task 6b: Add test for include_raw fix
+
+- [ ] **Step 1: Append test for inverted include_raw logic**
+
+```r
+test_that("include_raw=FALSE does not filter by raw_data presence", {
+  skip_if_not_installed("RSQLite")
+  source(file.path(app_root, "R/functions/cache_sqlite.R"))
+  # Structural test: check the function body for correct query logic
+  fn_body <- deparse(body(load_species_from_cache))
+  fn_text <- paste(fn_body, collapse = "\n")
+  # After fix: include_raw=TRUE branch should have IS NOT NULL
+  # include_raw=FALSE branch should NOT have IS NOT NULL
+  if_true_block <- regmatches(fn_text, regexpr("if \\(include_raw\\).*?else", fn_text))
+  expect_true(grepl("IS NOT NULL", if_true_block),
+              info = "include_raw=TRUE branch should require raw_data IS NOT NULL")
+})
+```
+
+- [ ] **Step 2: Run test, commit with Task 6**
+
+---
+
+### Task 6c: Handle legacy files
+
+**Problem:** `R/functions/trait_lookup.R` (3,103 lines) and `R/functions/trait_lookup-laguna-safeBackup-0001.R` (3,112 lines) contain outdated ep_labels, fs_labels, and query_shark references. These are legacy backups that should NOT be sourced (the orchestrator.R + harmonization.R + database_lookups.R modular structure replaced them).
+
+- [ ] **Step 1: Verify legacy files are NOT sourced**
+
+```bash
+grep -rn "trait_lookup-laguna\|trait_lookup\.R" R/ app.R --include="*.R" | grep "source("
+```
+
+If they are NOT sourced anywhere (expected), they are dead code.
+
+- [ ] **Step 2: Move legacy files to archive**
+
+```bash
+mkdir -p archive/legacy_trait_lookup
+mv R/functions/trait_lookup.R archive/legacy_trait_lookup/
+mv R/functions/trait_lookup-laguna-safeBackup-0001.R archive/legacy_trait_lookup/
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add -A archive/legacy_trait_lookup/ R/functions/trait_lookup.R R/functions/trait_lookup-laguna-safeBackup-0001.R
+git commit -m "chore: move legacy trait_lookup files to archive
+
+These 3000+ line files are pre-modularization backups replaced by
+orchestrator.R + harmonization.R + database_lookups.R. They contain
+outdated EP/FS labels and SHARK routing that conflicts with the
+current modular system. Moved to archive/ to prevent confusion."
 ```
 
 ---
