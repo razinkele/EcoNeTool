@@ -561,7 +561,7 @@ migrate_rds_to_sqlite <- function(rds_cache_dir = "cache/taxonomy",
 
     }, error = function(e) {
       warning(sprintf("Error migrating %s: %s", basename(rds_files[i]), e$message))
-      errors <- errors + 1
+      errors <<- errors + 1
     })
 
     # Commit batch
