@@ -41,10 +41,10 @@ get_ecobase_models <- function() {
   # Check packages
   require_ecobase_packages()
 
-  library(RCurl)
-  library(XML)
-  library(plyr)
-  library(dplyr)
+  for (pkg in c("RCurl", "XML", "plyr", "dplyr")) {
+    if (!requireNamespace(pkg, quietly = TRUE))
+      stop(sprintf("Package '%s' required for EcoBase connection.\nInstall with: install.packages('%s')", pkg, pkg), call. = FALSE)
+  }
 
   message("Connecting to EcoBase...")
 
@@ -88,9 +88,10 @@ get_ecobase_model_input <- function(model_id) {
   # Check packages
   require_ecobase_packages()
 
-  library(RCurl)
-  library(XML)
-  library(plyr)
+  for (pkg in c("RCurl", "XML", "plyr")) {
+    if (!requireNamespace(pkg, quietly = TRUE))
+      stop(sprintf("Package '%s' required for EcoBase connection.\nInstall with: install.packages('%s')", pkg, pkg), call. = FALSE)
+  }
 
   message("Downloading input parameters for model ", model_id, "...")
 
@@ -134,9 +135,10 @@ get_ecobase_model_output <- function(model_id) {
   # Check packages
   require_ecobase_packages()
 
-  library(RCurl)
-  library(XML)
-  library(plyr)
+  for (pkg in c("RCurl", "XML", "plyr")) {
+    if (!requireNamespace(pkg, quietly = TRUE))
+      stop(sprintf("Package '%s' required for EcoBase connection.\nInstall with: install.packages('%s')", pkg, pkg), call. = FALSE)
+  }
 
   message("Downloading output parameters for model ", model_id, "...")
 
@@ -180,8 +182,10 @@ get_ecobase_model_metadata <- function(model_id) {
   # Check packages
   require_ecobase_packages()
 
-  library(RCurl)
-  library(XML)
+  for (pkg in c("RCurl", "XML")) {
+    if (!requireNamespace(pkg, quietly = TRUE))
+      stop(sprintf("Package '%s' required for EcoBase connection.\nInstall with: install.packages('%s')", pkg, pkg), call. = FALSE)
+  }
 
   message("Downloading metadata for model ", model_id, "...")
 
