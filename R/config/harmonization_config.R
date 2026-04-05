@@ -39,9 +39,9 @@ HARMONIZATION_CONFIG <- list(
   # ENVIRONMENTAL POSITION PATTERNS
   environmental_patterns = list(
     EP1_pelagic = "pelagic|water column|planktonic|nektonic|open water",
-    EP2_epibenthic = "epibenthic|epifauna|surface dwelling|on substrate",
-    EP3_endobenthic = "endobenthic|infauna|burrowing|within sediment",
-    EP4_demersal = "demersal|near bottom|benthic-pelagic|benthopelagic"
+    EP2_benthopelagic = "benthopelagic|demersal|near bottom|benthic-pelagic",
+    EP3_epibenthic = "epibenthic|epifauna|surface dwelling|on substrate",
+    EP4_endobenthic = "endobenthic|infauna|burrowing|within sediment|interstitial"
   ),
 
   # PROTECTION MECHANISM PATTERNS

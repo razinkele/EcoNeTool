@@ -137,10 +137,10 @@ generate_trait_help_dimensions <- function() {
         <tr><th>Code</th><th>Position</th><th>Description</th><th>Examples</th></tr>
       </thead>
       <tbody>
-        <tr><td><strong>EP1</strong></td><td>Infaunal</td><td>Buried in sediment</td><td>Burrowing bivalves, polychaetes</td></tr>
-        <tr><td><strong>EP2</strong></td><td>Epibenthic</td><td>On sediment surface</td><td>Starfish, crabs, bottom fish</td></tr>
-        <tr><td><strong>EP3</strong></td><td>Benthopelagic</td><td>Near bottom, some swimming</td><td>Adult cod, flatfish</td></tr>
-        <tr><td><strong>EP4</strong></td><td>Pelagic</td><td>Water column, no substrate</td><td>Plankton, herring, jellyfish</td></tr>
+        <tr><td><strong>EP1</strong></td><td>Pelagic</td><td>Water column, no substrate</td><td>Plankton, herring, jellyfish</td></tr>
+        <tr><td><strong>EP2</strong></td><td>Benthopelagic</td><td>Near bottom, some swimming</td><td>Adult cod, flatfish</td></tr>
+        <tr><td><strong>EP3</strong></td><td>Epibenthic</td><td>On sediment surface</td><td>Starfish, crabs, bottom fish</td></tr>
+        <tr><td><strong>EP4</strong></td><td>Endobenthic</td><td>Buried in sediment</td><td>Burrowing bivalves, polychaetes</td></tr>
       </tbody>
     </table>
     <p><em>Principle:</em> Trophic interactions require spatial co-occurrence (habitat overlap).</p>
@@ -218,8 +218,8 @@ P_protection(PR0, MS6) = 1.0 # No protection
         <li>Sessile (MB1) limited to slow/passing prey</li></ul>
       </li>
       <li><strong>EP × MS (Position × Size):</strong> Does habitat allow encounter?
-        <ul><li>Pelagic (EP4) access water column prey</li>
-        <li>Infaunal (EP1) limited to sediment prey</li></ul>
+        <ul><li>Pelagic (EP1) access water column prey</li>
+        <li>Endobenthic (EP4) limited to sediment prey</li></ul>
       </li>
       <li><strong>PR × MS (Protection × Consumer Size):</strong> Can consumer overcome defense?
         <ul><li>Large predators (MS6-MS7) crush shells</li>

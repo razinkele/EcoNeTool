@@ -609,14 +609,17 @@ harmonize_species_enriched_traits <- function(species_traits) {
   # EP: Environmental Position
   env_pos <- tolower(species_traits$environmental_position)
 
-  if (grepl("pelagic|water column", env_pos)) {
-    harmonized$EP <- "EP1"
+  if (grepl("pelagic|water column", env_pos) && !grepl("benthopelagic", env_pos)) {
+    harmonized$EP <- "EP1"  # Pelagic
     harmonized$EP_confidence <- 0.90
-  } else if (grepl("benthic|seabed|bottom", env_pos)) {
-    harmonized$EP <- "EP2"
+  } else if (grepl("benthopelagic|demersal", env_pos)) {
+    harmonized$EP <- "EP2"  # Benthopelagic
     harmonized$EP_confidence <- 0.90
-  } else if (grepl("epibenthic|on surface", env_pos)) {
-    harmonized$EP <- "EP3"
+  } else if (grepl("epibenthic|epifauna|on surface", env_pos)) {
+    harmonized$EP <- "EP3"  # Epibenthic
+    harmonized$EP_confidence <- 0.90
+  } else if (grepl("infauna|endobenthic|burrowing|benthic|seabed|bottom", env_pos)) {
+    harmonized$EP <- "EP4"  # Endobenthic/Infaunal
     harmonized$EP_confidence <- 0.90
   }
   harmonized$EP_source <- "SpeciesEnriched_position"

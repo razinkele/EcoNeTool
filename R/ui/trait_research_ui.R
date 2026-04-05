@@ -490,10 +490,10 @@ trait_research_ui <- function() {
                       )
                     ),
                     tags$tbody(
-                      tags$tr(tags$td("EP1"), tags$td("Infaunal"), tags$td("Lives within sediment")),
-                      tags$tr(tags$td("EP2"), tags$td("Epifaunal"), tags$td("Lives on sediment surface")),
-                      tags$tr(tags$td("EP3"), tags$td("Demersal"), tags$td("Near-bottom dwelling")),
-                      tags$tr(tags$td("EP4"), tags$td("Pelagic"), tags$td("Open water column"))
+                      tags$tr(tags$td("EP1"), tags$td("Pelagic"), tags$td("Open water column")),
+                      tags$tr(tags$td("EP2"), tags$td("Benthopelagic"), tags$td("Near-bottom dwelling")),
+                      tags$tr(tags$td("EP3"), tags$td("Epibenthic"), tags$td("Lives on sediment surface")),
+                      tags$tr(tags$td("EP4"), tags$td("Endobenthic"), tags$td("Lives within sediment"))
                     )
                   )
                 ),

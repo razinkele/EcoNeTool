@@ -570,9 +570,9 @@ traitfoodweb_ui <- function() {
                   h5("Consumer Environmental Position × Resource Size"),
                   p("Probability that a consumer in position EPi can access a resource of size MSj."),
                   tags$ul(
-                    tags$li("EP1 (Infaunal): Limited to small prey in sediment"),
-                    tags$li("EP4 (Pelagic): Access to all sizes in water column"),
-                    tags$li("EP2-EP3 (Benthic/Benthopelagic): Intermediate access"),
+                    tags$li("EP1 (Pelagic): Access to all sizes in water column"),
+                    tags$li("EP2-EP3 (Benthopelagic/Epibenthic): Intermediate access"),
+                    tags$li("EP4 (Endobenthic): Limited to small prey in sediment"),
                     tags$li("Spatial overlap required for interaction")
                   )
                 ),

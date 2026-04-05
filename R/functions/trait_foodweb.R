@@ -62,10 +62,10 @@ MB_MB <- matrix(
 #' Consumer environmental position (rows) × Resource size (columns)
 EP_MS <- matrix(
   c(
-    0.05, 0.50, 0.80, 0.05,  # EP1 Infaunal
-    0.50, 0.80, 0.95, 0.80,  # EP2 Epibenthic
-    0.80, 0.95, 0.80, 0.50,  # EP3 Benthopelagic
-    0.95, 0.80, 0.50, 0.05   # EP4 Pelagic
+    0.95, 0.80, 0.50, 0.05,  # EP1 Pelagic (high access to pelagic prey)
+    0.80, 0.95, 0.80, 0.50,  # EP2 Benthopelagic
+    0.50, 0.80, 0.95, 0.80,  # EP3 Epibenthic
+    0.05, 0.50, 0.80, 0.05   # EP4 Endobenthic/Infaunal
   ),
   nrow = 4, byrow = TRUE,
   dimnames = list(
@@ -125,10 +125,10 @@ TRAIT_DEFINITIONS <- list(
     MB5 = "Obligate swimmer"
   ),
   EP = c(
-    EP1 = "Infaunal",
-    EP2 = "Epibenthic",
-    EP3 = "Benthopelagic",
-    EP4 = "Pelagic"
+    EP1 = "Pelagic",
+    EP2 = "Benthopelagic",
+    EP3 = "Epibenthic",
+    EP4 = "Endobenthic/Infaunal"
   ),
   PR = c(
     PR0 = "None",

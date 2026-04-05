@@ -297,13 +297,13 @@ harmonize_fuzzy_habitat <- function(ontology_traits) {
   } else if (grepl("benthopel|demersal|near.bottom", modality)) {
     ep_class <- "EP2"
 
-  # EP3: Benthic (subtidal/offshore)
-  } else if (grepl("benthic|subtidal|offshore|deep", modality) &&
-             !grepl("intertidal|tidal|littoral", modality)) {
+  # EP3: Epibenthic (on seabed surface)
+  } else if (grepl("benthic|subtidal|offshore|deep|epibenthic|epifauna", modality) &&
+             !grepl("intertidal|tidal|littoral|infauna|endobenthic", modality)) {
     ep_class <- "EP3"
 
-  # EP4: Intertidal/Tidal
-  } else if (grepl("intertidal|tidal|littoral|eulittoral", modality)) {
+  # EP4: Endobenthic/Infaunal (within sediment)
+  } else if (grepl("intertidal|tidal|littoral|eulittoral|infauna|endobenthic|burrowing", modality)) {
     ep_class <- "EP4"
   }
 
@@ -623,20 +623,21 @@ harmonize_environmental_position <- function(depth_min = NULL, depth_max = NULL,
   if (!is.null(habitat_info)) {
     habitat_lower <- tolower(paste(habitat_info, collapse = " "))
 
-    if (grepl("infauna|buried|sediment interior", habitat_lower)) {
-      return("EP1")  # Infaunal
-    }
-
-    if (grepl("epibenthic|epifauna|benthic surface|bottom", habitat_lower)) {
-      return("EP2")  # Epibenthic
+    if (grepl("pelagic|planktonic|surface|midwater", habitat_lower) &&
+        !grepl("benthopelagic|epibenthic", habitat_lower)) {
+      return("EP1")  # Pelagic
     }
 
     if (grepl("benthopelagic|demersal|near.bottom", habitat_lower)) {
-      return("EP3")  # Benthopelagic
+      return("EP2")  # Benthopelagic
     }
 
-    if (grepl("pelagic|planktonic|surface|midwater", habitat_lower)) {
-      return("EP4")  # Pelagic
+    if (grepl("epibenthic|epifauna|benthic surface|bottom", habitat_lower)) {
+      return("EP3")  # Epibenthic
+    }
+
+    if (grepl("infauna|buried|sediment interior|endobenthic", habitat_lower)) {
+      return("EP4")  # Endobenthic/Infaunal
     }
   }
 

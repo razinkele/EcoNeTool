@@ -881,7 +881,7 @@ lookup_species_traits <- function(species_name,
       message("  Kept offline value: ", result$EP)
     }
     message("  \u2713 Output: ", result$EP)
-    ep_labels <- c("EP1"="Pelagic", "EP2"="Epibenthic", "EP3"="Endobenthic", "EP4"="Interstitial")
+    ep_labels <- c(EP1 = "Pelagic", EP2 = "Benthopelagic", EP3 = "Epibenthic", EP4 = "Endobenthic")
     if (!is.na(result$EP) && result$EP %in% names(ep_labels)) {
       message("     (", ep_labels[result$EP], ")")
     }
@@ -894,7 +894,7 @@ lookup_species_traits <- function(species_name,
         result$EP <- fuzzy_ep$class
         sources_used <- c(sources_used, "Fuzzy")
         message("  \u2713 Output: ", result$EP, " (from fuzzy ontology, confidence=", fuzzy_ep$confidence, ")")
-        ep_labels <- c("EP1"="Pelagic", "EP2"="Benthopelagic", "EP3"="Benthic", "EP4"="Intertidal")
+        ep_labels <- c(EP1 = "Pelagic", EP2 = "Benthopelagic", EP3 = "Epibenthic", EP4 = "Endobenthic")
         if (result$EP %in% names(ep_labels)) {
           message("     (", ep_labels[result$EP], ")")
         }
