@@ -82,7 +82,8 @@ plotfw <- function(net, col = NULL, lab = NULL, size = NULL,
   yax <- c(1, seq(2, max(tl), length.out = ynum - 1))
   labax <- round(yax, 1)
   # rescale xax between -1 and 1
-  laby <- (yax - min(yax)) / (max(yax) - min(yax)) * 2 - 1
+  yax_range <- max(yax) - min(yax)
+  laby <- if (yax_range == 0) rep(0, length(yax)) else (yax - min(yax)) / yax_range * 2 - 1
 
   plot(net, layout = coo, vertex.label.color = "black",
        vertex.label.cex = labcex, ...)
@@ -148,21 +149,37 @@ create_foodweb_visnetwork <- function(net,
 
   # Calculate node sizes based on method
   if (node_size_method == "biomass_sqrt") {
-    # Square root scaling for biomass
     biomass_values <- info$meanB
-    biomass_values[biomass_values <= 0] <- min(biomass_values[biomass_values > 0], na.rm = TRUE) / 10
+    positive_vals <- biomass_values[biomass_values > 0]
+    if (length(positive_vals) == 0) {
+      biomass_values <- rep(1.0, length(biomass_values))
+    } else {
+      biomass_values[biomass_values <= 0] <- min(positive_vals, na.rm = TRUE) / 10
+    }
     biomass_sqrt <- sqrt(biomass_values)
     biomass_sqrt_max <- max(biomass_sqrt, na.rm = TRUE)
     biomass_sqrt_min <- min(biomass_sqrt, na.rm = TRUE)
-    node_sizes <- ((biomass_sqrt - biomass_sqrt_min) / (biomass_sqrt_max - biomass_sqrt_min)) * 90 + 10
+    if (biomass_sqrt_max == biomass_sqrt_min) {
+      node_sizes <- rep(50, vcount(net))
+    } else {
+      node_sizes <- ((biomass_sqrt - biomass_sqrt_min) / (biomass_sqrt_max - biomass_sqrt_min)) * 90 + 10
+    }
   } else if (node_size_method == "biomass_log") {
-    # Logarithmic scaling for biomass
     biomass_values <- info$meanB
-    biomass_values[biomass_values <= 0] <- min(biomass_values[biomass_values > 0], na.rm = TRUE) / 10
+    positive_vals <- biomass_values[biomass_values > 0]
+    if (length(positive_vals) == 0) {
+      biomass_values <- rep(1.0, length(biomass_values))
+    } else {
+      biomass_values[biomass_values <= 0] <- min(positive_vals, na.rm = TRUE) / 10
+    }
     biomass_log <- log10(biomass_values)
     biomass_log_max <- max(biomass_log, na.rm = TRUE)
     biomass_log_min <- min(biomass_log, na.rm = TRUE)
-    node_sizes <- ((biomass_log - biomass_log_min) / (biomass_log_max - biomass_log_min)) * 90 + 10
+    if (biomass_log_max == biomass_log_min) {
+      node_sizes <- rep(50, vcount(net))
+    } else {
+      node_sizes <- ((biomass_log - biomass_log_min) / (biomass_log_max - biomass_log_min)) * 90 + 10
+    }
   } else if (node_size_method == "fixed") {
     # Fixed size for all nodes
     node_sizes <- rep(15, vcount(net))
