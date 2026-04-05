@@ -53,7 +53,8 @@ get_ecobase_models <- function() {
     h <- basicTextGatherer()
     curlPerform(
       url = 'http://sirs.agrocampus-ouest.fr/EcoBase/php/webser/soap-client_3.php',
-      writefunction = h$update
+      writefunction = h$update,
+      .opts = list(timeout = 30, connecttimeout = 10)
     )
 
     # Parse XML response
@@ -101,7 +102,8 @@ get_ecobase_model_input <- function(model_id) {
     curlPerform(
       url = paste0('http://sirs.agrocampus-ouest.fr/EcoBase/php/webser/soap-client.php?no_model=', model_id),
       writefunction = h$update,
-      verbose = FALSE
+      verbose = FALSE,
+      .opts = list(timeout = 30, connecttimeout = 10)
     )
 
     # Parse XML response
@@ -148,7 +150,8 @@ get_ecobase_model_output <- function(model_id) {
     curlPerform(
       url = paste0('http://sirs.agrocampus-ouest.fr/EcoBase/php/webser/soap-client_output.php?no_model=', model_id),
       writefunction = h$update,
-      verbose = FALSE
+      verbose = FALSE,
+      .opts = list(timeout = 30, connecttimeout = 10)
     )
 
     # Parse XML response
@@ -195,7 +198,8 @@ get_ecobase_model_metadata <- function(model_id) {
     curlPerform(
       url = paste0('http://sirs.agrocampus-ouest.fr/EcoBase/php/webser/soap-client.php?no_model=', model_id),
       writefunction = h$update,
-      verbose = FALSE
+      verbose = FALSE,
+      .opts = list(timeout = 30, connecttimeout = 10)
     )
 
     # Parse XML response
