@@ -173,6 +173,7 @@ data_import_server <- function(input, output, session, net_reactive, info_reacti
     net_reactive(loaded_net)
     info_reactive(loaded_info)
     refresh_data_editor()
+    dashboard_trigger(dashboard_trigger() + 1)
 
     # Store diet matrix if proportion data was imported
     if (!is.null(diet_matrix_reactive)) {
