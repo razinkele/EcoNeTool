@@ -284,16 +284,8 @@ get_available_shark_parameters <- function() {
     return(sort(unique(params$parameter_name)))
   }, error = function(e) {
     message(sprintf("Error getting parameters: %s", conditionMessage(e)))
-    return(c(
-      "Temperature (°C)",
-      "Salinity (PSU)",
-      "Oxygen (mg/L)",
-      "pH",
-      "Phosphate (μmol/L)",
-      "Nitrate (μmol/L)",
-      "Chlorophyll-a (μg/L)",
-      "Secchi depth (m)"
-    ))
+    warning("SHARK API unavailable. No parameter data returned.", call. = FALSE)
+    return(character(0))
   })
 }
 
@@ -572,17 +564,12 @@ get_shark_datasets <- function() {
   tryCatch({
     SHARK4R::sharkdata_list_datasets()
   }, error = function(e) {
+    message(sprintf("Error getting datasets: %s", conditionMessage(e)))
+    warning("SHARK API unavailable. No dataset data returned.", call. = FALSE)
     return(data.frame(
-      Dataset = c("Physical-Chemical", "Phytoplankton", "Zooplankton",
-                  "Zoobenthos", "Fish", "Marine Mammals"),
-      Description = c(
-        "Temperature, salinity, nutrients, oxygen",
-        "Phytoplankton species and abundance",
-        "Zooplankton species and abundance",
-        "Benthic fauna species and abundance",
-        "Fish survey data",
-        "Marine mammal observations"
-      )
+      Dataset = "SHARK API unavailable",
+      Description = paste("Error:", conditionMessage(e)),
+      stringsAsFactors = FALSE
     ))
   })
 }

@@ -58,3 +58,19 @@ test_that("parse_adjacency_df creates prey-to-predator edges for diet matrix", {
   expect_true(any(edges[,1] == "PreyA" & edges[,2] == "PredatorC"),
               info = "Edge direction must be prey -> predator (energy flow)")
 })
+
+test_that("get_available_shark_parameters returns empty on error, not fake data", {
+  result <- get_available_shark_parameters()
+  if (!requireNamespace("SHARK4R", quietly = TRUE)) {
+    expect_equal(length(result), 0,
+                 info = "Should return empty vector when SHARK4R not installed")
+  }
+})
+
+test_that("get_shark_datasets returns info df on error, not fake data", {
+  result <- get_shark_datasets()
+  if (!requireNamespace("SHARK4R", quietly = TRUE)) {
+    expect_true(nrow(result) <= 1,
+                info = "Should not return fake dataset list (6 rows)")
+  }
+})
