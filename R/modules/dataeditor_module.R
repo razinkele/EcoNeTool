@@ -100,7 +100,11 @@ dataeditor_server <- function(id, net_reactive, info_reactive) {
         }
 
         # Reassign colors
-        edited_info$colfg <- COLOR_SCHEME[as.numeric(edited_info$fg)]
+        edited_info$colfg <- sapply(as.character(edited_info$fg), function(fg) {
+          idx <- which(get_functional_group_levels() == fg)
+          if (length(idx) == 0) return("gray")
+          COLOR_SCHEME[idx]
+        })
 
         # Update reactive value
         info_reactive(edited_info)

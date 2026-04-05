@@ -89,7 +89,11 @@ import_server <- function(id,
         }
 
         # Assign colors
-        loaded_info$colfg <- COLOR_SCHEME[as.numeric(loaded_info$fg)]
+        loaded_info$colfg <- sapply(as.character(loaded_info$fg), function(fg) {
+          idx <- which(get_functional_group_levels() == fg)
+          if (length(idx) == 0) return("gray")
+          COLOR_SCHEME[idx]
+        })
 
         # Update reactive values
         net_reactive(loaded_net)
@@ -160,7 +164,11 @@ import_server <- function(id,
         ecopath_net <- igraph::upgrade_graph(ecopath_net)
 
         # Assign colors
-        ecopath_info$colfg <- COLOR_SCHEME[as.numeric(ecopath_info$fg)]
+        ecopath_info$colfg <- sapply(as.character(ecopath_info$fg), function(fg) {
+          idx <- which(get_functional_group_levels() == fg)
+          if (length(idx) == 0) return("gray")
+          COLOR_SCHEME[idx]
+        })
 
         # Update reactive values
         net_reactive(ecopath_net)
@@ -268,7 +276,11 @@ import_server <- function(id,
         native_net <- igraph::upgrade_graph(native_net)
 
         # Assign colors
-        native_info$colfg <- COLOR_SCHEME[as.numeric(native_info$fg)]
+        native_info$colfg <- sapply(as.character(native_info$fg), function(fg) {
+          idx <- which(get_functional_group_levels() == fg)
+          if (length(idx) == 0) return("gray")
+          COLOR_SCHEME[idx]
+        })
 
         # Update reactive values
         net_reactive(native_net)
