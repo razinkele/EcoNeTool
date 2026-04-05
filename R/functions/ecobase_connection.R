@@ -381,11 +381,33 @@ convert_ecobase_to_econetool <- function(model_id, use_output = TRUE) {
 
   message("  Added ", links_added, " diet links from diet_descr")
 
-  # Clean negative or missing values
-  biomass_values[is.na(biomass_values) | biomass_values < 0] <- 1
-  pb_values[is.na(pb_values) | pb_values < 0] <- 0.5
-  qb_values[is.na(qb_values) | qb_values < 0] <- 1.5
-  ee_values[is.na(ee_values) | ee_values < 0 | ee_values > 1] <- 0.5
+  # Track and warn about groups receiving default values
+  default_biomass <- which(is.na(biomass_values) | biomass_values < 0)
+  default_pb <- which(is.na(pb_values) | pb_values < 0)
+  default_qb <- which(is.na(qb_values) | qb_values < 0)
+  default_ee <- which(is.na(ee_values) | ee_values < 0 | ee_values > 1)
+
+  if (length(default_biomass) > 0) {
+    warning(sprintf("EcoBase: %d groups received default biomass=1: %s",
+            length(default_biomass), paste(species_names[default_biomass], collapse = ", ")), call. = FALSE)
+  }
+  if (length(default_pb) > 0) {
+    warning(sprintf("EcoBase: %d groups received default P/B=0.5: %s",
+            length(default_pb), paste(species_names[default_pb], collapse = ", ")), call. = FALSE)
+  }
+  if (length(default_qb) > 0) {
+    warning(sprintf("EcoBase: %d groups received default Q/B=1.5: %s",
+            length(default_qb), paste(species_names[default_qb], collapse = ", ")), call. = FALSE)
+  }
+  if (length(default_ee) > 0) {
+    warning(sprintf("EcoBase: %d groups received default EE=0.5: %s",
+            length(default_ee), paste(species_names[default_ee], collapse = ", ")), call. = FALSE)
+  }
+
+  biomass_values[default_biomass] <- 1
+  pb_values[default_pb] <- 0.5
+  qb_values[default_qb] <- 1.5
+  ee_values[default_ee] <- 0.5
 
   # Create adjacency matrix (binary: 1 if diet > 0)
   adjacency_matrix <- (diet_matrix > 0) * 1
@@ -510,11 +532,33 @@ convert_ecobase_to_econetool_hybrid <- function(model_id) {
     }
   }
 
-  # Clean negative or missing values
-  biomass_values[is.na(biomass_values) | biomass_values < 0] <- 1
-  pb_values[is.na(pb_values) | pb_values < 0] <- 0.5
-  qb_values[is.na(qb_values) | qb_values < 0] <- 1.5
-  ee_values[is.na(ee_values) | ee_values < 0 | ee_values > 1] <- 0.5
+  # Track and warn about groups receiving default values
+  default_biomass <- which(is.na(biomass_values) | biomass_values < 0)
+  default_pb <- which(is.na(pb_values) | pb_values < 0)
+  default_qb <- which(is.na(qb_values) | qb_values < 0)
+  default_ee <- which(is.na(ee_values) | ee_values < 0 | ee_values > 1)
+
+  if (length(default_biomass) > 0) {
+    warning(sprintf("EcoBase: %d groups received default biomass=1: %s",
+            length(default_biomass), paste(species_names[default_biomass], collapse = ", ")), call. = FALSE)
+  }
+  if (length(default_pb) > 0) {
+    warning(sprintf("EcoBase: %d groups received default P/B=0.5: %s",
+            length(default_pb), paste(species_names[default_pb], collapse = ", ")), call. = FALSE)
+  }
+  if (length(default_qb) > 0) {
+    warning(sprintf("EcoBase: %d groups received default Q/B=1.5: %s",
+            length(default_qb), paste(species_names[default_qb], collapse = ", ")), call. = FALSE)
+  }
+  if (length(default_ee) > 0) {
+    warning(sprintf("EcoBase: %d groups received default EE=0.5: %s",
+            length(default_ee), paste(species_names[default_ee], collapse = ", ")), call. = FALSE)
+  }
+
+  biomass_values[default_biomass] <- 1
+  pb_values[default_pb] <- 0.5
+  qb_values[default_qb] <- 1.5
+  ee_values[default_ee] <- 0.5
 
   # Get INPUT data for diet composition
   input_data <- get_ecobase_model_input(model_id)
