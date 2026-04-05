@@ -21,6 +21,12 @@ Layer 3: ML GAP-FILLING           — Fill gaps with 3 methods + uncertainty
 Layer 4: UI/UX IMPROVEMENTS       — Expose everything to users
 ```
 
+**Implementation decomposition:** Each layer becomes a separate implementation plan (4 plans total). Layer 1 must complete before Layer 2, etc.
+
+**PR banner fix:** Also update orchestrator banner text (line 117) from "PR1-PR3" to "PR0-PR8" to match actual code range.
+
+**Module loader:** All new R files must be registered in `R/functions/trait_lookup/load_all.R` and/or sourced in `app.R`.
+
 ---
 
 ## Layer 1: Data Quality Fixes
@@ -36,18 +42,53 @@ Canonical scheme (ecological water-column-to-sediment gradient):
 | EP3 | Epibenthic | On the seabed surface |
 | EP4 | Endobenthic/Infaunal | Within sediment |
 
-Updated in ALL 4 locations:
+Updated in ALL locations (21 files identified by codebase grep):
+
+**Primary harmonization (4 files):**
 - `R/config/harmonization_config.R` — pattern definitions (lines 39-45)
 - `R/functions/trait_lookup/harmonization.R` — `harmonize_fuzzy_habitat()` (lines 260-328)
 - `R/functions/trait_lookup/harmonization.R` — `harmonize_environmental_position()` (lines 625-704)
 - `R/functions/local_trait_databases.R` — `harmonize_species_enriched_traits()` (lines 609-626)
 
+**CRITICAL — Food web probability matrix (must update or food webs silently wrong):**
+- `R/functions/trait_foodweb.R` — `EP_MS` interaction probability matrix (lines 63-75) — row order must match new EP scheme
+- `R/functions/trait_foodweb.R` — `TRAIT_DEFINITIONS$EP` (lines 127-131) — label definitions
+
+**Orchestrator labels (2 dicts, both inconsistent):**
+- `R/functions/trait_lookup/orchestrator.R` — `ep_labels` at line 884 and line 897
+
+**UI display:**
+- `R/ui/trait_research_ui.R` — EP code descriptions (lines 493-496)
+- `R/ui/traitfoodweb_ui.R` — EP descriptions (lines 573-575)
+- `R/ui/foodweb_construction_ui.R` — EP reference table
+
+**Help content:**
+- `R/functions/trait_help_content.R` — EP HTML content (lines 140, 143, 221)
+
+**Legacy files (update or remove):**
+- `R/functions/trait_lookup.R` — ep_labels at lines 2644, 2657
+- `R/functions/trait_lookup-laguna-safeBackup-0001.R` — EP labels
+
+**Tests:**
+- `tests/test_expansion_quick.R` — EP1 label assertion (line 115)
+
 ### 1.2 FS3 Conflict Resolution
 
 - FS3 = **Omnivore** (matching config and orchestrator labels)
 - Xylophagous (wood boring) gets new code **FS7**
-- Update `harmonize_fuzzy_foraging()` line 130-132: map xylophagous to FS7
-- Add FS7 pattern to `harmonization_config.R`
+
+**Files to update for FS7:**
+- `R/config/harmonization_config.R` — add FS7 foraging pattern
+- `R/functions/trait_lookup/harmonization.R:130-132` — map xylophagous to FS7
+- `R/functions/trait_foodweb.R:380` — update `valid_FS <- paste0("FS", c(0:7))` (currently 0:6, will reject FS7)
+- `R/functions/trait_foodweb.R:29-42` — add FS7 row to `FS_MS` interaction probability matrix (similar to FS5 deposit feeder)
+- `R/functions/trait_foodweb.R:111-118` — add FS7 to `TRAIT_DEFINITIONS$FS`
+- `R/functions/trait_lookup/orchestrator.R:794,808` — add FS7 to both `fs_labels` dicts
+- `R/ui/traitfoodweb_ui.R:153,207` — update "FS0-FS6" descriptions to "FS0-FS7"
+- `R/ui/foodweb_construction_ui.R:84` — update FS range description
+- `R/functions/trait_help_content.R:271` — update HTML
+- `tests/testthat/test-trait-lookup-unit.R:236` — update regex to `^FS[0-7]$`
+- `tests/test_fuzzy_harmonization.R:246` — update FS range label
 
 ### 1.3 Fix 8 Disabled Taxonomic Rules
 
@@ -78,7 +119,7 @@ In `R/functions/trait_lookup/orchestrator.R`, update smart routing:
 | Marine mammals (Mammalia) | No explicit route | Add Mammalia → SeaLifeBase + WoRMS Traits |
 | Seabirds (Aves) | No explicit route | Add Aves → WoRMS Traits |
 | Tunicata (Urochordata) | Falls to ambiguous path | Add Tunicata → SeaLifeBase |
-| SHARK routing | Queries oceanographic data | Fix to query biological trait data or remove from trait pipeline |
+| SHARK routing | Queries oceanographic data | **Remove from trait pipeline** — SHARK provides environmental measurements not species traits. Keep in SHARK tab for environmental data only |
 
 ### 1.5 Pre-existing Cache Bugs
 
@@ -117,7 +158,9 @@ Each gets a new `lookup_<db>_traits()` function in `R/functions/trait_lookup/dat
 | 5 | NW Europe Benthic (Cefas) | Local CSV in `data/external_traits/` | Standard CSV |
 | 6 | EMODnet Btrait | R package `Btrait` (GitHub) | R data frames |
 | 7 | OBIS MoF | `robis::occurrence(mof=TRUE)` | Darwin Core MoF |
-| 8 | TraitBank (EOL) | `traits::traitbank()` | R list |
+| 8 | TraitBank (EOL) | `traits::traitbank()` or direct EOL API v3 (`httr`) | R list |
+
+**Note on TraitBank:** The `traits` R package was archived from CRAN in 2023. If not installable, use the EOL Cypher API directly via `httr::POST()` to `https://eol.org/service/cypher`. Alternatively, use a bulk CSV download from TraitBank and bundle locally.
 | 9 | Coral Trait DB | Local CSV in `data/external_traits/` | Standard CSV |
 | 10 | Pelagic Trait DB | Local CSV in `data/external_traits/` | Standard CSV |
 
@@ -169,8 +212,10 @@ New function: `harmonize_reproductive_strategy()` in harmonization.R
 | TT3 | Warm eurythermal |
 | TT4 | Warm stenothermal |
 
-Sources: Coral Trait DB, Arctic Traits, WoRMS Traits, OBIS
+Sources: Coral Trait DB (thermal bleaching thresholds), Arctic Traits (temperature preference), WoRMS Traits (environmental data where available)
 New function: `harmonize_temperature_tolerance()` in harmonization.R
+
+**Note:** OBIS removed as TT source — it is an occurrence database requiring cross-referencing with SST layers (e.g., Bio-ORACLE) for derived temperature ranges. This derivation is out of scope for this spec; OBIS is used only for body size/biomass traits via MoF records.
 
 **ST — Salinity Tolerance:**
 | Code | Meaning |
@@ -184,11 +229,50 @@ New function: `harmonize_temperature_tolerance()` in harmonization.R
 Sources: BIOTIC, freshwaterecology.info, Arctic Traits
 New function: `harmonize_salinity_tolerance()` in harmonization.R
 
-All 3 get:
-- Pattern definitions in `harmonization_config.R`
-- Harmonization functions in `harmonization.R`
-- Output columns in orchestrator result template
-- Entries in offline DB schema
+All 3 get pattern definitions in `harmonization_config.R`, harmonization functions in `harmonization.R`, output columns in orchestrator result template, and entries in offline DB schema.
+
+**RS patterns for `harmonization_config.R`:**
+```r
+reproductive_patterns = list(
+  RS1_broadcast = "broadcast|free.spawn|pelagic.larv|planktotrophic",
+  RS2_brooder = "brood|direct.develop|lecithotrophic|vivip|ovovivip",
+  RS3_budding = "bud|fission|fragment|asexual|vegetat",
+  RS4_mixed = "mixed|both|alternating|sequential"
+)
+```
+
+**TT patterns for `harmonization_config.R`:**
+```r
+temperature_patterns = list(
+  TT1_cold_steno = "arctic|polar|cold.stenothermal|psychrophil",
+  TT2_cold_eury = "boreal|cold.temperate|cold.eurythermal|subarctic",
+  TT3_warm_eury = "warm.temperate|eurythermal|cosmopolitan|temperate",
+  TT4_warm_steno = "tropical|warm.stenothermal|thermophil|subtropical"
+)
+```
+
+**ST patterns for `harmonization_config.R`:**
+```r
+salinity_patterns = list(
+  ST1_fresh = "freshwater|limnetic",
+  ST2_oligo = "oligohaline|brackish.low",
+  ST3_meso = "mesohaline|brackish",
+  ST4_poly = "polyhaline|marine.brackish",
+  ST5_eu = "euhaline|marine|full.saline"
+)
+```
+
+**Orchestrator result template addition:**
+```r
+# Add to existing result data.frame:
+RS = NA_character_, TT = NA_character_, ST = NA_character_,
+trophic_level = NA_real_, depth_min = NA_real_, depth_max = NA_real_,
+is_hab = NA, longevity_years = NA_real_, growth_rate = NA_character_,
+body_shape = NA_character_, phyto_motility = NA_character_,
+phyto_growth_form = NA_character_,
+RS_confidence = NA_real_, TT_confidence = NA_real_, ST_confidence = NA_real_,
+imputation_method = "observed"
+```
 
 ---
 
@@ -212,11 +296,13 @@ New file: `R/functions/rphylopars_imputation.R`
 ### 3.3 BHPMF Integration
 
 New file: `R/functions/bhpmf_imputation.R`
-- `impute_with_bhpmf(trait_matrix, taxonomy_df)`: implements hierarchical probabilistic matrix factorization (Schrodt et al. 2015)
-- Gibbs sampler: 1000 iterations, 200 burn-in, taxonomy-informed priors
-- Returns gap-filled matrix + 95% credible intervals per cell
+- `impute_with_bhpmf(trait_matrix, taxonomy_df)`: calls `BHPMF::GapFilling()` (CRAN package, Schrodt et al. 2015)
+- Input: numeric trait matrix with NA gaps + taxonomy hierarchy matrix
+- Returns gap-filled matrix + SD matrix (95% credible intervals = mean +/- 1.96*SD)
 - Used ONLY during offline DB rebuild (too slow for real-time)
-- Dependencies: `Matrix`, `MCMCpack` or custom Gibbs implementation
+- Dependencies: `BHPMF` (CRAN — replaces custom Gibbs implementation, saves ~500 lines)
+
+**Note:** The `BHPMF` package on CRAN implements the exact algorithm described in Schrodt et al. (2015). No custom implementation needed. `MCMCpack` is NOT required.
 
 ### 3.4 Method Selection Logic
 
@@ -287,6 +373,41 @@ Files: `R/modules/plugin_server.R`
 
 ---
 
+---
+
+## Schema Migration
+
+Existing `cache/offline_traits.db` files will have the old schema (5 traits, no RS/TT/ST columns, no extracted trait columns). New code querying these columns will fail.
+
+**Migration strategy:**
+- Add a `schema_version` key to the `metadata` table in the offline DB
+- On startup, `lookup_offline_traits()` checks schema version against expected version
+- If mismatch: run `ALTER TABLE species_traits ADD COLUMN <col> TEXT DEFAULT NULL` for each missing column
+- This is non-destructive — existing data preserved, new columns start as NULL
+- Full rebuild via "Rebuild Database" button populates new columns
+
+**Same approach for `cache/taxonomy.db`** (the SQLite cache) — add missing columns on version mismatch.
+
+---
+
+## Bundled Data File Strategy
+
+5 CSV databases bundled in `data/external_traits/`:
+
+| Database | Est. Size | Strategy |
+|---|---|---|
+| Black Sea Traits | 1-3 MB | Commit directly |
+| Arctic Traits | 1-3 MB | Commit directly |
+| Cefas NW Europe | 5-10 MB | Commit directly, pre-filter to relevant columns |
+| Coral Trait DB | 10-50 MB raw | **Pre-filter** to Mediterranean/European corals + relevant traits only (~2-5 MB) |
+| Pelagic Trait DB | 1-5 MB | Commit directly |
+
+**Total estimated: 10-25 MB** (after pre-filtering Coral DB).
+
+Files >10 MB should use Git LFS or be pre-filtered. For deployment, all bundled CSVs are loaded into the offline SQLite DB at build time and excluded from the deployment package via `.deployignore`.
+
+---
+
 ## Testing Strategy
 
 - Each new database lookup function gets testthat tests with mocked responses
@@ -301,8 +422,8 @@ Files: `R/modules/plugin_server.R`
 |---|---|---|
 | `Rphylopars` | CRAN | Layer 3: phylogenetic imputation |
 | `ape` | CRAN | Layer 3: tree construction, PCoA |
-| `MCMCpack` | CRAN | Layer 3: BHPMF Gibbs sampler |
-| `Btrait` | GitHub (EMODnet) | Layer 2: EMODnet traits |
+| `BHPMF` | CRAN | Layer 3: Bayesian gap-filling (replaces custom Gibbs + MCMCpack) |
+| `Btrait` | GitHub (EMODnet) | Layer 2: EMODnet traits. Requires `remotes::install_github()`. Add conditional `requireNamespace` guard — if unavailable, skip EMODnet integration gracefully |
 | `robis` | CRAN | Layer 2: OBIS MoF |
-| `traits` | CRAN | Layer 2: TraitBank |
+| `traits` | CRAN (archived 2023) | Layer 2: TraitBank. If not installable, fall back to direct EOL API via `httr` or bundled CSV |
 | `plotly` | CRAN (likely already installed) | Layer 4: radar charts |
