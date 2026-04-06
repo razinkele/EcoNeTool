@@ -360,6 +360,28 @@ trait_research_ui <- function() {
               div(
                 style = "overflow-x: auto;",
                 DT::dataTableOutput("trait_research_table", height = "400px")
+              ),
+
+              tags$details(
+                tags$summary(tags$strong("Badge Legend"), style = "cursor:pointer; color:#1565c0;"),
+                tags$div(style = "padding:8px; background:#f5f5f5; border-radius:4px; margin-top:4px; font-size:12px;",
+                  HTML('
+                    <span style="background:#1565c0;color:white;padding:1px 6px;border-radius:3px">FishBase</span>
+                    <span style="background:#0277bd;color:white;padding:1px 6px;border-radius:3px">SeaLifeBase</span>
+                    <span style="background:#00695c;color:white;padding:1px 6px;border-radius:3px">WoRMS</span>
+                    <span style="background:#2e7d32;color:white;padding:1px 6px;border-radius:3px">BIOTIC</span>
+                    <span style="background:#558b2f;color:white;padding:1px 6px;border-radius:3px">PTDB</span>
+                    <span style="background:#33691e;color:white;padding:1px 6px;border-radius:3px">MAREDAT</span>
+                    <span style="background:#37474f;color:white;padding:1px 6px;border-radius:3px">OfflineDB</span>
+                    <span style="background:#ff6f00;color:white;padding:1px 6px;border-radius:3px">ML</span>
+                    <span style="background:#455a64;color:white;padding:1px 6px;border-radius:3px">Taxonomy</span>
+                    <span style="background:#5d4037;color:white;padding:1px 6px;border-radius:3px">Depth</span>
+                    <span style="background:#4a148c;color:white;padding:1px 6px;border-radius:3px">BlackSea</span>
+                    <span style="background:#1a237e;color:white;padding:1px 6px;border-radius:3px">Arctic</span>
+                    <span style="background:#006064;color:white;padding:1px 6px;border-radius:3px">Cefas</span>
+                    <span style="background:#880e4f;color:white;padding:1px 6px;border-radius:3px">Coral</span>
+                  ')
+                )
               )
             ),
 

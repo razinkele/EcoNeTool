@@ -145,6 +145,10 @@ lookup_species_traits <- function(species_name,
     MB_confidence = NA_real_, EP_confidence = NA_real_,
     PR_confidence = NA_real_, RS_confidence = NA_real_,
     TT_confidence = NA_real_, ST_confidence = NA_real_,
+    MS_source = NA_character_, FS_source = NA_character_,
+    MB_source = NA_character_, EP_source = NA_character_,
+    PR_source = NA_character_, RS_source = NA_character_,
+    TT_source = NA_character_, ST_source = NA_character_,
     imputation_method = "observed",
     stringsAsFactors = FALSE
   )
@@ -276,6 +280,11 @@ lookup_species_traits <- function(species_name,
       result$MB <- offline$MB
       result$EP <- offline$EP
       result$PR <- offline$PR
+      result$MS_source <- "OfflineDB"
+      result$FS_source <- "OfflineDB"
+      result$MB_source <- "OfflineDB"
+      result$EP_source <- "OfflineDB"
+      result$PR_source <- "OfflineDB"
       result$source <- paste0("offline:", offline$primary_source)
       result$confidence <- "high"
 
@@ -291,11 +300,11 @@ lookup_species_traits <- function(species_name,
       return(result)
     } else {
       message("  Partial traits found offline - will fill gaps via API lookups")
-      if (!is.na(offline$MS)) { result$MS <- offline$MS; offline_prefilled <- c(offline_prefilled, "MS") }
-      if (!is.na(offline$FS)) { result$FS <- offline$FS; offline_prefilled <- c(offline_prefilled, "FS") }
-      if (!is.na(offline$MB)) { result$MB <- offline$MB; offline_prefilled <- c(offline_prefilled, "MB") }
-      if (!is.na(offline$EP)) { result$EP <- offline$EP; offline_prefilled <- c(offline_prefilled, "EP") }
-      if (!is.na(offline$PR)) { result$PR <- offline$PR; offline_prefilled <- c(offline_prefilled, "PR") }
+      if (!is.na(offline$MS)) { result$MS <- offline$MS; result$MS_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "MS") }
+      if (!is.na(offline$FS)) { result$FS <- offline$FS; result$FS_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "FS") }
+      if (!is.na(offline$MB)) { result$MB <- offline$MB; result$MB_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "MB") }
+      if (!is.na(offline$EP)) { result$EP <- offline$EP; result$EP_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "EP") }
+      if (!is.na(offline$PR)) { result$PR <- offline$PR; result$PR_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "PR") }
       message("  Pre-filled: ", paste(offline_prefilled, collapse = ", "))
     }
   } else {
@@ -831,12 +840,15 @@ lookup_species_traits <- function(species_name,
       if (!is.null(blacksea_data$traits$mobility_info)) mobility_info <- c(mobility_info, blacksea_data$traits$mobility_info)
       if (!is.null(blacksea_data$traits$reproductive_mode)) {
         result$RS <- harmonize_reproductive_strategy(blacksea_data$traits$reproductive_mode)
+        result$RS_source <- "BlackSea"
       }
       if (!is.null(blacksea_data$traits$temperature_affinity)) {
         result$TT <- harmonize_temperature_tolerance(blacksea_data$traits$temperature_affinity)
+        result$TT_source <- "BlackSea"
       }
       if (!is.null(blacksea_data$traits$salinity_affinity)) {
         result$ST <- harmonize_salinity_tolerance(blacksea_data$traits$salinity_affinity)
+        result$ST_source <- "BlackSea"
       }
       message("    Found: ", paste(names(blacksea_data$traits), collapse = ", "))
     }
@@ -855,9 +867,11 @@ lookup_species_traits <- function(species_name,
       if (!is.null(arctic_data$traits$mobility_info)) mobility_info <- c(mobility_info, arctic_data$traits$mobility_info)
       if (!is.null(arctic_data$traits$reproductive_mode)) {
         result$RS <- harmonize_reproductive_strategy(arctic_data$traits$reproductive_mode)
+        result$RS_source <- "ArcticTraits"
       }
       if (!is.null(arctic_data$traits$temperature_preference)) {
         result$TT <- harmonize_temperature_tolerance(arctic_data$traits$temperature_preference)
+        result$TT_source <- "ArcticTraits"
       }
       message("    Found: ", paste(names(arctic_data$traits), collapse = ", "))
     }
@@ -877,6 +891,7 @@ lookup_species_traits <- function(species_name,
       if (!is.null(cefas_data$traits$longevity_years)) result$longevity_years <- cefas_data$traits$longevity_years
       if (!is.null(cefas_data$traits$reproductive_mode)) {
         result$RS <- harmonize_reproductive_strategy(cefas_data$traits$reproductive_mode)
+        result$RS_source <- "Cefas"
       }
       message("    Found: ", paste(names(cefas_data$traits), collapse = ", "))
     }
@@ -893,6 +908,7 @@ lookup_species_traits <- function(species_name,
       sources_used <- c(sources_used, "CoralTraits")
       if (!is.null(coral_data$traits$reproductive_mode)) {
         result$RS <- harmonize_reproductive_strategy(coral_data$traits$reproductive_mode)
+        result$RS_source <- "CoralTraits"
       }
       if (!is.null(coral_data$traits$thermal_tolerance)) {
         if (coral_data$traits$thermal_tolerance > 30) {
@@ -902,6 +918,7 @@ lookup_species_traits <- function(species_name,
         } else {
           result$TT <- "TT2"
         }
+        result$TT_source <- "CoralTraits"
       }
       if (!is.null(coral_data$traits$depth_min)) result$depth_min <- coral_data$traits$depth_min
       if (!is.null(coral_data$traits$depth_max)) result$depth_max <- coral_data$traits$depth_max
@@ -946,6 +963,7 @@ lookup_species_traits <- function(species_name,
       if (!is.null(worms_attr_data$traits$zone)) habitat_info <- c(habitat_info, worms_attr_data$traits$zone)
       if (!is.null(worms_attr_data$traits$salinity)) {
         result$ST <- harmonize_salinity_tolerance(worms_attr_data$traits$salinity)
+        result$ST_source <- "WoRMS_Traits"
       }
       message("    Found: ", paste(names(worms_attr_data$traits), collapse = ", "))
     }
@@ -964,6 +982,7 @@ lookup_species_traits <- function(species_name,
       if (!is.null(poly_data$traits$mobility_info)) mobility_info <- c(mobility_info, poly_data$traits$mobility_info)
       if (!is.null(poly_data$traits$reproductive_mode)) {
         result$RS <- harmonize_reproductive_strategy(poly_data$traits$reproductive_mode)
+        result$RS_source <- "PolyTraits"
       }
       message("    Found: ", paste(names(poly_data$traits), collapse = ", "))
     }
@@ -1032,6 +1051,12 @@ lookup_species_traits <- function(species_name,
     message("  \U0001f4cf Input: ", size_cm, " cm")
     if (!"MS" %in% offline_prefilled) {
       result$MS <- harmonize_size_class(size_cm)
+      if (!is.null(raw_traits$fishbase$max_length_cm)) result$MS_source <- "FishBase"
+      else if (!is.null(raw_traits$sealifebase$max_length_cm)) result$MS_source <- "SeaLifeBase"
+      else if (!is.null(raw_traits$biotic$max_length_cm)) result$MS_source <- "BIOTIC"
+      else if (!is.null(raw_traits$ptdb$cell_volume)) result$MS_source <- "PTDB"
+      else if (!is.null(raw_traits$worms$max_length_cm)) result$MS_source <- "WoRMS"
+      else result$MS_source <- "Harmonized"
     } else {
       message("  Kept offline value: ", result$MS)
     }
@@ -1055,6 +1080,10 @@ lookup_species_traits <- function(species_name,
     if (length(feeding_mode) > 0) message("  \U0001f374 Feeding Modes: ", paste(feeding_mode, collapse = ", "))
     if (!"FS" %in% offline_prefilled) {
       result$FS <- harmonize_foraging_strategy(feeding_mode, trophic_level)
+      if (!is.null(raw_traits$fishbase$trophic_level)) result$FS_source <- "FishBase"
+      else if (!is.null(raw_traits$biotic$feeding_mode)) result$FS_source <- "BIOTIC"
+      else if (length(feeding_mode) > 0) result$FS_source <- sources_used[length(sources_used)]
+      else result$FS_source <- "Harmonized"
     } else {
       message("  Kept offline value: ", result$FS)
     }
@@ -1072,6 +1101,7 @@ lookup_species_traits <- function(species_name,
       fuzzy_fs <- harmonize_fuzzy_foraging(raw_traits$ontology)
       if (!is.na(fuzzy_fs$class)) {
         result$FS <- fuzzy_fs$class
+        result$FS_source <- "Ontology"
         sources_used <- c(sources_used, "Fuzzy")
         message("  \u2713 Output: ", result$FS, " (from fuzzy ontology, confidence=", fuzzy_fs$confidence, ")")
         fs_labels <- c("FS0"="Primary Producer", "FS1"="Predator", "FS2"="Scavenger",
@@ -1102,6 +1132,9 @@ lookup_species_traits <- function(species_name,
     if (length(mobility_info) > 0) message("  \U0001f3ca Mobility Info: ", paste(mobility_info, collapse = ", "))
     if (!"MB" %in% offline_prefilled) {
       result$MB <- harmonize_mobility(mobility_info, body_shape, raw_traits$worms)
+      if (!is.null(raw_traits$fishbase$body_shape)) result$MB_source <- "FishBase"
+      else if (!is.null(raw_traits$biotic$mobility)) result$MB_source <- "BIOTIC"
+      else result$MB_source <- "Harmonized"
     } else {
       message("  Kept offline value: ", result$MB)
     }
@@ -1118,6 +1151,7 @@ lookup_species_traits <- function(species_name,
       fuzzy_mb <- harmonize_fuzzy_mobility(raw_traits$ontology)
       if (!is.na(fuzzy_mb$class)) {
         result$MB <- fuzzy_mb$class
+        result$MB_source <- "Ontology"
         sources_used <- c(sources_used, "Fuzzy")
         message("  \u2713 Output: ", result$MB, " (from fuzzy ontology, confidence=", fuzzy_mb$confidence, ")")
         mb_labels <- c("MB1"="Sessile", "MB2"="Burrower", "MB3"="Crawler",
@@ -1147,6 +1181,8 @@ lookup_species_traits <- function(species_name,
     if (length(habitat_info) > 0) message("  \U0001f30a Habitat Info: ", paste(habitat_info, collapse = ", "))
     if (!"EP" %in% offline_prefilled) {
       result$EP <- harmonize_environmental_position(depth_min, depth_max, habitat_info, raw_traits$worms)
+      if (!is.null(depth_min)) result$EP_source <- "Depth-based"
+      else result$EP_source <- "Taxonomy"
     } else {
       message("  Kept offline value: ", result$EP)
     }
@@ -1162,6 +1198,7 @@ lookup_species_traits <- function(species_name,
       fuzzy_ep <- harmonize_fuzzy_habitat(raw_traits$ontology)
       if (!is.na(fuzzy_ep$class)) {
         result$EP <- fuzzy_ep$class
+        result$EP_source <- "Ontology"
         sources_used <- c(sources_used, "Fuzzy")
         message("  \u2713 Output: ", result$EP, " (from fuzzy ontology, confidence=", fuzzy_ep$confidence, ")")
         ep_labels <- c(EP1 = "Pelagic", EP2 = "Benthopelagic", EP3 = "Epibenthic", EP4 = "Endobenthic")
@@ -1189,6 +1226,7 @@ lookup_species_traits <- function(species_name,
     message("  \U0001f6e1\ufe0f  Protection Info: ", paste(protection_info, collapse = ", "))
     if (!"PR" %in% offline_prefilled) {
       result$PR <- harmonize_protection(protection_info, raw_traits$worms)
+      result$PR_source <- "Taxonomy"
     } else {
       message("  Kept offline value: ", result$PR)
     }
@@ -1203,6 +1241,7 @@ lookup_species_traits <- function(species_name,
     message("  \U0001f6e1\ufe0f  Using taxonomic inference from WoRMS")
     if (!"PR" %in% offline_prefilled) {
       result$PR <- harmonize_protection(protection_info, raw_traits$worms)
+      result$PR_source <- "Taxonomy"
     } else {
       message("  Kept offline value: ", result$PR)
     }
@@ -1258,34 +1297,42 @@ lookup_species_traits <- function(species_name,
         # Update result with ML predictions
         if (!is.na(result_with_ml$MS) && is.na(result$MS)) {
           result$MS <- result_with_ml$MS
+          result$MS_source <- "ML"
           sources_used <- c(sources_used, "ML")
         }
         if (!is.na(result_with_ml$FS) && is.na(result$FS)) {
           result$FS <- result_with_ml$FS
+          result$FS_source <- "ML"
           sources_used <- c(sources_used, "ML")
         }
         if (!is.na(result_with_ml$MB) && is.na(result$MB)) {
           result$MB <- result_with_ml$MB
+          result$MB_source <- "ML"
           sources_used <- c(sources_used, "ML")
         }
         if (!is.na(result_with_ml$EP) && is.na(result$EP)) {
           result$EP <- result_with_ml$EP
+          result$EP_source <- "ML"
           sources_used <- c(sources_used, "ML")
         }
         if (!is.na(result_with_ml$PR) && is.na(result$PR)) {
           result$PR <- result_with_ml$PR
+          result$PR_source <- "ML"
           sources_used <- c(sources_used, "ML")
         }
         if (!is.na(result_with_ml$RS) && is.na(result$RS)) {
           result$RS <- result_with_ml$RS
+          result$RS_source <- "ML"
           sources_used <- c(sources_used, "ML")
         }
         if (!is.na(result_with_ml$TT) && is.na(result$TT)) {
           result$TT <- result_with_ml$TT
+          result$TT_source <- "ML"
           sources_used <- c(sources_used, "ML")
         }
         if (!is.na(result_with_ml$ST) && is.na(result$ST)) {
           result$ST <- result_with_ml$ST
+          result$ST_source <- "ML"
           sources_used <- c(sources_used, "ML")
         }
 

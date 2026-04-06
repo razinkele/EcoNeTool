@@ -593,31 +593,77 @@ trait_research_server <- function(input, output, session, shared_data) {
   # OUTPUT: TRAIT TABLE
   # ============================================================================
 
+  # Badge color mapping for trait sources
+  source_badge_color <- function(source) {
+    if (is.na(source) || source == "") return("#9e9e9e")  # gray
+    colors <- c(
+      "FishBase" = "#1565c0", "SeaLifeBase" = "#0277bd", "WoRMS" = "#00695c",
+      "WoRMS_Traits" = "#00695c", "BIOTIC" = "#2e7d32", "PTDB" = "#558b2f",
+      "MAREDAT" = "#33691e", "AlgaeBase" = "#827717", "BVOL" = "#9e9d24",
+      "SpeciesEnriched" = "#f57f17", "Ontology" = "#e65100",
+      "BlackSea" = "#4a148c", "ArcticTraits" = "#1a237e", "Cefas" = "#006064",
+      "CoralTraits" = "#880e4f", "PelagicTraits" = "#311b92",
+      "PolyTraits" = "#1b5e20", "EMODnet" = "#0d47a1", "OBIS" = "#01579b",
+      "OfflineDB" = "#37474f", "ML" = "#ff6f00",
+      "Depth-based" = "#5d4037", "Taxonomy" = "#455a64",
+      "Harmonized" = "#616161"
+    )
+    col <- colors[source]
+    if (is.na(col)) "#9e9e9e" else col
+  }
+
+  # Format a trait value with source badge
+  format_trait_badge <- function(value, source) {
+    if (is.na(value) || value == "") {
+      return('<span style="color:#bdbdbd">-</span>')
+    }
+    color <- source_badge_color(source)
+    badge <- if (!is.na(source) && source != "") {
+      sprintf('<span style="background:%s;color:white;padding:1px 4px;border-radius:3px;font-size:9px;margin-left:3px">%s</span>',
+              color, source)
+    } else ""
+    paste0('<strong>', value, '</strong>', badge)
+  }
+
   output$trait_research_table <- DT::renderDataTable({
     req(rv$trait_results)
 
-    # Select columns to display
-    display_cols <- c("species", "MS", "FS", "MB", "EP", "PR", "RS", "TT", "ST",
-                      "confidence", "imputation_method",
-                      "MS_confidence", "FS_confidence", "MB_confidence",
-                      "EP_confidence", "PR_confidence",
-                      "source")
-    display_df <- rv$trait_results[, display_cols[display_cols %in% names(rv$trait_results)]]
+    # Build display data frame with badge HTML
+    df <- rv$trait_results
+    display_df <- data.frame(
+      species = df$species,
+      stringsAsFactors = FALSE
+    )
+
+    # Add trait columns with provenance badges
+    for (trait in c("MS", "FS", "MB", "EP", "PR", "RS", "TT", "ST")) {
+      source_col <- paste0(trait, "_source")
+      vals <- df[[trait]]
+      srcs <- if (source_col %in% names(df)) df[[source_col]] else rep(NA_character_, nrow(df))
+      display_df[[trait]] <- mapply(format_trait_badge, vals, srcs, USE.NAMES = FALSE)
+    }
+
+    # Add metadata columns
+    if ("confidence" %in% names(df)) display_df$confidence <- df$confidence
+    if ("imputation_method" %in% names(df)) display_df$imputation_method <- df$imputation_method
+    if ("source" %in% names(df)) display_df$sources <- df$source
+
+    # Confidence columns (keep numeric for color-coding)
+    conf_cols <- c("MS_confidence", "FS_confidence", "MB_confidence",
+                   "EP_confidence", "PR_confidence")
+    for (cc in conf_cols) {
+      if (cc %in% names(df)) display_df[[cc]] <- df[[cc]]
+    }
 
     dt <- DT::datatable(
       display_df,
+      escape = FALSE,  # Allow HTML in cells
       options = list(pageLength = 15, scrollX = TRUE, dom = 'Bfrtip',
                      buttons = c('copy', 'csv', 'excel')),
       rownames = FALSE, class = 'stripe hover compact'
-    ) %>%
-      DT::formatStyle(
-        columns = intersect(c("MS", "FS", "MB", "EP", "PR", "RS", "TT", "ST"), names(display_df)),
-        backgroundColor = DT::styleEqual(c(NA, ""), c("#ffebee", "#ffebee"))
-      )
+    )
 
     # Color-code confidence columns: green >0.8, yellow 0.5-0.8, red <0.5
-    conf_cols <- c("MS_confidence", "FS_confidence", "MB_confidence",
-                   "EP_confidence", "PR_confidence")
     conf_cols_present <- conf_cols[conf_cols %in% names(display_df)]
     if (length(conf_cols_present) > 0) {
       dt <- dt %>%
