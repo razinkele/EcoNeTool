@@ -74,3 +74,14 @@ test_that("orchestrator ML block checks expanded traits and sets imputation_meth
   expect_true(grepl("rf_predicted", orch_joined),
               info = "ML block should set imputation_method to rf_predicted")
 })
+
+test_that("orchestrator ML block checks RS/TT/ST and sets imputation_method", {
+  orch_text <- readLines(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"))
+  orch_joined <- paste(orch_text, collapse = "\n")
+  expect_true(grepl("is.na\\(result\\$RS\\)", orch_joined),
+              info = "ML block should check RS for gaps")
+  expect_true(grepl("is.na\\(result\\$TT\\)", orch_joined),
+              info = "ML block should check TT for gaps")
+  expect_true(grepl("rf_predicted", orch_joined),
+              info = "ML block should set imputation_method")
+})
