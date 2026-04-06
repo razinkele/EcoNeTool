@@ -933,13 +933,13 @@ trait_research_server <- function(input, output, session, shared_data) {
         count <- DBI::dbGetQuery(con, "SELECT COUNT(*) as n FROM species_traits")$n
       }, error = function(e) {})
     }
-    valueBox(count, "Species", icon = icon("fish"), color = "blue")
+    valueBox(count, "Species", icon = icon("fish"), color = "primary")
   })
 
   output$offline_db_age <- renderValueBox({
     db_path <- "cache/offline_traits.db"
     age_text <- "Not built"
-    color <- "red"
+    color <- "danger"
     if (file.exists(db_path) && requireNamespace("RSQLite", quietly = TRUE)) {
       tryCatch({
         con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
@@ -949,7 +949,7 @@ trait_research_server <- function(input, output, session, shared_data) {
           build_time <- as.POSIXct(meta$value[1])
           age_days <- as.numeric(difftime(Sys.time(), build_time, units = "days"))
           age_text <- paste0(round(age_days), " days")
-          color <- if (age_days < 30) "green" else if (age_days < 90) "yellow" else "red"
+          color <- if (age_days < 30) "success" else if (age_days < 90) "warning" else "danger"
         }
       }, error = function(e) {})
     }
@@ -959,7 +959,7 @@ trait_research_server <- function(input, output, session, shared_data) {
   output$offline_db_status <- renderValueBox({
     db_path <- "cache/offline_traits.db"
     status <- if (file.exists(db_path)) "Available" else "Not Found"
-    color <- if (file.exists(db_path)) "green" else "red"
+    color <- if (file.exists(db_path)) "success" else "danger"
     valueBox(status, "Status", icon = icon("check-circle"), color = color)
   })
 
