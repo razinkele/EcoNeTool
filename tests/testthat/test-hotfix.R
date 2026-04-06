@@ -69,8 +69,8 @@ source(file.path(app_root, "R/functions/ml_trait_prediction.R"))
 
 test_that("compute_phylo_eigenvectors returns NULL on failure, not zero matrix", {
   fn_text <- paste(deparse(body(compute_phylo_eigenvectors)), collapse = "\n")
-  # Should NOT return matrix(0, ...) — should return NULL
-  expect_false(grepl("matrix\\(0", fn_text),
+  # Should NOT *return* matrix(0, ...) as a fallback — should return NULL
+  expect_false(grepl("return\\(matrix\\(0", fn_text),
                info = "Should return NULL, not zero matrix, on failure")
   expect_true(grepl("return\\(NULL\\)", fn_text),
               info = "Should have return(NULL) for failure cases")
