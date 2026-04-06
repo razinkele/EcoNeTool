@@ -307,7 +307,9 @@ query_fishbase <- function(species_name, geographic_region = NULL, progress_call
   update_progress <- function(msg) {
     message(msg)
     if (!is.null(progress_callback)) {
-      tryCatch(progress_callback(msg), error = function(e) {})
+      tryCatch(progress_callback(msg), error = function(e) {
+        message("Progress callback failed: ", e$message)
+      })
     }
   }
 

@@ -15,9 +15,9 @@
 # Date: 2025-12-25
 # =============================================================================
 
-# Load R6 for OOP (install if needed)
+# Load R6 for OOP
 if (!requireNamespace("R6", quietly = TRUE)) {
-  install.packages("R6")
+  stop("Package 'R6' is required for API rate limiting.\nInstall with: install.packages('R6')", call. = FALSE)
 }
 library(R6)
 

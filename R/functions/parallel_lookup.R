@@ -18,15 +18,13 @@
 # Date: 2025-12-25
 # =============================================================================
 
-# Check and install dependencies
+# Check dependencies
 if (!requireNamespace("future", quietly = TRUE)) {
-  message("Installing 'future' package for parallel processing...")
-  install.packages("future")
+  stop("Package 'future' is required for parallel lookups.\nInstall with: install.packages('future')", call. = FALSE)
 }
 
 if (!requireNamespace("future.apply", quietly = TRUE)) {
-  message("Installing 'future.apply' package...")
-  install.packages("future.apply")
+  stop("Package 'future.apply' is required for parallel lookups.\nInstall with: install.packages('future.apply')", call. = FALSE)
 }
 
 library(future)
@@ -256,19 +254,28 @@ lookup_species_parallel <- function(species_name,
   # Add other databases similarly...
   if ("biotic" %in% databases && exists("lookup_biotic_traits")) {
     lookup_functions$biotic <- function() {
-      tryCatch(lookup_biotic_traits(species_name), error = function(e) NULL)
+      tryCatch(lookup_biotic_traits(species_name), error = function(e) {
+        warning("BIOTIC lookup failed for '", species_name, "': ", e$message, call. = FALSE)
+        NULL
+      })
     }
   }
 
   if ("maredat" %in% databases && exists("lookup_maredat_traits")) {
     lookup_functions$maredat <- function() {
-      tryCatch(lookup_maredat_traits(species_name), error = function(e) NULL)
+      tryCatch(lookup_maredat_traits(species_name), error = function(e) {
+        warning("MAREDAT lookup failed for '", species_name, "': ", e$message, call. = FALSE)
+        NULL
+      })
     }
   }
 
   if ("ptdb" %in% databases && exists("lookup_ptdb_traits")) {
     lookup_functions$ptdb <- function() {
-      tryCatch(lookup_ptdb_traits(species_name), error = function(e) NULL)
+      tryCatch(lookup_ptdb_traits(species_name), error = function(e) {
+        warning("PTDB lookup failed for '", species_name, "': ", e$message, call. = FALSE)
+        NULL
+      })
     }
   }
 
@@ -288,7 +295,10 @@ lookup_species_parallel <- function(species_name,
 
     # Fallback: sequential execution
     lapply(lookup_functions, function(f) {
-      tryCatch(f(), error = function(e) NULL)
+      tryCatch(f(), error = function(e) {
+        warning("Parallel lookup failed: ", e$message, call. = FALSE)
+        NULL
+      })
     })
   })
 

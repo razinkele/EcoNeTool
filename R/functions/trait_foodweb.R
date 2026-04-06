@@ -25,19 +25,20 @@ MS_MS <- matrix(
 
 #' Foraging strategy × Prey size interaction probabilities
 #' Consumer foraging strategy (rows) × Resource size (columns)
-#' FS0 (None) and FS3 (Parasite) excluded
+#' FS0 (Primary producer) excluded from consumers
 FS_MS <- matrix(
   c(
     0.20, 0.50, 0.95, 0.80, 0.50, 0.20,  # FS1 Predator
     0.05, 0.20, 0.50, 0.95, 0.80, 0.50,  # FS2 Scavenger
+    0.50, 0.50, 0.50, 0.50, 0.50, 0.50,  # FS3 Omnivore (generalist)
     0.95, 0.80, 0.05, 0.05, 0.05, 0.05,  # FS4 Grazer
     0.80, 0.80, 0.50, 0.05, 0.05, 0.05,  # FS5 Deposit feeder
     0.95, 0.95, 0.20, 0.05, 0.05, 0.05,  # FS6 Filter feeder
     0.05, 0.20, 0.50, 0.80, 0.20, 0.05   # FS7 Xylophagous (wood borer)
   ),
-  nrow = 6, byrow = TRUE,
+  nrow = 7, byrow = TRUE,
   dimnames = list(
-    Consumer_FS = c("FS1", "FS2", "FS4", "FS5", "FS6", "FS7"),
+    Consumer_FS = c("FS1", "FS2", "FS3", "FS4", "FS5", "FS6", "FS7"),
     Resource_MS = c("MS1", "MS2", "MS3", "MS4", "MS5", "MS6")
   )
 )
@@ -83,13 +84,15 @@ PR_MS <- matrix(
     0.95, 0.95, 0.80, 0.50,  # PR0 None
     0.80, 0.80, 0.50, 0.05,  # PR2 Tube
     0.80, 0.80, 0.50, 0.05,  # PR3 Burrow
+    0.50, 0.50, 0.80, 0.50,  # PR4 Exoskeleton (thin carapace)
+    0.80, 0.50, 0.50, 0.20,  # PR5 Soft shell
     0.50, 0.50, 0.80, 0.50,  # PR6 Hard shell
     0.20, 0.20, 0.50, 0.20,  # PR7 Few spines
     0.20, 0.20, 0.50, 0.20   # PR8 Armoured
   ),
-  nrow = 6, byrow = TRUE,
+  nrow = 8, byrow = TRUE,
   dimnames = list(
-    Resource_PR = c("PR0", "PR2", "PR3", "PR6", "PR7", "PR8"),
+    Resource_PR = c("PR0", "PR2", "PR3", "PR4", "PR5", "PR6", "PR7", "PR8"),
     Resource_MS = c("MS2", "MS3", "MS4", "MS5")
   )
 )
@@ -187,8 +190,8 @@ calc_interaction_probability <- function(consumer_traits, resource_traits) {
   # 2. Only MS3-MS6 can be predators (have size-based predation)
   if (!c_MS %in% c("MS3", "MS4", "MS5", "MS6")) return(0)
 
-  # 3. FS0 (None) and FS3 (Parasite) excluded as consumers
-  if (c_FS %in% c("FS0", "FS3")) return(0)
+  # 3. Only FS0 (Primary producer) excluded as consumer
+  if (c_FS == "FS0") return(0)  # Only primary producers excluded (FS0)
 
   # 4. Resource cannot be larger than consumer for most strategies
   # (This is implicit in the MS_MS matrix structure)

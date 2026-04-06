@@ -21,15 +21,13 @@
 # Date: 2025-12-25
 # =============================================================================
 
-# Check and install RSQLite
+# Check RSQLite and DBI
 if (!requireNamespace("RSQLite", quietly = TRUE)) {
-  message("Installing 'RSQLite' package...")
-  install.packages("RSQLite")
+  stop("Package 'RSQLite' is required for SQLite cache.\nInstall with: install.packages('RSQLite')", call. = FALSE)
 }
 
 if (!requireNamespace("DBI", quietly = TRUE)) {
-  message("Installing 'DBI' package...")
-  install.packages("DBI")
+  stop("Package 'DBI' is required for SQLite cache.\nInstall with: install.packages('DBI')", call. = FALSE)
 }
 
 library(RSQLite)

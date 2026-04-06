@@ -14,8 +14,7 @@
 
 # Required packages
 if (!requireNamespace("readxl", quietly = TRUE)) {
-  message("Installing readxl package...")
-  install.packages("readxl")
+  stop("Package 'readxl' is required for reading Excel trait databases.\nInstall with: install.packages('readxl')", call. = FALSE)
 }
 
 library(readxl)

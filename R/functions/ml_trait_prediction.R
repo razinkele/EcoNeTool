@@ -49,7 +49,11 @@ compute_phylo_eigenvectors <- function(taxonomy_df, n_vectors = 10) {
     }
   }
 
-  pcoa_result <- tryCatch(ape::pcoa(as.dist(dist_mat)), error = function(e) NULL)
+  pcoa_result <- tryCatch(ape::pcoa(as.dist(dist_mat)), error = function(e) {
+    warning("Phylogenetic eigenvector computation failed: ", e$message,
+            ". Trait prediction will proceed without phylogenetic features.", call. = FALSE)
+    NULL
+  })
   if (is.null(pcoa_result) || is.null(pcoa_result$vectors)) {
     return(NULL)
   }
