@@ -18,6 +18,51 @@
 .ml_cache <- new.env(parent = emptyenv())
 .ml_cache$models <- NULL
 
+#' Compute Phylogenetic Eigenvectors from Taxonomy
+#'
+#' Constructs a taxonomic distance matrix from WoRMS hierarchy and computes
+#' principal coordinates (PCoA) using ape::pcoa().
+#'
+#' @param taxonomy_df Data frame with: species, phylum, class, order, family, genus
+#' @param n_vectors Integer, eigenvectors to return (default 10)
+#' @return Matrix with nrow(taxonomy_df) rows and n_vectors columns
+#' @export
+compute_phylo_eigenvectors <- function(taxonomy_df, n_vectors = 10) {
+  if (!requireNamespace("ape", quietly = TRUE)) {
+    warning("Package 'ape' required for phylogenetic eigenvectors")
+    return(matrix(0, nrow = nrow(taxonomy_df), ncol = n_vectors))
+  }
+  n_species <- nrow(taxonomy_df)
+  if (n_species < 3) return(matrix(0, nrow = n_species, ncol = n_vectors))
+
+  dist_mat <- matrix(0, nrow = n_species, ncol = n_species)
+  for (i in 1:(n_species - 1)) {
+    for (j in (i + 1):n_species) {
+      d <- 0
+      if (tolower(taxonomy_df$genus[i]) != tolower(taxonomy_df$genus[j])) d <- d + 1
+      if (tolower(taxonomy_df$family[i]) != tolower(taxonomy_df$family[j])) d <- d + 2
+      if (tolower(taxonomy_df$order[i]) != tolower(taxonomy_df$order[j])) d <- d + 3
+      if (tolower(taxonomy_df$class[i]) != tolower(taxonomy_df$class[j])) d <- d + 4
+      if (tolower(taxonomy_df$phylum[i]) != tolower(taxonomy_df$phylum[j])) d <- d + 5
+      dist_mat[i, j] <- d
+      dist_mat[j, i] <- d
+    }
+  }
+
+  pcoa_result <- tryCatch(ape::pcoa(as.dist(dist_mat)), error = function(e) NULL)
+  if (is.null(pcoa_result) || is.null(pcoa_result$vectors)) {
+    return(matrix(0, nrow = n_species, ncol = n_vectors))
+  }
+
+  available <- ncol(pcoa_result$vectors)
+  n_use <- min(n_vectors, available)
+  result <- matrix(0, nrow = n_species, ncol = n_vectors)
+  result[, 1:n_use] <- pcoa_result$vectors[, 1:n_use]
+  rownames(result) <- taxonomy_df$species
+  colnames(result) <- paste0("phylo_pc", 1:n_vectors)
+  result
+}
+
 # =============================================================================
 # LOAD MODELS
 # =============================================================================
