@@ -139,6 +139,7 @@ TRAIT_DEFINITIONS <- list(
     PR0 = "None",
     PR2 = "Tube",
     PR3 = "Burrow",
+    PR4 = "Exoskeleton",
     PR5 = "Soft shell",
     PR6 = "Hard shell",
     PR7 = "Few spines",
