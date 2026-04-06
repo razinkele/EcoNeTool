@@ -10,10 +10,13 @@
 # Database query functions (individual DB lookups)
 source("R/functions/trait_lookup/database_lookups.R")
 
+# Bundled CSV trait databases (Black Sea, Arctic, Cefas, Coral, Pelagic)
+source("R/functions/trait_lookup/csv_trait_databases.R")
+
 # Harmonization rules (raw traits -> MS/FS/MB/EP/PR codes)
 source("R/functions/trait_lookup/harmonization.R")
 
 # Main orchestrator (lookup_species_traits + batch_lookup_traits)
 source("R/functions/trait_lookup/orchestrator.R")
 
-message("\u2713 Trait lookup module loaded (3 files)")
+message("\u2713 Trait lookup module loaded (4 files)")
