@@ -151,4 +151,36 @@ plugin_server <- function(input, output, session, plugin_states) {
       duration = 3
     )
   })
+
+  # API KEY CONFIGURATION
+  observeEvent(input$show_api_keys, {
+    showModal(modalDialog(
+      title = "API Key Configuration", size = "m",
+      textInput("api_key_algaebase_user", "AlgaeBase Username:",
+                value = if (exists("API_KEYS")) API_KEYS$algaebase_username %||% "" else ""),
+      passwordInput("api_key_algaebase_pass", "AlgaeBase Password:", value = ""),
+      hr(),
+      textInput("api_key_freshwater", "freshwaterecology.info API Key:",
+                value = if (exists("API_KEYS")) API_KEYS$freshwaterecology_key %||% "" else ""),
+      tags$p(class = "text-muted",
+             "Keys saved to config/api_keys.R (gitignored). AlgaeBase: register at algaebase.org."),
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("save_api_keys", "Save Keys", class = "btn-primary", icon = icon("save"))
+      )
+    ))
+  })
+
+  observeEvent(input$save_api_keys, {
+    dir.create("config", showWarnings = FALSE)
+    keys_content <- paste0(
+      "# API Keys for EcoNeTool (auto-generated, gitignored)\n",
+      "API_KEYS$algaebase_username <- \"", input$api_key_algaebase_user, "\"\n",
+      "API_KEYS$algaebase_password <- \"", input$api_key_algaebase_pass, "\"\n",
+      "API_KEYS$freshwaterecology_key <- \"", input$api_key_freshwater, "\"\n"
+    )
+    writeLines(keys_content, "config/api_keys.R")
+    removeModal()
+    showNotification("API keys saved successfully!", type = "message")
+  })
 }

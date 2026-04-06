@@ -29,6 +29,12 @@ test_that("trait research server has radar chart", {
   expect_true(grepl("scatterpolar|radar|plotly", server_joined, ignore.case = TRUE))
 })
 
+test_that("plugin server has API key configuration", {
+  server_text <- readLines(file.path(app_root, "R/modules/plugin_server.R"))
+  server_joined <- paste(server_text, collapse = "\n")
+  expect_true(grepl("API_KEYS.*algaebase|api_key.*algaebase", server_joined, ignore.case = TRUE))
+})
+
 test_that("harmonization settings UI has 8 ecosystem profiles", {
   ui_text <- readLines(file.path(app_root, "R/ui/harmonization_settings_ui.R"))
   ui_joined <- paste(ui_text, collapse = "\n")

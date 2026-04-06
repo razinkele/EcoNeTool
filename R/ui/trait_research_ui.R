@@ -16,6 +16,9 @@ trait_research_ui <- function() {
       column(
         width = 3,
         style = "text-align: right;",
+        actionButton("show_api_keys", "Configure API Keys",
+                     icon = icon("key"), class = "btn-outline-secondary btn-sm"),
+        " ",
         actionButton(
           "trait_research_help_button",
           tagList(icon("question-circle"), " Help"),
