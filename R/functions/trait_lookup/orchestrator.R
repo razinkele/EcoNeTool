@@ -117,16 +117,22 @@ lookup_species_traits <- function(species_name,
   message("\u2551   PR (Predator Resistance) - Protection (PR0-PR8)             \u2551")
   message("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d")
 
-  # Initialize result
+  # Initialize result with expanded trait columns
   result <- data.frame(
     species = species_name,
-    MS = NA_character_,
-    FS = NA_character_,
-    MB = NA_character_,
-    EP = NA_character_,
-    PR = NA_character_,
-    source = NA_character_,
-    confidence = NA_character_,
+    MS = NA_character_, FS = NA_character_, MB = NA_character_,
+    EP = NA_character_, PR = NA_character_,
+    RS = NA_character_, TT = NA_character_, ST = NA_character_,
+    trophic_level = NA_real_, depth_min = NA_real_, depth_max = NA_real_,
+    is_hab = NA, longevity_years = NA_real_, growth_rate = NA_character_,
+    body_shape = NA_character_, phyto_motility = NA_character_,
+    phyto_growth_form = NA_character_,
+    source = NA_character_, confidence = NA_character_,
+    MS_confidence = NA_real_, FS_confidence = NA_real_,
+    MB_confidence = NA_real_, EP_confidence = NA_real_,
+    PR_confidence = NA_real_, RS_confidence = NA_real_,
+    TT_confidence = NA_real_, ST_confidence = NA_real_,
+    imputation_method = "observed",
     stringsAsFactors = FALSE
   )
 
