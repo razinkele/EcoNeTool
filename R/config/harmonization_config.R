@@ -24,7 +24,8 @@ HARMONIZATION_CONFIG <- list(
     FS3_omnivore = "omnivore|omnivorous|mixed diet|generalist feeder",
     FS4_grazer = "graz|herbiv|scraper|browser|grazer|herbivore|algivore",
     FS5_deposit = "deposit|sediment|burrower|deposit feeder|mud feeder|sand feeder",
-    FS6_filter = "filter|suspension|planktivor|strain|filter feeder|suspension feeder|bivalve"
+    FS6_filter = "filter|suspension|planktivor|strain|filter feeder|suspension feeder|bivalve",
+    FS7_xylophagous = "xylophag|wood.bor|wood.eat|lignivor"
   ),
 
   # MOBILITY PATTERNS

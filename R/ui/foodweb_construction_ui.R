@@ -81,7 +81,7 @@ foodweb_construction_ui <- function() {
               tags$small(
                 tags$dl(
                   tags$dt("MS:"), tags$dd("Size (MS1-MS7)"),
-                  tags$dt("FS:"), tags$dd("Foraging (FS0-FS6)"),
+                  tags$dt("FS:"), tags$dd("Foraging (FS0-FS7)"),
                   tags$dt("MB:"), tags$dd("Mobility (MB1-MB5)"),
                   tags$dt("EP:"), tags$dd("Position (EP1-EP4)"),
                   tags$dt("PR:"), tags$dd("Protection (PR0-PR8)")

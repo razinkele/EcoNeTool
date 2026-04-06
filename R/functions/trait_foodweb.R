@@ -112,10 +112,11 @@ TRAIT_DEFINITIONS <- list(
     FS0 = "None",
     FS1 = "Predator",
     FS2 = "Scavenger",
-    FS3 = "Parasite (excluded)",
+    FS3 = "Omnivore",
     FS4 = "Grazer",
     FS5 = "Deposit feeder",
-    FS6 = "Filter feeder"
+    FS6 = "Filter feeder",
+    FS7 = "Xylophagous (wood borer)"
   ),
   MB = c(
     MB1 = "Sessile",
@@ -377,7 +378,7 @@ validate_trait_data <- function(species_data) {
 
   # Validate trait codes
   valid_MS <- paste0("MS", 1:7)
-  valid_FS <- paste0("FS", c(0:6))
+  valid_FS <- paste0("FS", c(0:7))
   valid_MB <- paste0("MB", 1:5)
   valid_EP <- paste0("EP", 1:4)
   valid_PR <- paste0("PR", c(0, 2, 3, 5, 6, 7, 8))

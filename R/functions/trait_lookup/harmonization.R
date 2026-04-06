@@ -127,9 +127,9 @@ harmonize_fuzzy_foraging <- function(ontology_traits) {
   } else if (grepl("scavenger|detritivore|carrion", modality)) {
     fs_class <- "FS2"
 
-  # FS3: Xylophagous (wood boring) - rare
-  } else if (grepl("xylophag|wood.bor", modality)) {
-    fs_class <- "FS3"
+  # FS7: Xylophagous (wood boring) - rare
+  } else if (grepl("xylophag|wood.bor|wood.eat|lignivor", modality)) {
+    fs_class <- "FS7"
 
   # FS4: Grazer/Herbivore
   } else if (grepl("graz|herbivore|scraper|browser", modality)) {

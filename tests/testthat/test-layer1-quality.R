@@ -22,3 +22,10 @@ test_that("EP config patterns match canonical scheme", {
   expect_true(grepl("epibenthic", names(patterns)[3], ignore.case = TRUE))
   expect_true(grepl("endobenthic|infaun", names(patterns)[4], ignore.case = TRUE))
 })
+
+test_that("FS7 is valid and accepted in food web construction", {
+  valid_FS <- paste0("FS", c(0:7))
+  expect_true("FS7" %in% valid_FS)
+  expect_true("FS7" %in% names(TRAIT_DEFINITIONS$FS))
+  expect_equal(TRAIT_DEFINITIONS$FS["FS3"], c(FS3 = "Omnivore"))
+})

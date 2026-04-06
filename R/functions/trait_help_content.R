@@ -268,7 +268,7 @@ generate_trait_help_lookup <- function() {
     <p>Raw data is converted to categorical trait codes:</p>
     <ul>
       <li><strong>Size:</strong> Continuous (cm) → MS1-MS7</li>
-      <li><strong>Foraging:</strong> Text pattern matching → FS0-FS6</li>
+      <li><strong>Foraging:</strong> Text pattern matching → FS0-FS7</li>
       <li><strong>Mobility:</strong> Behavior description + taxonomy → MB1-MB5</li>
       <li><strong>Position:</strong> Depth range + habitat → EP1-EP4</li>
       <li><strong>Protection:</strong> Skeleton type + taxonomy → PR0-PR8</li>

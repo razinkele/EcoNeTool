@@ -792,7 +792,8 @@ lookup_species_traits <- function(species_name,
     }
     message("  \u2713 Output: ", result$FS)
     fs_labels <- c("FS0"="Primary Producer", "FS1"="Predator", "FS2"="Scavenger",
-                   "FS3"="Omnivore", "FS4"="Grazer", "FS5"="Deposit Feeder", "FS6"="Filter Feeder")
+                   "FS3"="Omnivore", "FS4"="Grazer", "FS5"="Deposit Feeder", "FS6"="Filter Feeder",
+                   "FS7"="Xylophagous")
     if (!is.na(result$FS) && result$FS %in% names(fs_labels)) {
       message("     (", fs_labels[result$FS], ")")
     }
@@ -806,7 +807,8 @@ lookup_species_traits <- function(species_name,
         sources_used <- c(sources_used, "Fuzzy")
         message("  \u2713 Output: ", result$FS, " (from fuzzy ontology, confidence=", fuzzy_fs$confidence, ")")
         fs_labels <- c("FS0"="Primary Producer", "FS1"="Predator", "FS2"="Scavenger",
-                       "FS3"="Omnivore", "FS4"="Grazer", "FS5"="Deposit Feeder", "FS6"="Filter Feeder")
+                       "FS3"="Omnivore", "FS4"="Grazer", "FS5"="Deposit Feeder", "FS6"="Filter Feeder",
+                       "FS7"="Xylophagous")
         if (result$FS %in% names(fs_labels)) {
           message("     (", fs_labels[result$FS], ")")
         }
