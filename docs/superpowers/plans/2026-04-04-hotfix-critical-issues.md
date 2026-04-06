@@ -68,7 +68,18 @@ In `R/modules/plugin_server.R`, replace lines 174-185 (the `save_api_keys` obser
       algaebase_password = input$api_key_algaebase_pass,
       freshwaterecology_key = input$api_key_freshwater
     )
+    if (!requireNamespace("jsonlite", quietly = TRUE)) {
+      showNotification("jsonlite package required. Install with: install.packages('jsonlite')", type = "error")
+      return()
+    }
     jsonlite::write_json(keys_list, "config/api_keys.json", auto_unbox = TRUE, pretty = TRUE)
+
+    # Remove old vulnerable .R format if it exists
+    old_file <- "config/api_keys.R"
+    if (file.exists(old_file)) {
+      file.remove(old_file)
+      message("Removed legacy config/api_keys.R (replaced by config/api_keys.json)")
+    }
 
     # Also update in-memory API_KEYS if it exists
     if (exists("API_KEYS", envir = .GlobalEnv)) {
@@ -230,9 +241,16 @@ test_that("CSV lookup functions use simple relative paths, not sys.frame", {
 
 In `R/functions/trait_lookup/csv_trait_databases.R`, replace each function's default parameter. There are 5 occurrences of the `sys.frame` pattern:
 
-**lookup_blacksea_traits (line ~90-93):**
+**lookup_blacksea_traits (lines 90-93):** Replace the entire multi-line default:
 ```r
-    csv_file = file.path("data", "external_traits", "blacksea_traits.csv")
+    csv_file = file.path(
+      dirname(dirname(dirname(dirname(sys.frame(1)$ofile)))),
+      "data", "external_traits", "blacksea_traits.csv"
+    ))
+```
+With single-line:
+```r
+    csv_file = file.path("data", "external_traits", "blacksea_traits.csv"))
 ```
 
 **lookup_arctic_traits (line ~133-135):**
@@ -454,7 +472,7 @@ After:
   }
 ```
 
-**Note:** The callers of `compute_phylo_eigenvectors()` must now handle NULL returns. The existing `prepare_ml_features()` function should check for NULL and proceed without eigenvectors if unavailable.
+**Note:** `compute_phylo_eigenvectors()` is not yet called from production code (only from tests). When it IS wired into the ML training pipeline in the future, the caller must handle NULL returns by proceeding without eigenvectors. No production code changes needed for this fix.
 
 - [ ] **Step 3: Parse check, run test, commit**
 
