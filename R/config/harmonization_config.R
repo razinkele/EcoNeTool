@@ -58,6 +58,31 @@ HARMONIZATION_CONFIG <- list(
     PR8_armoured = "armoured|armored|heavy carapace|thick carapace|lobster|crab carapace"
   ),
 
+  # REPRODUCTIVE STRATEGY PATTERNS
+  reproductive_patterns = list(
+    RS1_broadcast = "broadcast|free.spawn|pelagic.larv|planktotrophic",
+    RS2_brooder = "brood|direct.develop|lecithotrophic|vivip|ovovivip",
+    RS3_budding = "bud|fission|fragment|asexual|vegetat",
+    RS4_mixed = "mixed|both|alternating|sequential"
+  ),
+
+  # TEMPERATURE TOLERANCE PATTERNS
+  temperature_patterns = list(
+    TT1_cold_steno = "arctic|polar|cold.stenothermal|psychrophil",
+    TT2_cold_eury = "boreal|cold.temperate|cold.eurythermal|subarctic",
+    TT3_warm_eury = "warm.temperate|eurythermal|cosmopolitan|temperate",
+    TT4_warm_steno = "tropical|warm.stenothermal|thermophil|subtropical"
+  ),
+
+  # SALINITY TOLERANCE PATTERNS
+  salinity_patterns = list(
+    ST1_fresh = "freshwater|limnetic",
+    ST2_oligo = "oligohaline|brackish.low",
+    ST3_meso = "mesohaline|brackish",
+    ST4_poly = "polyhaline|marine.brackish",
+    ST5_eu = "euhaline|marine|full.saline"
+  ),
+
   # TAXONOMIC INFERENCE RULES
   taxonomic_rules = list(
     fish_obligate_swimmers = TRUE,

@@ -51,3 +51,12 @@ test_that("orchestrator wires extracted traits to result columns", {
   expect_true(grepl("result\\$body_shape", orch_joined),
               info = "Orchestrator must wire body_shape to result")
 })
+
+test_that("harmonization config has RS/TT/ST patterns", {
+  expect_true("reproductive_patterns" %in% names(HARMONIZATION_CONFIG))
+  expect_true("temperature_patterns" %in% names(HARMONIZATION_CONFIG))
+  expect_true("salinity_patterns" %in% names(HARMONIZATION_CONFIG))
+  expect_equal(length(HARMONIZATION_CONFIG$reproductive_patterns), 4)
+  expect_equal(length(HARMONIZATION_CONFIG$temperature_patterns), 4)
+  expect_equal(length(HARMONIZATION_CONFIG$salinity_patterns), 5)
+})
