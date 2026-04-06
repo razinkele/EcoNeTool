@@ -32,11 +32,12 @@ FS_MS <- matrix(
     0.05, 0.20, 0.50, 0.95, 0.80, 0.50,  # FS2 Scavenger
     0.95, 0.80, 0.05, 0.05, 0.05, 0.05,  # FS4 Grazer
     0.80, 0.80, 0.50, 0.05, 0.05, 0.05,  # FS5 Deposit feeder
-    0.95, 0.95, 0.20, 0.05, 0.05, 0.05   # FS6 Filter feeder
+    0.95, 0.95, 0.20, 0.05, 0.05, 0.05,  # FS6 Filter feeder
+    0.05, 0.20, 0.50, 0.80, 0.20, 0.05   # FS7 Xylophagous (wood borer)
   ),
-  nrow = 5, byrow = TRUE,
+  nrow = 6, byrow = TRUE,
   dimnames = list(
-    Consumer_FS = c("FS1", "FS2", "FS4", "FS5", "FS6"),
+    Consumer_FS = c("FS1", "FS2", "FS4", "FS5", "FS6", "FS7"),
     Resource_MS = c("MS1", "MS2", "MS3", "MS4", "MS5", "MS6")
   )
 )

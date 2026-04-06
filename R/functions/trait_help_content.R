@@ -192,12 +192,12 @@ generate_trait_help_matrices <- function() {
 
     <h5>Example Calculation</h5>
     <div class='well'>
-      <p><strong>Consumer:</strong> Atlantic cod (MS6, FS1, MB5, EP4, PR0)</p>
-      <p><strong>Resource:</strong> Herring (MS5, FS6, MB5, EP4, PR0)</p>
+      <p><strong>Consumer:</strong> Atlantic cod (MS6, FS1, MB5, EP2, PR0)</p>
+      <p><strong>Resource:</strong> Herring (MS5, FS6, MB5, EP2, PR0)</p>
       <pre><code>P_size(MS6, MS5) = 0.8   # Cod can eat large prey
 P_forage(FS1, MS5) = 0.9 # Predators eat large fish
 P_mobility(MB5, MB5) = 0.6 # Can catch fast swimmers
-P_position(EP4, MS5) = 0.9 # Same habitat (pelagic)
+P_position(EP2, MS5) = 0.9 # Same habitat (benthopelagic)
 P_protection(PR0, MS6) = 1.0 # No protection
 
 → P(Cod eats Herring) = min(0.8, 0.9, 0.6, 0.9, 1.0) = 0.6</code></pre>

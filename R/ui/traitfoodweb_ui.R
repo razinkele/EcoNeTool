@@ -152,7 +152,7 @@ traitfoodweb_ui <- function() {
                   tags$dt("MS (Maximum Size):"), tags$dd("MS1-MS7 (< 0.1 cm to > 150 cm)"),
                   tags$dt("FS (Foraging Strategy):"), tags$dd("FS0-FS7 (Primary Producer to Xylophagous)"),
                   tags$dt("MB (Mobility):"), tags$dd("MB1-MB5 (Sessile to Obligate Swimmer)"),
-                  tags$dt("EP (Environmental Position):"), tags$dd("EP1-EP4 (Infaunal to Pelagic)"),
+                  tags$dt("EP (Environmental Position):"), tags$dd("EP1-EP4 (Pelagic to Endobenthic)"),
                   tags$dt("PR (Protection):"), tags$dd("PR0-PR8 (No Protection to Armoured)")
                 )
               ),
@@ -206,7 +206,7 @@ traitfoodweb_ui <- function() {
                   tags$dt("MS (Size):"), tags$dd("MS1-MS7 (< 0.1 cm to > 150 cm)"),
                   tags$dt("FS (Foraging):"), tags$dd("FS0-FS7 (Producer to Xylophagous)"),
                   tags$dt("MB (Mobility):"), tags$dd("MB1-MB5 (Sessile to Swimmer)"),
-                  tags$dt("EP (Position):"), tags$dd("EP1-EP4 (Infaunal to Pelagic)"),
+                  tags$dt("EP (Position):"), tags$dd("EP1-EP4 (Pelagic to Endobenthic)"),
                   tags$dt("PR (Protection):"), tags$dd("PR0-PR8 (None to Armoured)")
                 )
               ),
