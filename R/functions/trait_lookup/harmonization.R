@@ -649,14 +649,14 @@ harmonize_environmental_position <- function(depth_min = NULL, depth_max = NULL,
     if (avg_depth < 50) {
       # Check if burrowing
       if (!is.null(habitat_info) && grepl("burrow", tolower(paste(habitat_info, collapse = " ")))) {
-        return("EP1")
+        return("EP4")
       }
-      return("EP2")
+      return("EP3")
     }
 
     # Deep species often benthopelagic
     if (avg_depth > 200) {
-      return("EP3")
+      return("EP2")
     }
   }
 
@@ -669,18 +669,18 @@ harmonize_environmental_position <- function(depth_min = NULL, depth_max = NULL,
     if (is_rule_enabled("phytoplankton_pelagic")) {
       if (!is.null(taxonomic_info$feeding_mode) &&
           grepl("photosyn", tolower(taxonomic_info$feeding_mode))) {
-        return("EP4")  # Pelagic (need light)
+        return("EP1")  # Pelagic (need light)
       }
       # Also check for phytoplankton classes
       if (!is.null(class) && grepl("Bacillariophyceae|Dinophyceae|Prymnesiophyceae", class)) {
-        return("EP4")
+        return("EP1")
       }
     }
 
     # Zooplankton (if rule enabled)
     if (is_rule_enabled("zooplankton_pelagic")) {
       if (!is.null(class) && grepl("Copepoda|Cladocera", class)) {
-        return("EP4")  # Pelagic
+        return("EP1")  # Pelagic
       }
     }
 
@@ -689,14 +689,14 @@ harmonize_environmental_position <- function(depth_min = NULL, depth_max = NULL,
       if (!is.null(class) && class == "Bivalvia") {
         # Some bivalves are infaunal (if rule enabled)
         if (is_rule_enabled("infaunal_bivalves")) {
-          return("EP1")
+          return("EP4")
         }
       }
     }
 
     # Fish - depends on species but default pelagic
     if (!is.null(class) && grepl("Actinopteri|Teleostei", class)) {
-      return("EP4")  # Default pelagic for fish
+      return("EP1")  # Default pelagic for fish
     }
   }
 
