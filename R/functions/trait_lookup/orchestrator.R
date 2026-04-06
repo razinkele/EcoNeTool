@@ -760,6 +760,16 @@ lookup_species_traits <- function(species_name,
     )
   }
 
+  # Wire extracted traits to result columns
+  if (!is.null(trophic_level)) result$trophic_level <- trophic_level
+  if (!is.null(depth_min)) result$depth_min <- depth_min
+  if (!is.null(depth_max)) result$depth_max <- depth_max
+  if (!is.null(body_shape)) result$body_shape <- body_shape
+  if (!is.null(raw_traits$biotic$longevity_years)) result$longevity_years <- raw_traits$biotic$longevity_years
+  if (!is.null(raw_traits$ptdb$growth_form)) result$phyto_growth_form <- raw_traits$ptdb$growth_form
+  if (!is.null(raw_traits$ptdb$motility)) result$phyto_motility <- raw_traits$ptdb$motility
+  if (!is.null(raw_traits$ptdb$is_hab)) result$is_hab <- raw_traits$ptdb$is_hab
+
   # HARMONIZATION PHASE
   message("\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557")
   message("\u2551 HARMONIZATION - Converting raw data to categorical traits     \u2551")
