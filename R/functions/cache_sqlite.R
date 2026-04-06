@@ -388,9 +388,9 @@ load_species_from_cache <- function(species_name,
 
   # Query species
   if (include_raw) {
-    query <- "SELECT * FROM species WHERE species_name = ?"
-  } else {
     query <- "SELECT * FROM species WHERE species_name = ? AND raw_data IS NOT NULL"
+  } else {
+    query <- "SELECT * FROM species WHERE species_name = ?"
   }
 
   result <- dbGetQuery(con, query, params = list(species_name))
