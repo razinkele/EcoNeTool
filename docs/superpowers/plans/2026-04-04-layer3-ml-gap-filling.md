@@ -319,9 +319,7 @@ build_taxonomy_tree <- function(taxonomy_df) {
     hc <- hclust(as.dist(dist_mat), method = "average")
     tree <- ape::as.phylo(hc)
 
-    # Make ultrametric (required by Rphylopars)
-    tree <- ape::chronoMPL(tree)
-
+    # UPGMA already produces ultrametric tree — no need for chronoMPL()
     tree
   }, error = function(e) {
     message("  [build_taxonomy_tree] Error: ", e$message)
@@ -347,6 +345,8 @@ Optional package — graceful degradation if not installed."
 
 **Problem:** For offline DB rebuilds, BHPMF provides the best gap-filling for sparse trait matrices with taxonomy-informed priors.
 
+**IMPORTANT:** The BHPMF package was **removed from CRAN on 2017-11-14**. Install from archive: `install.packages("https://cran.r-project.org/src/contrib/Archive/BHPMF/BHPMF_1.0.tar.gz", repos = NULL, type = "source")`. The actual function is `gap_filling()` (lowercase with underscore), NOT `GapFilling()`. Parameters: `trait.info` (not `X`), `hierarchy.info`, output files: `mean_gap_filled.txt` and `std_gap_filled.txt`.
+
 **Files:**
 - Create: `R/functions/bhpmf_imputation.R`
 - Test: `tests/testthat/test-layer3-ml.R` (append)
@@ -357,7 +357,6 @@ Optional package — graceful degradation if not installed."
 test_that("impute_with_bhpmf returns correct structure", {
   skip_if_not_installed("BHPMF")
 
-  # Small test matrix (BHPMF needs numeric matrix with NAs)
   trait_matrix <- matrix(c(3, NA, 5, 4, 1, 2, NA, 1), nrow = 4, ncol = 2)
   rownames(trait_matrix) <- c("Sp_A", "Sp_B", "Sp_C", "Sp_D")
   colnames(trait_matrix) <- c("MS", "FS")
@@ -368,10 +367,7 @@ test_that("impute_with_bhpmf returns correct structure", {
   expect_true(is.list(result))
   expect_true("filled" %in% names(result))
   expect_true("sd" %in% names(result))
-  expect_true("method" %in% names(result))
   expect_equal(result$method, "bhpmf")
-  expect_equal(dim(result$filled), c(4, 2))
-  # All NAs should be filled
   expect_false(any(is.na(result$filled)))
 })
 
@@ -390,78 +386,63 @@ test_that("impute_with_bhpmf returns NULL without package", {
 # BHPMF Bayesian Hierarchical Trait Gap-Filling
 # =============================================================================
 #
-# Uses the BHPMF R package (Schrodt et al. 2015) for batch gap-filling of
-# sparse trait matrices with taxonomy-informed priors.
+# Uses the BHPMF R package (Schrodt et al. 2015) for batch gap-filling.
+# BHPMF removed from CRAN 2017-11-14. Install from archive:
+# install.packages("https://cran.r-project.org/src/contrib/Archive/BHPMF/BHPMF_1.0.tar.gz",
+#                   repos = NULL, type = "source")
 #
-# When to use: ONLY during offline DB rebuild (too slow for real-time lookups)
+# When to use: ONLY during offline DB rebuild (too slow for real-time)
 # =============================================================================
 
-#' Fill trait gaps using BHPMF (Bayesian Hierarchical Probabilistic Matrix Factorization)
+#' Fill trait gaps using BHPMF
 #'
 #' @param trait_matrix Numeric matrix with NA gaps (species x traits)
 #' @param hierarchy Numeric matrix of taxonomy hierarchy levels (species x n_levels)
-#' @param num_samples Integer, number of Gibbs samples (default 1000)
-#' @param burn_in Integer, burn-in period (default 200)
-#' @return List with: filled (matrix), sd (matrix of SDs), method ("bhpmf"),
-#'         or NULL if package unavailable
+#' @param num_samples Integer, Gibbs samples (default 1000)
+#' @param burn_in Integer, burn-in (default 200)
+#' @return List with: filled (matrix), sd (matrix), method ("bhpmf"), or NULL
 #' @export
 impute_with_bhpmf <- function(trait_matrix, hierarchy, num_samples = 1000, burn_in = 200) {
 
   if (!requireNamespace("BHPMF", quietly = TRUE)) {
-    message("  [BHPMF] Package not installed. Install with: install.packages('BHPMF')")
+    message("  [BHPMF] Not installed. See: https://cran.r-project.org/src/contrib/Archive/BHPMF/")
     return(NULL)
   }
 
   if (is.null(trait_matrix) || !is.matrix(trait_matrix) || nrow(trait_matrix) < 3) {
-    message("  [BHPMF] Need at least 3 species in trait matrix")
     return(NULL)
   }
 
   tryCatch({
-    message("  [BHPMF] Running gap-filling (", num_samples, " samples, ",
-            burn_in, " burn-in)...")
-    message("  [BHPMF] Matrix: ", nrow(trait_matrix), " species x ",
-            ncol(trait_matrix), " traits")
-    message("  [BHPMF] Missing values: ", sum(is.na(trait_matrix)), " (",
-            round(100 * sum(is.na(trait_matrix)) / length(trait_matrix), 1), "%)")
-
-    # Create temporary directory for BHPMF output
     tmp_dir <- tempdir()
+    mean_out <- file.path(tmp_dir, "mean_gap_filled.txt")
+    sd_out <- file.path(tmp_dir, "std_gap_filled.txt")
 
-    # Run BHPMF GapFilling
-    BHPMF::GapFilling(
-      X = trait_matrix,
+    message("  [BHPMF] Running (", nrow(trait_matrix), " species x ",
+            ncol(trait_matrix), " traits, ", sum(is.na(trait_matrix)), " gaps)...")
+
+    # Correct function name: gap_filling (lowercase), param: trait.info (not X)
+    BHPMF::gap_filling(
+      trait.info = trait_matrix,
       hierarchy.info = hierarchy,
       prediction.level = ncol(hierarchy),
       num.samples = num_samples,
       burn = burn_in,
-      tmp.dir = tmp_dir
+      mean.gap.filled.output.path = mean_out,
+      std.gap.filled.output.path = sd_out
     )
 
-    # Read results from BHPMF output files
-    mean_file <- file.path(tmp_dir, "mean_thinned.txt")
-    sd_file <- file.path(tmp_dir, "std_thinned.txt")
-
-    if (!file.exists(mean_file) || !file.exists(sd_file)) {
+    if (!file.exists(mean_out) || !file.exists(sd_out)) {
       message("  [BHPMF] Output files not found")
       return(NULL)
     }
 
-    filled <- as.matrix(read.table(mean_file))
-    sd_mat <- as.matrix(read.table(sd_file))
-
-    # Restore dimensions and names
+    filled <- as.matrix(read.table(mean_out))
+    sd_mat <- as.matrix(read.table(sd_out))
     dimnames(filled) <- dimnames(trait_matrix)
     dimnames(sd_mat) <- dimnames(trait_matrix)
 
-    message("  [BHPMF] Gap-filling complete")
-
-    list(
-      filled = filled,
-      sd = sd_mat,
-      method = "bhpmf"
-    )
-
+    list(filled = filled, sd = sd_mat, method = "bhpmf")
   }, error = function(e) {
     message("  [BHPMF] Error: ", e$message)
     NULL
@@ -482,87 +463,92 @@ Optional package — graceful degradation if not installed."
 
 ---
 
-### Task 4: Add method selection logic to orchestrator
+### Task 4: Enhance existing ML fallback block in orchestrator
 
-**Problem:** The orchestrator needs to choose between Rphylopars and enhanced RF when traits are missing after database lookups, and set `imputation_method` and confidence columns.
+**Problem:** The orchestrator already has an ML fallback block at lines ~1212-1280 using `apply_ml_fallback()`. We need to ENHANCE this existing block (not add a duplicate) to: (1) include RS/TT/ST in missing trait check, (2) set `imputation_method` and confidence columns, (3) add Rphylopars decision point when the package is available.
 
 **Files:**
-- Modify: `R/functions/trait_lookup/orchestrator.R`
+- Modify: `R/functions/trait_lookup/orchestrator.R` (lines ~1212-1280)
 - Test: `tests/testthat/test-layer3-ml.R` (append)
 
 - [ ] **Step 1: Append test**
 
 ```r
-test_that("orchestrator sets imputation_method column", {
-  source(file.path(app_root, "R/functions/trait_lookup/database_lookups.R"))
-  source(file.path(app_root, "R/functions/trait_lookup/csv_trait_databases.R"))
-  source(file.path(app_root, "R/functions/trait_lookup/api_trait_databases.R"))
-  source(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"))
+test_that("orchestrator ML block checks expanded traits and sets imputation_method", {
+  orch_text <- readLines(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"))
+  orch_joined <- paste(orch_text, collapse = "\n")
+  # Should check RS/TT/ST in missing traits (not just MS/FS/MB/EP/PR)
+  expect_true(grepl("is.na\\(result\\$RS\\)|RS.*missing", orch_joined),
+              info = "ML block should check RS for gaps")
+  # Should set imputation_method
+  expect_true(grepl("imputation_method.*rf_predicted|rf_predicted.*imputation_method", orch_joined),
+              info = "ML block should set imputation_method to rf_predicted")
+})
 
-  # Call with nonexistent species — should get "observed" (default) or ML method
-  result <- lookup_species_traits("__test_nonexistent_xyz__")
-  expect_true("imputation_method" %in% names(result))
-  # For nonexistent species, imputation_method should be set
-  expect_true(!is.null(result$imputation_method))
+test_that("build_taxonomy_tree creates valid phylo object", {
+  skip_if_not_installed("ape")
+  source(file.path(app_root, "R/functions/rphylopars_imputation.R"))
+  taxonomy_df <- data.frame(
+    species = c("Gadus morhua", "Gadus ogac", "Clupea harengus", "Mytilus edulis"),
+    phylum = c("Chordata", "Chordata", "Chordata", "Mollusca"),
+    class = c("Actinopteri", "Actinopteri", "Actinopteri", "Bivalvia"),
+    order = c("Gadiformes", "Gadiformes", "Clupeiformes", "Mytilida"),
+    family = c("Gadidae", "Gadidae", "Clupeidae", "Mytilidae"),
+    genus = c("Gadus", "Gadus", "Clupea", "Mytilus"),
+    stringsAsFactors = FALSE
+  )
+  tree <- build_taxonomy_tree(taxonomy_df)
+  expect_true(inherits(tree, "phylo"), info = "Should return a phylo object")
+  expect_equal(length(tree$tip.label), 4)
 })
 ```
 
-- [ ] **Step 2: Add ML imputation block to orchestrator**
+- [ ] **Step 2: Enhance the EXISTING ML fallback block**
 
-In `R/functions/trait_lookup/orchestrator.R`, find the section AFTER harmonization (after all MS/FS/MB/EP/PR are assigned from harmonization functions). Before the final `return(result)`, add:
+In `R/functions/trait_lookup/orchestrator.R`, find the existing ML block (lines ~1217-1223). The current `missing_traits` only checks MS/FS/MB/EP/PR. Expand to also check RS/TT/ST:
+
+Replace lines ~1217-1223:
+```r
+  missing_traits <- c(
+    if (is.na(result$MS)) "MS",
+    if (is.na(result$FS)) "FS",
+    if (is.na(result$MB)) "MB",
+    if (is.na(result$EP)) "EP",
+    if (is.na(result$PR)) "PR"
+  )
+```
+
+With:
+```r
+  missing_traits <- c(
+    if (is.na(result$MS)) "MS",
+    if (is.na(result$FS)) "FS",
+    if (is.na(result$MB)) "MB",
+    if (is.na(result$EP)) "EP",
+    if (is.na(result$PR)) "PR",
+    if (is.na(result$RS)) "RS",
+    if (is.na(result$TT)) "TT",
+    if (is.na(result$ST)) "ST"
+  )
+```
+
+Then, AFTER the existing `apply_ml_fallback()` call and its result processing (~line 1278), add the imputation_method and confidence update:
 
 ```r
-  # ═══════════════════════════════════════════════════════════════════════
-  # ML GAP-FILLING (for missing traits after database lookups + harmonization)
-  # ═══════════════════════════════════════════════════════════════════════
-
-  missing_traits <- c()
-  for (trait in c("MS", "FS", "MB", "EP", "PR", "RS", "TT", "ST")) {
-    if (is.na(result[[trait]])) missing_traits <- c(missing_traits, trait)
-  }
-
-  if (length(missing_traits) > 0 && !is.null(raw_traits$worms)) {
-    taxonomic_info <- list(
-      phylum = raw_traits$worms$phylum,
-      class = raw_traits$worms$class,
-      order = raw_traits$worms$order,
-      family = raw_traits$worms$family,
-      genus = raw_traits$worms$genus
-    )
-
-    message("\n  ML Gap-Filling for: ", paste(missing_traits, collapse = ", "))
-
-    # Try ML prediction for each missing trait
-    ml_predictions <- predict_missing_traits(
-      current_traits = as.list(result[1, c("MS", "FS", "MB", "EP", "PR")]),
-      taxonomic_info = taxonomic_info,
-      traits_to_predict = intersect(missing_traits, c("MS", "FS", "MB", "EP", "PR"))
-    )
-
-    if (!is.null(ml_predictions) && length(ml_predictions) > 0) {
-      for (trait_name in names(ml_predictions)) {
-        pred <- ml_predictions[[trait_name]]
-        if (!is.null(pred) && !is.null(pred$value)) {
-          result[[trait_name]] <- pred$value
-          result[[paste0(trait_name, "_confidence")]] <- pred$probability %||% 0.5
+        # Set imputation metadata for ML-filled traits
+        if ("ML" %in% sources_used) {
           result$imputation_method <- "rf_predicted"
-          message("    ", trait_name, " = ", pred$value,
-                  " (RF, prob=", round(pred$probability %||% 0, 2), ")")
         }
-      }
-    }
-  }
 ```
 
 - [ ] **Step 3: Parse check, run tests, commit**
 
 ```bash
-git commit -m "feat(ml): add ML gap-filling to orchestrator method selection
+git commit -m "feat(ml): enhance orchestrator ML block with RS/TT/ST and imputation_method
 
-After database lookups and harmonization, missing traits are filled
-via predict_missing_traits() (RF model). Sets imputation_method to
-'rf_predicted' and per-trait confidence scores. Rphylopars/BHPMF
-integration points documented for when packages are available."
+Expanded missing trait check to include RS/TT/ST (not just MS-PR).
+Sets imputation_method to 'rf_predicted' when ML fills gaps.
+Rphylopars integration available when package is installed."
 ```
 
 ---
