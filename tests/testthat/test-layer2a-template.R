@@ -23,3 +23,16 @@ test_that("orchestrator result template has expanded columns", {
     expect_true(col %in% names(result), info = paste("Missing column:", col))
   }
 })
+
+test_that("lookup_ptdb_traits extracts is_hab (Harmful flag)", {
+  ptdb_file <- file.path(app_root, "data/ptdb_phytoplankton.csv")
+  skip_if_not(file.exists(ptdb_file), "PTDB file not available")
+  ptdb <- read.csv(ptdb_file, stringsAsFactors = FALSE)
+  skip_if(nrow(ptdb) == 0, "PTDB is empty")
+  test_species <- ptdb$Species[1]
+  result <- lookup_ptdb_traits(test_species, ptdb_file = ptdb_file)
+  if (result$success) {
+    expect_true("is_hab" %in% names(result$traits),
+                info = "PTDB should now extract harmful algae flag")
+  }
+})

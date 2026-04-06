@@ -738,6 +738,11 @@ lookup_ptdb_traits <- function(species_name, ptdb_file = NULL) {
       traits$growth_form <- species_row$Growth_form
     }
 
+    # Harmful Algae Bloom flag (previously not extracted)
+    if ("Harmful" %in% names(species_row) && !is.na(species_row$Harmful)) {
+      traits$is_hab <- as.logical(species_row$Harmful)
+    }
+
     # Habitat
     if ("Habitat" %in% names(species_row) && !is.na(species_row$Habitat)) {
       traits$habitat <- species_row$Habitat
