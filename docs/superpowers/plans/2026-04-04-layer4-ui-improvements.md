@@ -65,10 +65,12 @@ In `R/modules/trait_research_server.R`, find the trait results rendering (line ~
 With:
 
 ```r
+    # Keep original columns + add new ones
     display_cols <- c("species", "MS", "FS", "MB", "EP", "PR", "RS", "TT", "ST",
+                      "confidence", "imputation_method",
                       "MS_confidence", "FS_confidence", "MB_confidence",
                       "EP_confidence", "PR_confidence",
-                      "imputation_method", "source")
+                      "source")
 ```
 
 - [ ] **Step 3: Add confidence color-coding**
@@ -93,7 +95,24 @@ After the existing `DT::formatStyle()` call (line ~614), add:
     }
 ```
 
-Note: store the datatable in a `dt` variable first, then chain the formatting.
+**Important:** The current code pipes `DT::datatable(...) %>% DT::formatStyle(...)` directly. Refactor to store in a variable first:
+
+Replace the entire `DT::datatable(...)` pipe chain (lines ~603-620) with:
+
+```r
+    dt <- DT::datatable(
+      display_df,
+      options = list(pageLength = 15, scrollX = TRUE, dom = 'Bfrtip',
+                     buttons = c('copy', 'csv', 'excel')),
+      rownames = FALSE, class = 'stripe hover compact'
+    ) %>%
+      DT::formatStyle(
+        columns = intersect(c("MS", "FS", "MB", "EP", "PR", "RS", "TT", "ST"), names(display_df)),
+        backgroundColor = DT::styleEqual(c(NA, ""), c("#ffebee", "#ffebee"))
+      )
+```
+
+Then chain the confidence formatting onto `dt` as shown in Step 3.
 
 - [ ] **Step 4: Parse check, run test, commit**
 
@@ -164,6 +183,7 @@ With:
                          "Arctic/Nordic" = "arctic",
                          "Baltic Sea" = "baltic",
                          "Black Sea" = "black_sea",
+                         "Tropical/Subtropical" = "tropical",
                          "Deep Sea" = "deep_sea"
                        ),
                        selected = "temperate"),
@@ -327,6 +347,11 @@ In `R/modules/trait_research_server.R`, add:
     valueBox(status, "Status", icon = icon("check-circle"), color = color)
   })
 
+  observeEvent(input$rebuild_offline_db, {
+    showNotification("Offline database rebuild is not yet implemented. Run scripts/initialization/build_offline_trait_db.R manually.",
+                     type = "warning", duration = 10)
+  })
+
   output$offline_db_contents <- DT::renderDataTable({
     req(input$view_offline_db > 0)
     db_path <- "cache/offline_traits.db"
@@ -415,19 +440,20 @@ In `R/modules/trait_research_server.R`, add:
     trait_labels <- c("Body Size", "Foraging", "Mobility", "Env. Position",
                       "Protection", "Reproduction", "Temperature", "Salinity")
 
-    # Map trait codes to numeric scores (1-based from code number)
+    # Map trait codes to numeric scores
+    # Use -1 for missing (NA) to distinguish from code 0 (valid trait like PR0, FS0)
     scores <- sapply(trait_codes, function(tc) {
       val <- species_data[[tc]]
-      if (is.na(val) || val == "") return(0)
-      # Extract numeric part from code (e.g., "MS3" -> 3)
+      if (is.na(val) || val == "") return(-1)  # Missing
       num <- as.numeric(gsub("[^0-9]", "", val))
-      if (is.na(num)) return(0)
+      if (is.na(num)) return(-1)
       num
     })
 
-    # Normalize to 0-1 scale
+    # Normalize: code 0 -> small positive value (0.1), missing (-1) -> 0
     max_vals <- c(7, 7, 5, 4, 8, 4, 4, 5)  # Max code number for each trait
-    normalized <- scores / max_vals
+    normalized <- ifelse(scores < 0, 0, (scores + 0.5) / (max_vals + 0.5))
+    # This maps: missing->0, code0->~0.07, code_max->~0.93-1.0
 
     # Create polar/radar chart with plotly
     plotly::plot_ly(
@@ -496,12 +522,12 @@ After the existing plugin toggle rendering, add a new observer for an API key se
       size = "m",
 
       textInput("api_key_algaebase_user", "AlgaeBase Username:",
-                value = Sys.getenv("ALGAEBASE_USER", "")),
+                value = if (exists("API_KEYS")) API_KEYS$algaebase_username %||% "" else ""),
       passwordInput("api_key_algaebase_pass", "AlgaeBase Password:",
                     value = ""),
       hr(),
       textInput("api_key_freshwater", "freshwaterecology.info API Key:",
-                value = Sys.getenv("FRESHWATER_API_KEY", "")),
+                value = if (exists("API_KEYS")) API_KEYS$freshwaterecology_key %||% "" else ""),
 
       tags$p(class = "text-muted",
              "Keys are saved to config/api_keys.R (gitignored).",
@@ -515,14 +541,15 @@ After the existing plugin toggle rendering, add a new observer for an API key se
   })
 
   observeEvent(input$save_api_keys, {
-    # Save keys to config/api_keys.R
+    # Save keys to config/api_keys.R using the API_KEYS list format
+    # that get_api_key() reads via source("config/api_keys.R")
     dir.create("config", showWarnings = FALSE)
     keys_content <- paste0(
       "# API Keys for EcoNeTool (auto-generated, gitignored)\n",
-      "# Do not commit this file to version control\n\n",
-      "ALGAEBASE_USER <- \"", input$api_key_algaebase_user, "\"\n",
-      "ALGAEBASE_PASS <- \"", input$api_key_algaebase_pass, "\"\n",
-      "FRESHWATER_API_KEY <- \"", input$api_key_freshwater, "\"\n"
+      "# Loaded by config.R via source(); get_api_key() reads API_KEYS list\n\n",
+      "API_KEYS$algaebase_username <- \"", input$api_key_algaebase_user, "\"\n",
+      "API_KEYS$algaebase_password <- \"", input$api_key_algaebase_pass, "\"\n",
+      "API_KEYS$freshwaterecology_key <- \"", input$api_key_freshwater, "\"\n"
     )
     writeLines(keys_content, "config/api_keys.R")
     removeModal()
