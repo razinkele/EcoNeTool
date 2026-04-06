@@ -532,7 +532,46 @@ With:
   )
 ```
 
-Then, AFTER the existing `apply_ml_fallback()` call and its result processing (~line 1278), add the imputation_method and confidence update:
+Also expand the `harmonized_for_ml` list (~line 1246-1252) to include RS/TT/ST:
+
+Find:
+```r
+        harmonized_for_ml <- list(
+          MS = result$MS,
+          FS = result$FS,
+          MB = result$MB,
+          EP = result$EP,
+          PR = result$PR
+        )
+```
+
+Replace with:
+```r
+        harmonized_for_ml <- list(
+          MS = result$MS, FS = result$FS, MB = result$MB,
+          EP = result$EP, PR = result$PR,
+          RS = result$RS, TT = result$TT, ST = result$ST
+        )
+```
+
+Also expand the result copy-back block (~lines 1258-1277). After the existing 5 `if` blocks for MS/FS/MB/EP/PR, add:
+
+```r
+        if (!is.na(result_with_ml$RS) && is.na(result$RS)) {
+          result$RS <- result_with_ml$RS
+          sources_used <- c(sources_used, "ML")
+        }
+        if (!is.na(result_with_ml$TT) && is.na(result$TT)) {
+          result$TT <- result_with_ml$TT
+          sources_used <- c(sources_used, "ML")
+        }
+        if (!is.na(result_with_ml$ST) && is.na(result$ST)) {
+          result$ST <- result_with_ml$ST
+          sources_used <- c(sources_used, "ML")
+        }
+```
+
+Then, AFTER the result copy-back, add the imputation_method update:
 
 ```r
         # Set imputation metadata for ML-filled traits
@@ -540,6 +579,8 @@ Then, AFTER the existing `apply_ml_fallback()` call and its result processing (~
           result$imputation_method <- "rf_predicted"
         }
 ```
+
+**Note:** The existing `apply_ml_fallback()` function in `ml_trait_prediction.R` currently only predicts MS/FS/MB/EP/PR. Adding RS/TT/ST to `harmonized_for_ml` and the copy-back is forward-compatible — if the ML models don't include RS/TT/ST yet, those fields will simply remain NA. When RS/TT/ST models are trained in the future, they will automatically flow through this expanded pipeline.
 
 - [ ] **Step 3: Parse check, run tests, commit**
 
@@ -560,7 +601,7 @@ Rphylopars integration available when package is installed."
 
 - [ ] **Step 1: Add source lines for new files**
 
-In `app.R`, find where `R/functions/phylogenetic_imputation.R` is sourced (in the Phase 6 block or after it). After that line, add:
+In `app.R`, after the Phase 6 block (around line 92, after `ENABLE_PHASE6` section ends) or after `source("R/functions/trait_lookup/load_all.R")` (around line 111), add:
 
 ```r
 # Rphylopars imputation (optional — requires Rphylopars package)
