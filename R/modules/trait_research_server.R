@@ -597,27 +597,41 @@ trait_research_server <- function(input, output, session, shared_data) {
     req(rv$trait_results)
 
     # Select columns to display
-    display_cols <- c("species", "MS", "FS", "MB", "EP", "PR", "source", "confidence")
+    display_cols <- c("species", "MS", "FS", "MB", "EP", "PR", "RS", "TT", "ST",
+                      "confidence", "imputation_method",
+                      "MS_confidence", "FS_confidence", "MB_confidence",
+                      "EP_confidence", "PR_confidence",
+                      "source")
     display_df <- rv$trait_results[, display_cols[display_cols %in% names(rv$trait_results)]]
 
-    DT::datatable(
+    dt <- DT::datatable(
       display_df,
-      options = list(
-        pageLength = 15,
-        scrollX = TRUE,
-        dom = 'Bfrtip',
-        buttons = c('copy', 'csv', 'excel')
-      ),
-      rownames = FALSE,
-      class = 'stripe hover compact'
+      options = list(pageLength = 15, scrollX = TRUE, dom = 'Bfrtip',
+                     buttons = c('copy', 'csv', 'excel')),
+      rownames = FALSE, class = 'stripe hover compact'
     ) %>%
       DT::formatStyle(
-        columns = c("MS", "FS", "MB", "EP", "PR"),
-        backgroundColor = DT::styleEqual(
-          c(NA, ""),
-          c("#ffebee", "#ffebee")
-        )
+        columns = intersect(c("MS", "FS", "MB", "EP", "PR", "RS", "TT", "ST"), names(display_df)),
+        backgroundColor = DT::styleEqual(c(NA, ""), c("#ffebee", "#ffebee"))
       )
+
+    # Color-code confidence columns: green >0.8, yellow 0.5-0.8, red <0.5
+    conf_cols <- c("MS_confidence", "FS_confidence", "MB_confidence",
+                   "EP_confidence", "PR_confidence")
+    conf_cols_present <- conf_cols[conf_cols %in% names(display_df)]
+    if (length(conf_cols_present) > 0) {
+      dt <- dt %>%
+        DT::formatStyle(
+          columns = conf_cols_present,
+          backgroundColor = DT::styleInterval(
+            c(0.5, 0.8),
+            c("#ffcdd2", "#fff9c4", "#c8e6c9")
+          )
+        ) %>%
+        DT::formatRound(columns = conf_cols_present, digits = 2)
+    }
+
+    dt
   })
 
   # ============================================================================
