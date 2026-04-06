@@ -145,6 +145,16 @@ HARMONIZATION_CONFIG <- list(
       description = "Deep-sea and bathyal ecosystems (>200m)",
       size_multiplier = 1.3,
       size_thresholds_adjust = list(MS4_MS5 = 25.0, MS5_MS6 = 60.0)
+    ),
+    baltic = list(
+      description = "Baltic Sea (brackish, low salinity)",
+      size_multiplier = 0.9,
+      size_thresholds_adjust = list()
+    ),
+    black_sea = list(
+      description = "Black Sea marine ecosystems",
+      size_multiplier = 1.0,
+      size_thresholds_adjust = list()
     )
   ),
 

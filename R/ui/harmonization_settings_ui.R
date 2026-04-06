@@ -104,9 +104,14 @@ harmonization_settings_ui <- function() {
           column(6,
             selectInput("harm_active_profile", "Active Profile:",
                        choices = c(
-                         "Arctic/Subarctic (Baltic Sea)" = "arctic",
                          "Temperate (North Sea)" = "temperate",
-                         "Tropical/Subtropical" = "tropical"
+                         "Mediterranean" = "mediterranean",
+                         "Atlantic NE" = "atlantic_ne",
+                         "Arctic/Nordic" = "arctic",
+                         "Baltic Sea" = "baltic",
+                         "Black Sea" = "black_sea",
+                         "Tropical/Subtropical" = "tropical",
+                         "Deep Sea" = "deep_sea"
                        ),
                        selected = "temperate"),
             br(),
