@@ -84,8 +84,16 @@ echo "species,growth_form,reproductive_mode,thermal_tolerance_max,depth_lower,de
 echo "species,habitat_use,morphology,body_length_cm,nutritional_quality" > data/external_traits/pelagic_traits.csv
 ```
 
-- [ ] **Step 4: Add to .gitignore if files >5MB, commit directory structure**
+- [ ] **Step 4: Add .gitignore for large CSVs, commit directory structure**
 
+Add to the project's `.gitignore`:
+```
+# External trait databases (may be large, download per README)
+# Keep placeholder CSVs tracked, ignore large real data files
+# data/external_traits/*.csv  # Uncomment if files >5MB
+```
+
+Then commit:
 ```bash
 git add data/external_traits/README.md data/external_traits/*.csv
 git commit -m "$(cat <<'EOF'
@@ -170,6 +178,45 @@ test_that("lookup_pelagic_traits returns correct structure", {
   expect_false(result$success)
 })
 
+test_that("lookup_blacksea_traits extracts traits from real data", {
+  tmp <- tempfile(fileext = ".csv")
+  on.exit(unlink(tmp))
+  writeLines(c(
+    "species,feeding_mode,mobility,body_size_mm,reproductive_mode,temperature_affinity,salinity_affinity",
+    "Mytilus galloprovincialis,filter feeder,sessile,80,broadcast,warm eurythermal,euhaline"
+  ), tmp)
+  result <- lookup_blacksea_traits("Mytilus galloprovincialis", csv_file = tmp)
+  expect_true(result$success)
+  expect_equal(result$traits$feeding_mode, "filter feeder")
+  expect_equal(result$traits$mobility_info, "sessile")
+  expect_equal(result$traits$reproductive_mode, "broadcast")
+})
+
+test_that("lookup_cefas_traits extracts longevity from real data", {
+  tmp <- tempfile(fileext = ".csv")
+  on.exit(unlink(tmp))
+  writeLines(c(
+    "species,feeding_mode,mobility,body_size,lifespan,reproductive_mode",
+    "Arenicola marina,deposit feeder,burrower,200,5,broadcast"
+  ), tmp)
+  result <- lookup_cefas_traits("Arenicola marina", csv_file = tmp)
+  expect_true(result$success)
+  expect_equal(result$traits$feeding_mode, "deposit feeder")
+  expect_equal(result$traits$longevity_years, 5)
+})
+
+test_that("lookup functions handle genus-level matching", {
+  tmp <- tempfile(fileext = ".csv")
+  on.exit(unlink(tmp))
+  writeLines(c(
+    "species,feeding_mode",
+    "Mytilus edulis,filter feeder"
+  ), tmp)
+  result <- lookup_blacksea_traits("Mytilus galloprovincialis", csv_file = tmp)
+  expect_true(result$success, info = "Should match on genus Mytilus")
+  expect_equal(result$traits$feeding_mode, "filter feeder")
+})
+
 test_that("all 5 CSV lookup functions exist", {
   expect_true(exists("lookup_blacksea_traits", mode = "function"))
   expect_true(exists("lookup_arctic_traits", mode = "function"))
@@ -227,7 +274,7 @@ Create `R/functions/trait_lookup/csv_trait_databases.R`:
 .find_species <- function(data, species_name, species_col = "species") {
   if (!species_col %in% names(data)) {
     # Try common alternatives
-    for (alt in c("Species", "taxon", "Taxon", "scientific_name", "ScientificName")) {
+    for (alt in c("Species", "taxon", "Taxon", "scientific_name", "ScientificName", "species_name", "specie_name", "scientificname", "valid_name")) {
       if (alt %in% names(data)) { species_col <- alt; break }
     }
   }
@@ -262,20 +309,23 @@ lookup_blacksea_traits <- function(species_name, csv_file = "data/external_trait
   if (is.null(row)) return(result)
 
   traits <- list()
-  # Extract available traits (column names vary by download format)
-  for (col in names(row)) {
-    val <- row[[col]]
-    if (!is.na(val) && val != "") {
-      col_lower <- tolower(col)
-      if (grepl("feed|diet|troph", col_lower)) traits$feeding_mode <- val
-      if (grepl("mobil|move", col_lower)) traits$mobility_info <- val
-      if (grepl("size|length|body", col_lower) && is.numeric(val)) traits$size_mm <- val
-      if (grepl("reproduct|spawn|brood", col_lower)) traits$reproductive_mode <- val
-      if (grepl("temp", col_lower)) traits$temperature_affinity <- val
-      if (grepl("salin", col_lower)) traits$salinity_affinity <- val
-      if (grepl("depth", col_lower) && is.numeric(val)) traits$depth_info <- val
-    }
+  # Extract traits using explicit column name mapping (not grepl guessing)
+  .extract <- function(row, col_name) {
+    if (col_name %in% names(row) && !is.na(row[[col_name]]) && row[[col_name]] != "") row[[col_name]] else NULL
   }
+  .extract_num <- function(row, col_name) {
+    val <- .extract(row, col_name)
+    if (!is.null(val) && is.numeric(val)) val else NULL
+  }
+
+  # Map known columns (will be refined when real CSV column names are known)
+  if (!is.null(v <- .extract(row, "feeding_mode"))) traits$feeding_mode <- v
+  if (!is.null(v <- .extract(row, "mobility"))) traits$mobility_info <- v
+  if (!is.null(v <- .extract_num(row, "body_size_mm"))) traits$size_mm <- v
+  if (!is.null(v <- .extract(row, "reproductive_mode"))) traits$reproductive_mode <- v
+  if (!is.null(v <- .extract(row, "temperature_affinity"))) traits$temperature_affinity <- v
+  if (!is.null(v <- .extract(row, "salinity_affinity"))) traits$salinity_affinity <- v
+  if (!is.null(v <- .extract_num(row, "depth"))) traits$depth_info <- v
 
   result$traits <- traits
   result$success <- length(traits) > 0
@@ -286,35 +336,21 @@ lookup_blacksea_traits <- function(species_name, csv_file = "data/external_trait
 # 2. ARCTIC TRAITS
 # =============================================================================
 
-#' Lookup traits from Arctic Traits Database
-#' @param species_name Character, species to look up
-#' @param csv_file Character, path to CSV file
-#' @return list(species, source, success, traits)
 lookup_arctic_traits <- function(species_name, csv_file = "data/external_traits/arctic_traits.csv") {
   result <- list(species = species_name, source = "ArcticTraits", success = FALSE, traits = list())
   data <- .load_csv_cached(csv_file, "arctic")
   if (is.null(data)) return(result)
-
   row <- .find_species(data, species_name)
   if (is.null(row)) return(result)
 
   traits <- list()
-  for (col in names(row)) {
-    val <- row[[col]]
-    if (!is.na(val) && val != "") {
-      col_lower <- tolower(col)
-      if (grepl("feed|diet|troph", col_lower)) traits$feeding_mode <- val
-      if (grepl("mobil|move", col_lower)) traits$mobility_info <- val
-      if (grepl("size|length|body", col_lower) && is.numeric(val)) traits$size_mm <- val
-      if (grepl("reproduct|spawn|brood|larv", col_lower)) traits$reproductive_mode <- val
-      if (grepl("temp", col_lower)) traits$temperature_preference <- val
-    }
-  }
-
+  if (!is.null(v <- .extract(row, "feeding_mode"))) traits$feeding_mode <- v
+  if (!is.null(v <- .extract(row, "mobility"))) traits$mobility_info <- v
+  if (!is.null(v <- .extract_num(row, "body_size_mm"))) traits$size_mm <- v
+  if (!is.null(v <- .extract(row, "reproductive_mode"))) traits$reproductive_mode <- v
+  if (!is.null(v <- .extract(row, "temperature_preference"))) traits$temperature_preference <- v
   # Arctic species are cold-adapted by definition
-  if (is.null(traits$temperature_preference)) {
-    traits$temperature_preference <- "arctic"
-  }
+  if (is.null(traits$temperature_preference)) traits$temperature_preference <- "arctic"
 
   result$traits <- traits
   result$success <- length(traits) > 0
@@ -325,33 +361,22 @@ lookup_arctic_traits <- function(species_name, csv_file = "data/external_traits/
 # 3. CEFAS NW EUROPE BENTHIC
 # =============================================================================
 
-#' Lookup traits from Cefas NW Europe Benthic Traits
-#' @param species_name Character, species to look up
-#' @param csv_file Character, path to CSV file
-#' @return list(species, source, success, traits)
 lookup_cefas_traits <- function(species_name, csv_file = "data/external_traits/cefas_benthic_traits.csv") {
   result <- list(species = species_name, source = "Cefas", success = FALSE, traits = list())
   data <- .load_csv_cached(csv_file, "cefas")
   if (is.null(data)) return(result)
-
   row <- .find_species(data, species_name)
   if (is.null(row)) return(result)
 
   traits <- list()
-  for (col in names(row)) {
-    val <- row[[col]]
-    if (!is.na(val) && val != "") {
-      col_lower <- tolower(col)
-      if (grepl("feed|diet", col_lower)) traits$feeding_mode <- val
-      if (grepl("mobil", col_lower)) traits$mobility_info <- val
-      if (grepl("size|body", col_lower) && is.numeric(val)) traits$size_mm <- val
-      if (grepl("lifespan|longevity", col_lower) && is.numeric(val)) traits$longevity_years <- val
-      if (grepl("larv", col_lower)) traits$larval_development <- val
-      if (grepl("reproduct", col_lower)) traits$reproductive_mode <- val
-      if (grepl("living.habit|habit", col_lower)) traits$living_habit <- val
-      if (grepl("bioturbat", col_lower)) traits$bioturbation_mode <- val
-    }
-  }
+  if (!is.null(v <- .extract(row, "feeding_mode"))) traits$feeding_mode <- v
+  if (!is.null(v <- .extract(row, "mobility"))) traits$mobility_info <- v
+  if (!is.null(v <- .extract_num(row, "body_size"))) traits$size_mm <- v
+  if (!is.null(v <- .extract_num(row, "lifespan"))) traits$longevity_years <- v
+  if (!is.null(v <- .extract(row, "larval_development"))) traits$larval_development <- v
+  if (!is.null(v <- .extract(row, "reproductive_mode"))) traits$reproductive_mode <- v
+  if (!is.null(v <- .extract(row, "living_habit"))) traits$living_habit <- v
+  if (!is.null(v <- .extract(row, "bioturbation_mode"))) traits$bioturbation_mode <- v
 
   result$traits <- traits
   result$success <- length(traits) > 0
@@ -362,30 +387,19 @@ lookup_cefas_traits <- function(species_name, csv_file = "data/external_traits/c
 # 4. CORAL TRAIT DB
 # =============================================================================
 
-#' Lookup traits from Coral Trait Database
-#' @param species_name Character, species to look up
-#' @param csv_file Character, path to CSV file
-#' @return list(species, source, success, traits)
 lookup_coral_traits <- function(species_name, csv_file = "data/external_traits/coral_traits.csv") {
   result <- list(species = species_name, source = "CoralTraits", success = FALSE, traits = list())
   data <- .load_csv_cached(csv_file, "coral")
   if (is.null(data)) return(result)
-
   row <- .find_species(data, species_name)
   if (is.null(row)) return(result)
 
   traits <- list()
-  for (col in names(row)) {
-    val <- row[[col]]
-    if (!is.na(val) && val != "") {
-      col_lower <- tolower(col)
-      if (grepl("growth.form|morphology", col_lower)) traits$growth_form <- val
-      if (grepl("reproduct|spawn|brood", col_lower)) traits$reproductive_mode <- val
-      if (grepl("thermal|bleach|temp.*max|temp.*tol", col_lower) && is.numeric(val)) traits$thermal_tolerance <- val
-      if (grepl("depth.*low|depth.*min", col_lower) && is.numeric(val)) traits$depth_min <- val
-      if (grepl("depth.*up|depth.*max", col_lower) && is.numeric(val)) traits$depth_max <- val
-    }
-  }
+  if (!is.null(v <- .extract(row, "growth_form"))) traits$growth_form <- v
+  if (!is.null(v <- .extract(row, "reproductive_mode"))) traits$reproductive_mode <- v
+  if (!is.null(v <- .extract_num(row, "thermal_tolerance_max"))) traits$thermal_tolerance <- v
+  if (!is.null(v <- .extract_num(row, "depth_lower"))) traits$depth_min <- v
+  if (!is.null(v <- .extract_num(row, "depth_upper"))) traits$depth_max <- v
 
   result$traits <- traits
   result$success <- length(traits) > 0
@@ -396,35 +410,39 @@ lookup_coral_traits <- function(species_name, csv_file = "data/external_traits/c
 # 5. PELAGIC TRAIT DB
 # =============================================================================
 
-#' Lookup traits from Pelagic Species Trait Database
-#' @param species_name Character, species to look up
-#' @param csv_file Character, path to CSV file
-#' @return list(species, source, success, traits)
 lookup_pelagic_traits <- function(species_name, csv_file = "data/external_traits/pelagic_traits.csv") {
   result <- list(species = species_name, source = "PelagicTraits", success = FALSE, traits = list())
   data <- .load_csv_cached(csv_file, "pelagic")
   if (is.null(data)) return(result)
-
   row <- .find_species(data, species_name)
   if (is.null(row)) return(result)
 
   traits <- list()
-  for (col in names(row)) {
-    val <- row[[col]]
-    if (!is.na(val) && val != "") {
-      col_lower <- tolower(col)
-      if (grepl("habitat|zone", col_lower)) traits$habitat_use <- val
-      if (grepl("morphol|shape", col_lower)) traits$morphology <- val
-      if (grepl("length|size|body", col_lower) && is.numeric(val)) traits$body_length_cm <- val
-      if (grepl("nutrit|quality", col_lower)) traits$nutritional_quality <- val
-      if (grepl("feed|diet|troph", col_lower)) traits$feeding_mode <- val
-    }
-  }
+  if (!is.null(v <- .extract(row, "habitat_use"))) traits$habitat_use <- v
+  if (!is.null(v <- .extract(row, "morphology"))) traits$morphology <- v
+  if (!is.null(v <- .extract_num(row, "body_length_cm"))) traits$body_length_cm <- v
+  if (!is.null(v <- .extract(row, "nutritional_quality"))) traits$nutritional_quality <- v
+  if (!is.null(v <- .extract(row, "feeding_mode"))) traits$feeding_mode <- v
 
   result$traits <- traits
   result$success <- length(traits) > 0
   result
 }
+
+**Note:** The `.extract()` and `.extract_num()` helpers are defined inside `lookup_blacksea_traits()`. For the other 4 functions, define them at module level (before the first lookup function) or copy them into each function. The recommended approach is to define them at module level:
+
+```r
+# Module-level helpers (define BEFORE the lookup functions)
+.extract <- function(row, col_name) {
+  if (col_name %in% names(row) && !is.na(row[[col_name]]) && row[[col_name]] != "") row[[col_name]] else NULL
+}
+.extract_num <- function(row, col_name) {
+  val <- .extract(row, col_name)
+  if (!is.null(val) && is.numeric(val)) val else NULL
+}
+```
+
+Column names used here (feeding_mode, mobility, body_size_mm, etc.) are **placeholders matching the placeholder CSVs**. When real data is downloaded, update these to match the actual column names from each database. The `.find_species()` helper handles species column name variations automatically.
 ```
 
 - [ ] **Step 3: Parse check and run tests**
@@ -583,12 +601,94 @@ After the existing database lookup blocks (after the BIOTIC section), add 5 new 
   }
 ```
 
-Repeat for Arctic, Cefas, Coral, and Pelagic with appropriate field mappings. Key differences:
+Then add the remaining 4 blocks:
 
-- **Arctic**: map `temperature_preference` to TT, default TT1 for Arctic species
-- **Cefas**: map `longevity_years` to `result$longevity_years`, `reproductive_mode` to RS
-- **Coral**: map `thermal_tolerance` to TT, `reproductive_mode` to RS, `depth_min/max` to result
-- **Pelagic**: map `body_length_cm` to size_cm for MS harmonization
+```r
+  # CSV: Arctic Traits DB
+  if (query_arctic) {
+    message("\n[CSV] Arctic Traits DB...")
+    db_start <- Sys.time()
+    arctic_data <- lookup_arctic_traits(species_name)
+    if (arctic_data$success) {
+      raw_traits$arctic <- arctic_data$traits
+      sources_used <- c(sources_used, "ArcticTraits")
+      if (!is.null(arctic_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, arctic_data$traits$feeding_mode)
+      if (!is.null(arctic_data$traits$mobility_info)) mobility_info <- c(mobility_info, arctic_data$traits$mobility_info)
+      if (!is.null(arctic_data$traits$reproductive_mode)) {
+        result$RS <- harmonize_reproductive_strategy(arctic_data$traits$reproductive_mode)
+      }
+      if (!is.null(arctic_data$traits$temperature_preference)) {
+        result$TT <- harmonize_temperature_tolerance(arctic_data$traits$temperature_preference)
+      }
+      message("    Found: ", paste(names(arctic_data$traits), collapse = ", "))
+    }
+    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+  }
+
+  # CSV: Cefas NW Europe Benthic
+  if (query_cefas) {
+    message("\n[CSV] Cefas NW Europe Benthic Traits...")
+    db_start <- Sys.time()
+    cefas_data <- lookup_cefas_traits(species_name)
+    if (cefas_data$success) {
+      raw_traits$cefas <- cefas_data$traits
+      sources_used <- c(sources_used, "Cefas")
+      if (!is.null(cefas_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, cefas_data$traits$feeding_mode)
+      if (!is.null(cefas_data$traits$mobility_info)) mobility_info <- c(mobility_info, cefas_data$traits$mobility_info)
+      if (!is.null(cefas_data$traits$longevity_years)) result$longevity_years <- cefas_data$traits$longevity_years
+      if (!is.null(cefas_data$traits$reproductive_mode)) {
+        result$RS <- harmonize_reproductive_strategy(cefas_data$traits$reproductive_mode)
+      }
+      message("    Found: ", paste(names(cefas_data$traits), collapse = ", "))
+    }
+    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+  }
+
+  # CSV: Coral Trait DB
+  if (query_coral) {
+    message("\n[CSV] Coral Trait DB...")
+    db_start <- Sys.time()
+    coral_data <- lookup_coral_traits(species_name)
+    if (coral_data$success) {
+      raw_traits$coral <- coral_data$traits
+      sources_used <- c(sources_used, "CoralTraits")
+      if (!is.null(coral_data$traits$reproductive_mode)) {
+        result$RS <- harmonize_reproductive_strategy(coral_data$traits$reproductive_mode)
+      }
+      if (!is.null(coral_data$traits$thermal_tolerance)) {
+        # Coral thermal tolerance is numeric (max bleaching temp in C)
+        if (coral_data$traits$thermal_tolerance > 30) {
+          result$TT <- "TT4"  # Warm stenothermal
+        } else if (coral_data$traits$thermal_tolerance > 25) {
+          result$TT <- "TT3"  # Warm eurythermal
+        } else {
+          result$TT <- "TT2"  # Cold eurythermal
+        }
+      }
+      if (!is.null(coral_data$traits$depth_min)) result$depth_min <- coral_data$traits$depth_min
+      if (!is.null(coral_data$traits$depth_max)) result$depth_max <- coral_data$traits$depth_max
+      message("    Found: ", paste(names(coral_data$traits), collapse = ", "))
+    }
+    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+  }
+
+  # CSV: Pelagic Trait DB
+  if (query_pelagic) {
+    message("\n[CSV] Pelagic Trait DB...")
+    db_start <- Sys.time()
+    pelagic_data <- lookup_pelagic_traits(species_name)
+    if (pelagic_data$success) {
+      raw_traits$pelagic <- pelagic_data$traits
+      sources_used <- c(sources_used, "PelagicTraits")
+      if (!is.null(pelagic_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, pelagic_data$traits$feeding_mode)
+      if (!is.null(pelagic_data$traits$body_length_cm) && is.null(size_cm)) {
+        size_cm <- pelagic_data$traits$body_length_cm
+      }
+      message("    Found: ", paste(names(pelagic_data$traits), collapse = ", "))
+    }
+    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+  }
+```
 
 - [ ] **Step 5: Parse check, run all tests, commit**
 
