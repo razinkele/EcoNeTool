@@ -76,7 +76,15 @@ HARMONIZATION_CONFIG <- list(
     echinoderms_calcareous = TRUE,
     fish_class_based_EP = TRUE,
     benthic_invertebrates_EP2_EP3 = TRUE,
-    zooplankton_pelagic = TRUE
+    zooplankton_pelagic = TRUE,
+    bivalves_sessile = TRUE,
+    cnidarians_sessile = TRUE,
+    phytoplankton_pelagic = TRUE,
+    infaunal_bivalves = TRUE,
+    bivalves_hard_shell = TRUE,
+    gastropods_hard_shell = TRUE,
+    crustaceans_exoskeleton = TRUE,
+    echinoderms_calcium_plates = TRUE
   ),
 
   # ECOSYSTEM PROFILES

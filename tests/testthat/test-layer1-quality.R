@@ -29,3 +29,15 @@ test_that("FS7 is valid and accepted in food web construction", {
   expect_true("FS7" %in% names(TRAIT_DEFINITIONS$FS))
   expect_equal(TRAIT_DEFINITIONS$FS["FS3"], c(FS3 = "Omnivore"))
 })
+
+test_that("all taxonomic rule keys used in harmonization exist in config", {
+  rules <- HARMONIZATION_CONFIG$taxonomic_rules
+  expected_keys <- c(
+    "bivalves_sessile", "cnidarians_sessile", "phytoplankton_pelagic",
+    "infaunal_bivalves", "bivalves_hard_shell", "gastropods_hard_shell",
+    "crustaceans_exoskeleton", "echinoderms_calcium_plates"
+  )
+  for (key in expected_keys) {
+    expect_true(key %in% names(rules), info = paste("Missing rule:", key))
+  }
+})
