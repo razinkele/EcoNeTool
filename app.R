@@ -110,6 +110,16 @@ source("R/functions/euseamap_regional_config.R")  # Regional optimization for EU
 source("R/functions/trait_foodweb.R")  # Trait-based food web construction
 source("R/functions/trait_lookup/load_all.R")  # Automated trait lookup from databases
 
+# Rphylopars imputation (optional — requires Rphylopars package)
+if (file.exists("R/functions/rphylopars_imputation.R")) {
+  source("R/functions/rphylopars_imputation.R")
+}
+
+# BHPMF batch gap-filling (optional — requires BHPMF package)
+if (file.exists("R/functions/bhpmf_imputation.R")) {
+  source("R/functions/bhpmf_imputation.R")
+}
+
 # ECOPATH import (cross-platform compatible)
 source("R/functions/ecopath/load_all.R")
 
@@ -677,8 +687,9 @@ server <- function(input, output, session) {
   # ============================================================================
   # DATA IMPORT HANDLER
   # ============================================================================
+  diet_matrix_reactive <- reactiveVal(NULL)
   data_import_server(input, output, session, net_reactive, info_reactive,
-                     dashboard_trigger, refresh_data_editor)
+                     dashboard_trigger, refresh_data_editor, diet_matrix_reactive)
 
   # ============================================================================
   # VISUALIZATION OUTPUTS
