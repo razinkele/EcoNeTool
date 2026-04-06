@@ -10,7 +10,7 @@
 
 **Prerequisite:** Layer 2a (expanded template) and Layer 2b (CSV databases) must be applied.
 
-**Package availability:** worrms (installed), robis (installed), traits (installed), httr (installed), jsonlite (installed), Btrait (NOT installed — made optional).
+**Package availability:** worrms (installed), robis (installed), httr (installed), jsonlite (installed), Btrait (NOT installed — made optional). TraitBank now uses EOL Pages API via httr (no `traits` package needed — it was archived from CRAN and requires Cypher queries + API keys).
 
 ---
 
@@ -49,6 +49,7 @@ source(file.path(app_root, "R/functions/trait_lookup/api_trait_databases.R"))
 
 test_that("lookup_worms_traits_api returns correct structure", {
   skip_if_not_installed("worrms")
+  skip_if_offline()
   # Use a known AphiaID (126436 = Gadus morhua)
   result <- lookup_worms_traits_api(aphia_id = 126436)
   expect_true(is.list(result))
@@ -62,6 +63,7 @@ test_that("lookup_worms_traits_api returns correct structure", {
 
 test_that("lookup_worms_traits_api handles invalid AphiaID gracefully", {
   skip_if_not_installed("worrms")
+  skip_if_offline()
   result <- lookup_worms_traits_api(aphia_id = -999)
   expect_false(result$success)
 })
@@ -189,6 +191,7 @@ EOF
 ```r
 test_that("lookup_polytraits returns correct structure", {
   skip_if_not_installed("httr")
+  skip_if_offline()
   result <- lookup_polytraits("Nonexistent_polychaete_xyz")
   expect_true(is.list(result))
   expect_equal(result$source, "PolyTraits")
@@ -205,6 +208,7 @@ test_that("lookup_emodnet_traits returns correct structure", {
 
 test_that("lookup_obis_traits returns correct structure", {
   skip_if_not_installed("robis")
+  skip_if_offline()
   result <- lookup_obis_traits("Nonexistent_species_xyz")
   expect_true(is.list(result))
   expect_equal(result$source, "OBIS")
@@ -212,6 +216,7 @@ test_that("lookup_obis_traits returns correct structure", {
 })
 
 test_that("lookup_traitbank returns correct structure", {
+  skip_if_offline()
   result <- lookup_traitbank("Nonexistent_species_xyz")
   expect_true(is.list(result))
   expect_equal(result$source, "TraitBank")
@@ -249,31 +254,44 @@ lookup_polytraits <- function(species_name, timeout = 10) {
   }
 
   tryCatch({
-    url <- paste0("http://polytraits.lifewatchgreece.eu/taxon/",
-                   utils::URLencode(species_name), "/json/")
-    response <- httr::GET(url, httr::timeout(timeout))
+    # Step 1: Get taxonID from the taxon endpoint
+    taxon_url <- paste0("http://polytraits.lifewatchgreece.eu/taxon/",
+                        utils::URLencode(species_name), "/json/")
+    taxon_resp <- httr::GET(taxon_url, httr::timeout(timeout))
+    if (httr::http_error(taxon_resp)) return(result)
 
-    if (httr::http_error(response)) return(result)
+    taxon_data <- jsonlite::fromJSON(httr::content(taxon_resp, as = "text", encoding = "UTF-8"))
+    if (is.null(taxon_data) || length(taxon_data) == 0) return(result)
 
-    content <- httr::content(response, as = "text", encoding = "UTF-8")
-    data <- jsonlite::fromJSON(content)
+    # taxon_data is a data.frame with columns: taxonID, taxon
+    taxon_id <- taxon_data$taxonID[1]
+    if (is.null(taxon_id) || taxon_id == "") return(result)
 
-    if (is.null(data) || length(data) == 0) return(result)
+    # Step 2: Get traits using the taxonID
+    traits_url <- paste0("http://polytraits.lifewatchgreece.eu/traits/",
+                         taxon_id, "/json/")
+    traits_resp <- httr::GET(traits_url, httr::timeout(timeout))
+    if (httr::http_error(traits_resp)) return(result)
+
+    traits_json <- jsonlite::fromJSON(httr::content(traits_resp, as = "text", encoding = "UTF-8"))
+    if (is.null(traits_json) || length(traits_json) == 0) return(result)
+
+    # traits_json is a named list: {"taxonID": [array of trait records]}
+    # Each record has: trait, modality, traitvalue, reference, etc.
+    trait_records <- traits_json[[1]]  # First (and usually only) element
+    if (!is.data.frame(trait_records) || nrow(trait_records) == 0) return(result)
 
     traits <- list()
-    # PolyTraits returns trait records with trait_name and trait_value fields
-    if (is.data.frame(data)) {
-      for (i in seq_len(nrow(data))) {
-        tn <- tolower(data$trait_name[i] %||% "")
-        tv <- data$trait_value[i] %||% ""
-        if (tv == "") next
-        if (grepl("body size|size", tn)) traits$body_size <- tv
-        if (grepl("feeding|diet", tn)) traits$feeding_mode <- tv
-        if (grepl("mobility|movement", tn)) traits$mobility_info <- tv
-        if (grepl("reproduction|reproductive", tn)) traits$reproductive_mode <- tv
-        if (grepl("larval", tn)) traits$larval_development <- tv
-        if (grepl("habitat|environment", tn)) traits$habitat_info <- tv
-      }
+    for (i in seq_len(nrow(trait_records))) {
+      tn <- tolower(trait_records$trait[i] %||% "")
+      mv <- trait_records$modality[i] %||% ""
+      if (mv == "") next
+      if (grepl("body size|size", tn)) traits$body_size <- mv
+      if (grepl("feeding|diet", tn)) traits$feeding_mode <- mv
+      if (grepl("mobility|movement", tn)) traits$mobility_info <- mv
+      if (grepl("reproduction|reproductive|sexual", tn)) traits$reproductive_mode <- mv
+      if (grepl("larval", tn)) traits$larval_development <- mv
+      if (grepl("depth|zonation", tn)) traits$habitat_info <- mv
     }
 
     result$traits <- traits
@@ -345,7 +363,7 @@ lookup_emodnet_traits <- function(species_name) {
 #' @param limit Numeric, max occurrence records to fetch (default 50)
 #' @param timeout Numeric, timeout in seconds (default 15)
 #' @return list(species, source, success, traits)
-lookup_obis_traits <- function(species_name, limit = 50, timeout = 15) {
+lookup_obis_traits <- function(species_name, timeout = 30) {
   result <- list(species = species_name, source = "OBIS", success = FALSE, traits = list())
 
   if (!requireNamespace("robis", quietly = TRUE)) {
@@ -354,10 +372,12 @@ lookup_obis_traits <- function(species_name, limit = 50, timeout = 15) {
 
   tryCatch({
     # Query OBIS with MoF extension
+    # Note: robis::occurrence has no 'limit' parameter — fetches all records
+    # Use with_timeout to prevent hanging on large queries
     occ <- with_timeout(
       robis::occurrence(scientificname = species_name, mof = TRUE,
-                        fields = c("scientificName", "decimalLatitude", "decimalLongitude"),
-                        limit = limit),
+                        fields = c("scientificName", "minimumDepthInMeters",
+                                   "maximumDepthInMeters")),
       timeout = timeout,
       on_timeout = NULL
     )
@@ -366,9 +386,8 @@ lookup_obis_traits <- function(species_name, limit = 50, timeout = 15) {
 
     traits <- list()
 
-    # Extract MoF records if present
+    # Extract MoF records if present (robis attaches as attribute or column)
     if ("mof" %in% names(attributes(occ)) || "measurementType" %in% names(occ)) {
-      # robis returns MoF as nested or flat depending on version
       mof_data <- if ("mof" %in% names(occ)) occ$mof else occ
 
       if (is.data.frame(mof_data) && "measurementType" %in% names(mof_data)) {
@@ -376,21 +395,23 @@ lookup_obis_traits <- function(species_name, limit = 50, timeout = 15) {
           mt <- tolower(mof_data$measurementType[i] %||% "")
           mv <- mof_data$measurementValue[i] %||% ""
           if (mv == "") next
-          if (grepl("body size|length|size", mt) && is.na(traits$body_size)) {
+          if (grepl("body size|length|size", mt) && is.null(traits$body_size)) {
             traits$body_size <- mv
           }
-          if (grepl("biomass|weight", mt) && is.na(traits$biomass)) {
+          if (grepl("biomass|weight", mt) && is.null(traits$biomass)) {
             traits$biomass <- mv
           }
         }
       }
     }
 
-    # Also extract depth from occurrences
-    if ("minimumDepthInMeters" %in% names(occ) || "maximumDepthInMeters" %in% names(occ)) {
+    # Extract depth from occurrences (median across records)
+    if ("minimumDepthInMeters" %in% names(occ)) {
       depths_min <- occ$minimumDepthInMeters
-      depths_max <- occ$maximumDepthInMeters
       if (any(!is.na(depths_min))) traits$depth_min <- median(depths_min, na.rm = TRUE)
+    }
+    if ("maximumDepthInMeters" %in% names(occ)) {
+      depths_max <- occ$maximumDepthInMeters
       if (any(!is.na(depths_max))) traits$depth_max <- median(depths_max, na.rm = TRUE)
     }
 
@@ -418,34 +439,49 @@ lookup_obis_traits <- function(species_name, limit = 50, timeout = 15) {
 lookup_traitbank <- function(species_name, timeout = 15) {
   result <- list(species = species_name, source = "TraitBank", success = FALSE, traits = list())
 
-  # traits package is archived from CRAN but may still be installed
-  if (!requireNamespace("traits", quietly = TRUE)) {
+  # TraitBank/EOL requires a Cypher query + API key via the traits package.
+  # The traits::traitbank() function does NOT accept a species name directly.
+  # Instead, use the EOL Pages API v3 which is open and returns trait data.
+  if (!requireNamespace("httr", quietly = TRUE) || !requireNamespace("jsonlite", quietly = TRUE)) {
     return(result)
   }
 
   tryCatch({
-    # Search for species in TraitBank
-    tb_data <- with_timeout(
-      traits::traitbank(species_name),
-      timeout = timeout,
-      on_timeout = NULL
-    )
+    # Step 1: Search EOL for the species to get a page ID
+    search_url <- paste0("https://eol.org/api/search/1.0.json?q=",
+                         utils::URLencode(species_name), "&page=1&exact=true")
+    search_resp <- httr::GET(search_url, httr::timeout(timeout))
+    if (httr::http_error(search_resp)) return(result)
 
-    if (is.null(tb_data) || length(tb_data) == 0) return(result)
+    search_data <- jsonlite::fromJSON(httr::content(search_resp, as = "text", encoding = "UTF-8"))
+    if (is.null(search_data$results) || length(search_data$results) == 0) return(result)
+
+    page_id <- search_data$results$id[1]
+    if (is.null(page_id)) return(result)
+
+    # Step 2: Get trait data from the EOL pages API
+    pages_url <- paste0("https://eol.org/api/pages/1.0/", page_id,
+                        ".json?details=true&common_names=false&images_per_page=0")
+    pages_resp <- httr::GET(pages_url, httr::timeout(timeout))
+    if (httr::http_error(pages_resp)) return(result)
+
+    pages_data <- jsonlite::fromJSON(httr::content(pages_resp, as = "text", encoding = "UTF-8"))
 
     traits <- list()
 
-    # TraitBank returns a list or data.frame depending on species
-    if (is.data.frame(tb_data)) {
-      for (i in seq_len(min(nrow(tb_data), 50))) {
-        pred <- tolower(tb_data$predicate[i] %||% "")
-        val <- tb_data$value[i] %||% ""
-        if (val == "") next
-        if (grepl("body mass|mass", pred)) traits$body_mass <- val
-        if (grepl("diet|food|feeds", pred)) traits$diet <- val
-        if (grepl("trophic|trophic.level", pred)) traits$trophic_level <- val
-        if (grepl("habitat|environment", pred)) traits$habitat <- val
-        if (grepl("life.span|longevity", pred)) traits$longevity <- val
+    # Extract from dataObjects if present
+    if (!is.null(pages_data$dataObjects) && is.data.frame(pages_data$dataObjects)) {
+      for (i in seq_len(min(nrow(pages_data$dataObjects), 20))) {
+        desc <- tolower(pages_data$dataObjects$description[i] %||% "")
+        if (grepl("body mass|mass|weight", desc) && is.null(traits$body_mass)) {
+          traits$body_mass <- desc
+        }
+        if (grepl("habitat|environment", desc) && is.null(traits$habitat)) {
+          traits$habitat <- desc
+        }
+        if (grepl("diet|food|feeds on", desc) && is.null(traits$diet)) {
+          traits$diet <- desc
+        }
       }
     }
 
