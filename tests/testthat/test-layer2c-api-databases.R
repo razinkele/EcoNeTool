@@ -208,3 +208,13 @@ test_that("all functions always return the four required list fields", {
                 info = paste(nm, "$traits should be a list"))
   }
 })
+
+test_that("orchestrator has API database routing flags", {
+  orch_text <- readLines(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"))
+  orch_joined <- paste(orch_text, collapse = "\n")
+  expect_true(grepl("query_worms_attrs", orch_joined), info = "Missing query_worms_attrs")
+  expect_true(grepl("query_polytraits", orch_joined), info = "Missing query_polytraits")
+  expect_true(grepl("query_emodnet", orch_joined), info = "Missing query_emodnet")
+  expect_true(grepl("query_obis", orch_joined), info = "Missing query_obis")
+  expect_true(grepl("query_traitbank", orch_joined), info = "Missing query_traitbank")
+})

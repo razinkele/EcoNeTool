@@ -322,8 +322,14 @@ lookup_species_traits <- function(species_name,
   query_cefas <- FALSE
   query_coral <- FALSE
   query_pelagic <- FALSE
+  query_worms_attrs <- FALSE
+  query_polytraits <- FALSE
+  query_emodnet <- FALSE
+  query_obis <- FALSE
+  query_traitbank <- FALSE
 
   if (worms_data$success) {
+    query_worms_attrs <- TRUE
     phylum <- tolower(raw_traits$worms$phylum)
     class <- tolower(raw_traits$worms$class)
 
@@ -362,9 +368,14 @@ lookup_species_traits <- function(species_name,
       query_cefas <- TRUE
       query_blacksea <- TRUE
       query_arctic <- TRUE
+      query_emodnet <- TRUE
       if (class == "anthozoa") {
         query_coral <- TRUE
         message("  -> Anthozoa detected: also querying Coral Trait DB")
+      }
+      if (class == "polychaeta") {
+        query_polytraits <- TRUE
+        message("  -> Polychaeta detected: also querying PolyTraits")
       }
       message("  \u2192 Detected MARINE INVERTEBRATE (", phylum, ") \u2192 Querying: SeaLifeBase, SpeciesEnriched, BIOTIC")
       message("  \u2192 Skipping: FishBase, freshwater, MAREDAT, PTDB, AlgaeBase")
@@ -435,6 +446,9 @@ lookup_species_traits <- function(species_name,
     query_cefas <- TRUE
     query_coral <- TRUE
     query_pelagic <- TRUE
+    query_worms_attrs <- TRUE
+    query_obis <- TRUE
+    query_traitbank <- TRUE
   }
 
   message("")  # Blank line
@@ -909,6 +923,100 @@ lookup_species_traits <- function(species_name,
         size_cm <- pelagic_data$traits$body_length_cm
       }
       message("    Found: ", paste(names(pelagic_data$traits), collapse = ", "))
+    }
+    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+  }
+
+  # \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+  # API-BASED TRAIT DATABASES
+  # \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+
+  # API: WoRMS Traits (uses AphiaID from WoRMS taxonomy lookup)
+  if (query_worms_attrs && !is.null(raw_traits$worms$aphia_id)) {
+    message("\n[API] WoRMS Traits API...")
+    db_start <- Sys.time()
+    worms_attr_data <- lookup_worms_traits_api(
+      species_name = species_name,
+      aphia_id = raw_traits$worms$aphia_id
+    )
+    if (worms_attr_data$success) {
+      raw_traits$worms_attrs <- worms_attr_data$traits
+      sources_used <- c(sources_used, "WoRMS_Traits")
+      if (!is.null(worms_attr_data$traits$feeding_type)) feeding_mode <- c(feeding_mode, worms_attr_data$traits$feeding_type)
+      if (!is.null(worms_attr_data$traits$zone)) habitat_info <- c(habitat_info, worms_attr_data$traits$zone)
+      if (!is.null(worms_attr_data$traits$salinity)) {
+        result$ST <- harmonize_salinity_tolerance(worms_attr_data$traits$salinity)
+      }
+      message("    Found: ", paste(names(worms_attr_data$traits), collapse = ", "))
+    }
+    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+  }
+
+  # API: PolyTraits (polychaete specialist)
+  if (query_polytraits) {
+    message("\n[API] PolyTraits...")
+    db_start <- Sys.time()
+    poly_data <- lookup_polytraits(species_name)
+    if (poly_data$success) {
+      raw_traits$polytraits <- poly_data$traits
+      sources_used <- c(sources_used, "PolyTraits")
+      if (!is.null(poly_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, poly_data$traits$feeding_mode)
+      if (!is.null(poly_data$traits$mobility_info)) mobility_info <- c(mobility_info, poly_data$traits$mobility_info)
+      if (!is.null(poly_data$traits$reproductive_mode)) {
+        result$RS <- harmonize_reproductive_strategy(poly_data$traits$reproductive_mode)
+      }
+      message("    Found: ", paste(names(poly_data$traits), collapse = ", "))
+    }
+    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+  }
+
+  # API: EMODnet Btrait (optional \u2014 package may not be installed)
+  if (query_emodnet) {
+    message("\n[API] EMODnet Btrait...")
+    db_start <- Sys.time()
+    emodnet_data <- lookup_emodnet_traits(species_name)
+    if (emodnet_data$success) {
+      raw_traits$emodnet <- emodnet_data$traits
+      sources_used <- c(sources_used, "EMODnet")
+      if (!is.null(emodnet_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, emodnet_data$traits$feeding_mode)
+      if (!is.null(emodnet_data$traits$mobility_info)) mobility_info <- c(mobility_info, emodnet_data$traits$mobility_info)
+      message("    Found: ", paste(names(emodnet_data$traits), collapse = ", "))
+    }
+    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+  }
+
+  # API: OBIS MoF (body size, biomass, depth from occurrences)
+  if (query_obis) {
+    message("\n[API] OBIS MoF...")
+    db_start <- Sys.time()
+    obis_data <- lookup_obis_traits(species_name)
+    if (obis_data$success) {
+      raw_traits$obis <- obis_data$traits
+      sources_used <- c(sources_used, "OBIS")
+      if (!is.null(obis_data$traits$depth_min) && is.null(depth_min)) {
+        depth_min <- obis_data$traits$depth_min
+      }
+      if (!is.null(obis_data$traits$depth_max) && is.null(depth_max)) {
+        depth_max <- obis_data$traits$depth_max
+      }
+      message("    Found: ", paste(names(obis_data$traits), collapse = ", "))
+    }
+    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+  }
+
+  # API: TraitBank/EOL (broad coverage fallback)
+  if (query_traitbank) {
+    message("\n[API] TraitBank/EOL...")
+    db_start <- Sys.time()
+    tb_data <- lookup_traitbank(species_name)
+    if (tb_data$success) {
+      raw_traits$traitbank <- tb_data$traits
+      sources_used <- c(sources_used, "TraitBank")
+      if (!is.null(tb_data$traits$diet)) feeding_mode <- c(feeding_mode, tb_data$traits$diet)
+      if (!is.null(tb_data$traits$trophic_level) && is.null(trophic_level)) {
+        trophic_level <- as.numeric(tb_data$traits$trophic_level)
+      }
+      message("    Found: ", paste(names(tb_data$traits), collapse = ", "))
     }
     message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
   }
