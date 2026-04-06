@@ -502,7 +502,42 @@ migrate_offline_schema <- function(con) {
 }
 ```
 
-- [ ] **Step 3: Parse check, run test, commit**
+- [ ] **Step 3: Wire migration call into lookup_offline_traits()**
+
+In `R/functions/trait_lookup/orchestrator.R`, find `lookup_offline_traits()` (line ~46). After the `dbConnect` call, add a migration call:
+
+```r
+  con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+  on.exit(DBI::dbDisconnect(con))
+
+  # Migrate schema if needed (adds new columns without losing data)
+  # migrate_offline_schema is defined in cache_sqlite.R which may not be loaded yet
+  if (exists("migrate_offline_schema", mode = "function")) {
+    migrate_offline_schema(con)
+  }
+```
+
+This ensures the first time any user opens the app after the update, their existing offline DB gets migrated automatically.
+
+Also in `lookup_offline_traits()` (same function, line ~69-71), update the hardcoded SELECT query to include the new columns:
+
+```r
+    result <- DBI::dbGetQuery(con,
+      "SELECT species, MS, FS, MB, EP, PR, RS, TT, ST,
+              trophic_level, depth_min, depth_max, is_hab,
+              longevity_years, growth_rate, body_shape,
+              phyto_motility, phyto_growth_form,
+              MS_confidence, FS_confidence, MB_confidence,
+              EP_confidence, PR_confidence,
+              RS_confidence, TT_confidence, ST_confidence,
+              primary_source, imputation_method
+       FROM species_traits WHERE species = ?",
+      params = list(species_name))
+```
+
+Without this change, the migration adds columns that are never queried.
+
+- [ ] **Step 4: Parse check, run test, commit**
 
 ```bash
 git commit -m "feat(cache): add schema migration for expanded trait columns
@@ -510,7 +545,8 @@ git commit -m "feat(cache): add schema migration for expanded trait columns
 migrate_offline_schema() adds RS/TT/ST, trophic_level, depth_min/max,
 is_hab, longevity_years, growth_rate, body_shape, phyto_motility,
 phyto_growth_form, confidence cols, and imputation_method to existing
-offline_traits.db without losing data. Uses ALTER TABLE ADD COLUMN."
+offline_traits.db without losing data. Uses ALTER TABLE ADD COLUMN.
+Called automatically from lookup_offline_traits() on first access."
 ```
 
 ---
