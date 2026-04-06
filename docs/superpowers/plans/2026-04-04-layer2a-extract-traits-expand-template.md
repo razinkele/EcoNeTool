@@ -48,17 +48,19 @@ source(file.path(app_root, "R/config/harmonization_config.R"))
 source(file.path(app_root, "R/functions/trait_lookup/harmonization.R"))
 
 test_that("orchestrator result template has expanded columns", {
+  source(file.path(app_root, "R/functions/trait_lookup/database_lookups.R"))
   source(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"))
-  # Check the function body contains new columns
-  fn_text <- paste(deparse(body(lookup_species_traits)), collapse = "\n")
-  expect_true(grepl("RS = NA", fn_text), info = "Result template must have RS column")
-  expect_true(grepl("TT = NA", fn_text), info = "Result template must have TT column")
-  expect_true(grepl("ST = NA", fn_text), info = "Result template must have ST column")
-  expect_true(grepl("trophic_level", fn_text), info = "Result template must have trophic_level")
-  expect_true(grepl("depth_min", fn_text), info = "Result template must have depth_min")
-  expect_true(grepl("is_hab", fn_text), info = "Result template must have is_hab")
-  expect_true(grepl("longevity_years", fn_text), info = "Result template must have longevity_years")
-  expect_true(grepl("imputation_method", fn_text), info = "Result template must have imputation_method")
+  # Call with a nonexistent species — returns the default NA template
+  result <- lookup_species_traits("__test_nonexistent_species_xyz__")
+  expected_cols <- c("species", "MS", "FS", "MB", "EP", "PR",
+                     "RS", "TT", "ST",
+                     "trophic_level", "depth_min", "depth_max", "is_hab",
+                     "longevity_years", "growth_rate", "body_shape",
+                     "phyto_motility", "phyto_growth_form",
+                     "imputation_method")
+  for (col in expected_cols) {
+    expect_true(col %in% names(result), info = paste("Missing column:", col))
+  }
 })
 ```
 
@@ -103,9 +105,9 @@ phyto_motility, phyto_growth_form, imputation_method, plus 3 confidence cols."
 
 ---
 
-### Task 2: Extract PTDB discarded fields (Growth_form, Motility, Harmful)
+### Task 2: Extract PTDB Harmful field (Growth_form and Motility already extracted)
 
-**Problem:** `lookup_ptdb_traits()` only extracts Trophic_strategy and Cell_volume. Growth_form, Motility, and Harmful columns are ignored.
+**Problem:** `lookup_ptdb_traits()` already extracts Growth_form (line 737) and Motility (line 731), but the Harmful (HAB flag) column is still ignored.
 
 **Files:**
 - Modify: `R/functions/trait_lookup/database_lookups.R` (in `lookup_ptdb_traits()`, around line 692)
@@ -116,45 +118,31 @@ phyto_motility, phyto_growth_form, imputation_method, plus 3 confidence cols."
 ```r
 source(file.path(app_root, "R/functions/trait_lookup/database_lookups.R"))
 
-test_that("lookup_ptdb_traits extracts Growth_form, Motility, Harmful", {
-  # Only test if PTDB file exists
+test_that("lookup_ptdb_traits extracts is_hab (Harmful flag)", {
   ptdb_file <- file.path(app_root, "data/ptdb_phytoplankton.csv")
   skip_if_not(file.exists(ptdb_file), "PTDB file not available")
 
-  # Use a known species from PTDB
   ptdb <- read.csv(ptdb_file, stringsAsFactors = FALSE)
   skip_if(nrow(ptdb) == 0, "PTDB is empty")
   test_species <- ptdb$Species[1]
 
-  result <- lookup_ptdb_traits(test_species)
+  # Pass absolute path to avoid working directory issues
+  result <- lookup_ptdb_traits(test_species, ptdb_file = ptdb_file)
   if (result$success) {
-    # These fields should now be extracted (may be NA for some species)
-    expect_true("growth_form" %in% names(result$traits),
-                info = "PTDB should extract growth_form")
-    expect_true("motility" %in% names(result$traits),
-                info = "PTDB should extract motility")
+    # growth_form and motility were already extracted (pre-existing)
+    # is_hab is the newly added field
     expect_true("is_hab" %in% names(result$traits),
-                info = "PTDB should extract harmful algae flag")
+                info = "PTDB should now extract harmful algae flag")
   }
 })
 ```
 
 - [ ] **Step 2: Add extraction code to lookup_ptdb_traits()**
 
-In `R/functions/trait_lookup/database_lookups.R`, find the `lookup_ptdb_traits()` function. After the existing trait extraction (around line 692 where `traits <- list()` starts), add these extractions after the Trophic_strategy block:
+In `R/functions/trait_lookup/database_lookups.R`, find `lookup_ptdb_traits()`. Growth_form (line 737) and Motility (line 731) are already extracted — do NOT duplicate them. Only add the Harmful extraction. After the existing Growth_form block (around line 739), add:
 
 ```r
-    # Growth form (previously discarded)
-    if ("Growth_form" %in% names(species_row) && !is.na(species_row$Growth_form)) {
-      traits$growth_form <- trimws(species_row$Growth_form)
-    }
-
-    # Motility (previously discarded)
-    if ("Motility" %in% names(species_row) && !is.na(species_row$Motility)) {
-      traits$motility <- trimws(species_row$Motility)
-    }
-
-    # Harmful Algae Bloom flag (previously discarded)
+    # Harmful Algae Bloom flag (previously not extracted)
     if ("Harmful" %in% names(species_row) && !is.na(species_row$Harmful)) {
       traits$is_hab <- as.logical(species_row$Harmful)
     }
@@ -214,7 +202,30 @@ After the BIOTIC lookup result is processed, add:
     if (!is.null(raw_traits$biotic$longevity_years)) result$longevity_years <- raw_traits$biotic$longevity_years
 ```
 
-- [ ] **Step 5: Wire FishBase body_shape**
+- [ ] **Step 5: Append integration test for wiring**
+
+Add to `tests/testthat/test-layer2a-template.R`:
+```r
+test_that("orchestrator wires extracted traits to result columns", {
+  # The Task 1 test already calls lookup_species_traits("__test_nonexistent__")
+  # which returns the default template. For wiring verification, check that
+  # the orchestrator source code assigns to the new result columns.
+  orch_text <- readLines(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"))
+  orch_joined <- paste(orch_text, collapse = "\n")
+  expect_true(grepl("result\\$trophic_level", orch_joined),
+              info = "Orchestrator must wire trophic_level to result")
+  expect_true(grepl("result\\$depth_min", orch_joined),
+              info = "Orchestrator must wire depth_min to result")
+  expect_true(grepl("result\\$is_hab", orch_joined),
+              info = "Orchestrator must wire is_hab to result")
+  expect_true(grepl("result\\$longevity_years", orch_joined),
+              info = "Orchestrator must wire longevity_years to result")
+  expect_true(grepl("result\\$body_shape", orch_joined),
+              info = "Orchestrator must wire body_shape to result")
+})
+```
+
+- [ ] **Step 6: Wire FishBase body_shape**
 
 After FishBase lookup processing, add:
 
@@ -413,11 +424,12 @@ RS1-RS4, TT1-TT4, ST1-ST5 codes using config regex patterns."
 test_that("schema migration adds new columns without error", {
   skip_if_not_installed("RSQLite")
   skip_if_not_installed("DBI")
-  library(RSQLite)
-  library(DBI)
 
-  # Create an in-memory DB with old schema
-  con <- dbConnect(SQLite(), ":memory:")
+  # Source cache_sqlite.R BEFORE creating test DB (loads library() at top level)
+  source(file.path(app_root, "R/functions/cache_sqlite.R"))
+
+  # Create an in-memory DB with old schema (matching real offline_traits.db)
+  con <- dbConnect(RSQLite::SQLite(), ":memory:")
   on.exit(dbDisconnect(con))
   dbExecute(con, "CREATE TABLE species_traits (
     species TEXT PRIMARY KEY, MS TEXT, FS TEXT, MB TEXT, EP TEXT, PR TEXT,
@@ -425,10 +437,9 @@ test_that("schema migration adds new columns without error", {
     EP_confidence REAL, PR_confidence REAL, primary_source TEXT
   )")
   dbExecute(con, "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT)")
-  dbExecute(con, "INSERT INTO metadata (key, value) VALUES ('schema_version', '1')")
+  dbExecute(con, "INSERT INTO metadata (key, value) VALUES ('version', '1.3.0')")
 
   # Run migration
-  source(file.path(app_root, "R/functions/cache_sqlite.R"))
   migrate_offline_schema(con)
 
   # Verify new columns exist
@@ -494,7 +505,7 @@ migrate_offline_schema <- function(con) {
 
   # Update schema version
   tryCatch(
-    dbExecute(con, "INSERT OR REPLACE INTO metadata (key, value) VALUES ('schema_version', '2')"),
+    dbExecute(con, "INSERT OR REPLACE INTO metadata (key, value) VALUES ('schema_version', '2.0')"),
     error = function(e) message("Could not update schema version: ", e$message)
   )
 
