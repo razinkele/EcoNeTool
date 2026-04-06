@@ -48,3 +48,13 @@ test_that("CSV lookup functions use simple paths, not sys.frame", {
   expect_false(grepl("sys.frame", csv_joined),
                info = "Must not use sys.frame(1)$ofile")
 })
+
+test_that("API functions emit messages when packages missing", {
+  api_text <- readLines(file.path(app_root, "R/functions/trait_lookup/api_trait_databases.R"))
+  req_lines <- grep("requireNamespace.*quietly.*TRUE", api_text)
+  for (ln in req_lines) {
+    nearby <- paste(api_text[ln:min(ln + 3, length(api_text))], collapse = " ")
+    expect_true(grepl("message\\(", nearby),
+                info = paste("Missing message() near requireNamespace at line", ln))
+  }
+})

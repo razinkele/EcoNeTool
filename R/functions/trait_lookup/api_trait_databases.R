@@ -38,7 +38,10 @@ lookup_worms_traits_api <- function(species_name = NULL, aphia_id = NULL, timeou
   )
 
   if (is.null(aphia_id) || !is.numeric(aphia_id) || aphia_id <= 0) return(result)
-  if (!requireNamespace("worrms", quietly = TRUE)) return(result)
+  if (!requireNamespace("worrms", quietly = TRUE)) {
+    message("  [WoRMS Traits] Package 'worrms' not installed. Install: install.packages('worrms')")
+    return(result)
+  }
 
   tryCatch({
     attrs <- with_timeout(
@@ -97,8 +100,10 @@ lookup_polytraits <- function(species_name, timeout = 10) {
     traits  = list()
   )
 
-  if (!requireNamespace("httr",     quietly = TRUE)) return(result)
-  if (!requireNamespace("jsonlite", quietly = TRUE)) return(result)
+  if (!requireNamespace("httr", quietly = TRUE) || !requireNamespace("jsonlite", quietly = TRUE)) {
+    message("  [PolyTraits] Packages 'httr'/'jsonlite' required. Install: install.packages(c('httr','jsonlite'))")
+    return(result)
+  }
 
   tryCatch({
     # Step 1: resolve species name -> taxonID
@@ -178,7 +183,10 @@ lookup_emodnet_traits <- function(species_name) {
     traits  = list()
   )
 
-  if (!requireNamespace("Btrait", quietly = TRUE)) return(result)
+  if (!requireNamespace("Btrait", quietly = TRUE)) {
+    message("  [EMODnet] Package 'Btrait' not installed. Install: remotes::install_github('EMODnet/Btrait')")
+    return(result)
+  }
 
   tryCatch({
     trait_data <- Btrait::getTrait(species_name)
@@ -230,7 +238,10 @@ lookup_obis_traits <- function(species_name, timeout = 30) {
     traits  = list()
   )
 
-  if (!requireNamespace("robis", quietly = TRUE)) return(result)
+  if (!requireNamespace("robis", quietly = TRUE)) {
+    message("  [OBIS] Package 'robis' not installed. Install: install.packages('robis')")
+    return(result)
+  }
 
   tryCatch({
     occ <- with_timeout(
@@ -305,8 +316,10 @@ lookup_traitbank <- function(species_name, timeout = 15) {
     traits  = list()
   )
 
-  if (!requireNamespace("httr",     quietly = TRUE)) return(result)
-  if (!requireNamespace("jsonlite", quietly = TRUE)) return(result)
+  if (!requireNamespace("httr", quietly = TRUE) || !requireNamespace("jsonlite", quietly = TRUE)) {
+    message("  [TraitBank] Packages 'httr'/'jsonlite' required. Install: install.packages(c('httr','jsonlite'))")
+    return(result)
+  }
 
   tryCatch({
     # Step 1: search EOL for the page ID
