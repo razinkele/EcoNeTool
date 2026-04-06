@@ -446,13 +446,10 @@ find_closest_relatives_sql <- function(target_taxonomy,
   on.exit(dbDisconnect(con))
 
   # Build SQL query with CASE statement for taxonomic distance
-  query <- "
-    SELECT
-      species_name,
-      phylum, class, order_name, family, genus,
-      MS, FS, MB, EP, PR,
-      MS_confidence, FS_confidence, MB_confidence, EP_confidence, PR_confidence,
-      overall_confidence,
+  # Wrapped in subquery to allow WHERE on the computed alias (SQLite restriction)
+  inner_query <- "
+    SELECT species_name, genus, family, order_name, class, phylum,
+      MS, FS, MB, EP, PR, overall_confidence,
       CASE
         WHEN genus = ? THEN 0
         WHEN family = ? THEN 1
@@ -462,8 +459,10 @@ find_closest_relatives_sql <- function(target_taxonomy,
         ELSE 5
       END as distance
     FROM species
-    WHERE distance <= ?
+    WHERE (genus = ? OR family = ? OR order_name = ? OR class = ? OR phylum = ?)
   "
+
+  query <- paste0("SELECT * FROM (", inner_query, ") sub\nWHERE distance <= ?")
 
   # Add trait requirements
   trait_conditions <- character()
@@ -484,13 +483,16 @@ find_closest_relatives_sql <- function(target_taxonomy,
   }
 
   # Execute query
+  # Parameters: CASE (5) + WHERE OR conditions (5) + distance <= (1) = 11 total
+  g <- target_taxonomy$genus %||% ""
+  f <- target_taxonomy$family %||% ""
+  o <- target_taxonomy$order %||% ""
+  cl <- target_taxonomy$class %||% ""
+  ph <- target_taxonomy$phylum %||% ""
   relatives <- dbGetQuery(con, query, params = list(
-    target_taxonomy$genus %||% "",
-    target_taxonomy$family %||% "",
-    target_taxonomy$order %||% "",
-    target_taxonomy$class %||% "",
-    target_taxonomy$phylum %||% "",
-    max_distance
+    g, f, o, cl, ph,   # CASE WHEN
+    g, f, o, cl, ph,   # WHERE OR
+    max_distance       # WHERE distance <=
   ))
 
   return(relatives)
