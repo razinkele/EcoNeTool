@@ -195,3 +195,185 @@ test_that("all CSV databases return success=FALSE for nonexistent species", {
   expect_false(result4$success)
   expect_false(result5$success)
 })
+
+# ============================================================================
+# MEDITERRANEAN REGION
+# ============================================================================
+
+test_that("harmonize EP for Mediterranean seagrass (Posidonia oceanica)", {
+  # Seagrass is benthic/epibenthic, photosynthetic
+  ep <- harmonize_environmental_position(
+    habitat_info = c("seagrass", "benthic", "shallow"),
+    depth_min = 1, depth_max = 40,
+    taxonomic_info = NULL
+  )
+  expect_true(ep %in% c("EP3", "EP4"), info = "Seagrass should be epibenthic or endobenthic")
+})
+
+test_that("harmonize PR for Mediterranean sea urchin (Paracentrotus lividus)", {
+  # Echinoderms have spines as their primary protection trait
+  pr <- harmonize_protection(skeleton_info = "spines")
+  expect_equal(pr, "PR7", info = "Sea urchin spines should map to PR7 (few spines)")
+})
+
+# ============================================================================
+# NORTH SEA REGION
+# ============================================================================
+
+test_that("BIOTIC finds Arenicola marina (North Sea lugworm)", {
+  biotic_file <- file.path(app_root, "data/biotic_traits.csv")
+  skip_if_not(file.exists(biotic_file))
+  result <- lookup_biotic_traits("Arenicola marina", biotic_file = biotic_file)
+  expect_true(result$success, info = "Arenicola should be in BIOTIC")
+  expect_true(grepl("deposit_feeder", result$traits$feeding_mode, ignore.case = TRUE),
+              info = "Arenicola is a deposit feeder")
+  expect_true(result$traits$max_length_cm >= 15, info = "Arenicola > 15cm")
+})
+
+test_that("BIOTIC finds Crangon crangon (North Sea brown shrimp)", {
+  biotic_file <- file.path(app_root, "data/biotic_traits.csv")
+  skip_if_not(file.exists(biotic_file))
+  result <- lookup_biotic_traits("Crangon crangon", biotic_file = biotic_file)
+  expect_true(result$success)
+  expect_true(grepl("predator", result$traits$feeding_mode, ignore.case = TRUE))
+})
+
+test_that("PTDB finds Guinardia delicatula (North Sea chain diatom)", {
+  ptdb_file <- file.path(app_root, "data/ptdb_phytoplankton.csv")
+  skip_if_not(file.exists(ptdb_file))
+  result <- lookup_ptdb_traits("Guinardia delicatula", ptdb_file = ptdb_file)
+  expect_true(result$success)
+  expect_true(grepl("chain", result$traits$growth_form, ignore.case = TRUE))
+})
+
+test_that("PTDB finds Pseudo-nitzschia as HAB species", {
+  ptdb_file <- file.path(app_root, "data/ptdb_phytoplankton.csv")
+  skip_if_not(file.exists(ptdb_file))
+  # Use delicatissima (confirmed in DB with Harmful=TRUE)
+  result <- lookup_ptdb_traits("Pseudo-nitzschia delicatissima", ptdb_file = ptdb_file)
+  if (result$success) {
+    expect_true(!is.null(result$traits$is_hab), info = "HAB diatom should have is_hab flag")
+    expect_true(result$traits$is_hab == TRUE, info = "Pseudo-nitzschia should be flagged as harmful")
+  }
+})
+
+test_that("MAREDAT finds Calanus finmarchicus (North Sea key copepod)", {
+  maredat_file <- file.path(app_root, "data/maredat_zooplankton.csv")
+  skip_if_not(file.exists(maredat_file))
+  result <- lookup_maredat_traits("Calanus finmarchicus", maredat_file = maredat_file)
+  expect_true(result$success, info = "C. finmarchicus should be in MAREDAT")
+  expect_true(result$traits$size_um >= 2000, info = "C. finmarchicus ESD >= 2000 um")
+  expect_equal(result$traits$trophic_level, 2.0, info = "Herbivore TL should be 2.0")
+})
+
+test_that("ontology finds Merluccius merluccius (European hake)", {
+  ontology_file <- file.path(app_root, "data/ontology_traits.csv")
+  skip_if_not(file.exists(ontology_file))
+  result <- lookup_ontology_traits(aphia_id = 126484, ontology_file = ontology_file)
+  expect_true(result$success, info = "Merluccius should be in ontology")
+})
+
+# ============================================================================
+# ARCTIC REGION
+# ============================================================================
+
+test_that("MAREDAT finds Calanus glacialis (Arctic copepod)", {
+  maredat_file <- file.path(app_root, "data/maredat_zooplankton.csv")
+  skip_if_not(file.exists(maredat_file))
+  result <- lookup_maredat_traits("Calanus glacialis", maredat_file = maredat_file)
+  expect_true(result$success, info = "C. glacialis should be in MAREDAT")
+  expect_true(result$traits$size_um >= 3000, info = "C. glacialis ESD >= 3000 um (larger than C. finmarchicus)")
+})
+
+test_that("MAREDAT finds Calanus hyperboreus (large Arctic copepod)", {
+  maredat_file <- file.path(app_root, "data/maredat_zooplankton.csv")
+  skip_if_not(file.exists(maredat_file))
+  result <- lookup_maredat_traits("Calanus hyperboreus", maredat_file = maredat_file)
+  expect_true(result$success)
+  expect_true(result$traits$size_um >= 4000, info = "C. hyperboreus is the largest calanoid (>4000 um)")
+})
+
+test_that("Arctic copepods harmonize to EP1 (pelagic)", {
+  ep <- harmonize_environmental_position(
+    habitat_info = NULL, depth_min = NULL, depth_max = NULL,
+    taxonomic_info = list(phylum = "Arthropoda", class = "Copepoda")
+  )
+  expect_equal(ep, "EP1", info = "Copepods should be EP1 (Pelagic)")
+})
+
+test_that("Arctic species harmonize to TT1 (cold stenothermal)", {
+  tt <- harmonize_temperature_tolerance("arctic polar cold-water species")
+  expect_equal(tt, "TT1", info = "Arctic species should be TT1")
+})
+
+# ============================================================================
+# ATLANTIC REGION
+# ============================================================================
+
+test_that("harmonize size for large Atlantic fish", {
+  # Basking shark (Cetorhinus maximus) can reach 12m = 1200cm
+  ms <- harmonize_size_class(1200)
+  expect_equal(ms, "MS7", info = "12m fish should be MS7 (Giant)")
+})
+
+test_that("harmonize size for medium Atlantic fish", {
+  # European hake ~70cm
+  ms <- harmonize_size_class(70)
+  expect_true(ms %in% c("MS5", "MS6"), info = "70cm fish should be MS5 or MS6")
+})
+
+test_that("harmonize foraging for Atlantic predators", {
+  fs <- harmonize_foraging_strategy(feeding_info = "piscivorous predator", trophic_level = 4.0)
+  expect_equal(fs, "FS1", info = "Piscivore TL4+ should be FS1 (Predator)")
+})
+
+# ============================================================================
+# CROSS-REGIONAL CONSISTENCY
+# ============================================================================
+
+test_that("same species gets same traits regardless of region label", {
+  # Calanus finmarchicus appears in both North Sea and Atlantic
+  maredat_file <- file.path(app_root, "data/maredat_zooplankton.csv")
+  skip_if_not(file.exists(maredat_file))
+  result <- lookup_maredat_traits("Calanus finmarchicus", maredat_file = maredat_file)
+  if (result$success) {
+    # Harmonize to codes
+    ms <- harmonize_size_class(result$traits$size_um / 10000)  # um to cm
+    expect_true(ms %in% c("MS1", "MS2"), info = "Small copepod should be MS1 or MS2")
+    expect_equal(result$traits$trophic_level, 2.0)
+  }
+})
+
+test_that("deposit feeder harmonizes consistently across databases", {
+  # Both BIOTIC's Arenicola (deposit_feeder) and text description should give same FS
+  fs1 <- harmonize_foraging_strategy(feeding_info = "deposit_feeder", trophic_level = 2.0)
+  fs2 <- harmonize_foraging_strategy(feeding_info = "deposit feeder", trophic_level = 2.0)
+  expect_equal(fs1, fs2, info = "deposit_feeder and 'deposit feeder' should give same FS code")
+  expect_equal(fs1, "FS5", info = "Deposit feeders should be FS5")
+})
+
+test_that("European marine test species dataset covers all 6 regions", {
+  f <- file.path(app_root, "data/european_marine_test_species.csv")
+  skip_if_not(file.exists(f))
+  data <- read.csv(f, stringsAsFactors = FALSE)
+  regions <- unique(data$region)
+  expected_regions <- c("Baltic", "Mediterranean", "North_Sea", "Atlantic", "Arctic", "Widespread")
+  for (r in expected_regions) {
+    expect_true(r %in% regions, info = paste("Dataset should include", r, "region"))
+  }
+  # Each region should have at least 15 species
+  for (r in c("Baltic", "Mediterranean", "North_Sea", "Atlantic", "Arctic")) {
+    count <- sum(data$region == r)
+    expect_true(count >= 15, info = paste(r, "should have >= 15 species, has", count))
+  }
+})
+
+test_that("all functional groups represented in European test species", {
+  f <- file.path(app_root, "data/european_marine_test_species.csv")
+  skip_if_not(file.exists(f))
+  data <- read.csv(f, stringsAsFactors = FALSE)
+  fgs <- unique(data$functional_group)
+  for (fg in c("Phytoplankton", "Zooplankton", "Benthos", "Fish", "Bird", "Mammal")) {
+    expect_true(fg %in% fgs, info = paste("Should have", fg, "functional group"))
+  }
+})
