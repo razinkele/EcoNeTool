@@ -41,3 +41,10 @@ test_that("EP returns EP4 for shallow burrowers", {
     taxonomic_info = NULL)
   expect_equal(result, "EP4")
 })
+
+test_that("CSV lookup functions use simple paths, not sys.frame", {
+  csv_text <- readLines(file.path(app_root, "R/functions/trait_lookup/csv_trait_databases.R"))
+  csv_joined <- paste(csv_text, collapse = "\n")
+  expect_false(grepl("sys.frame", csv_joined),
+               info = "Must not use sys.frame(1)$ofile")
+})

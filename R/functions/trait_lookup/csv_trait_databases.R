@@ -87,10 +87,7 @@
 #' @export
 lookup_blacksea_traits <- function(
     species_name,
-    csv_file = file.path(
-      dirname(dirname(dirname(dirname(sys.frame(1)$ofile)))),
-      "data", "external_traits", "blacksea_traits.csv"
-    )) {
+    csv_file = file.path("data", "external_traits", "blacksea_traits.csv")) {
 
   result <- list(
     species = species_name,
@@ -130,10 +127,7 @@ lookup_blacksea_traits <- function(
 #' @export
 lookup_arctic_traits <- function(
     species_name,
-    csv_file = file.path(
-      dirname(dirname(dirname(dirname(sys.frame(1)$ofile)))),
-      "data", "external_traits", "arctic_traits.csv"
-    )) {
+    csv_file = file.path("data", "external_traits", "arctic_traits.csv")) {
 
   result <- list(
     species = species_name,
@@ -174,10 +168,7 @@ lookup_arctic_traits <- function(
 #' @export
 lookup_cefas_traits <- function(
     species_name,
-    csv_file = file.path(
-      dirname(dirname(dirname(dirname(sys.frame(1)$ofile)))),
-      "data", "external_traits", "cefas_benthic_traits.csv"
-    )) {
+    csv_file = file.path("data", "external_traits", "cefas_benthic_traits.csv")) {
 
   result <- list(
     species = species_name,
@@ -218,10 +209,7 @@ lookup_cefas_traits <- function(
 #' @export
 lookup_coral_traits <- function(
     species_name,
-    csv_file = file.path(
-      dirname(dirname(dirname(dirname(sys.frame(1)$ofile)))),
-      "data", "external_traits", "coral_traits.csv"
-    )) {
+    csv_file = file.path("data", "external_traits", "coral_traits.csv")) {
 
   result <- list(
     species = species_name,
@@ -259,10 +247,7 @@ lookup_coral_traits <- function(
 #' @export
 lookup_pelagic_traits <- function(
     species_name,
-    csv_file = file.path(
-      dirname(dirname(dirname(dirname(sys.frame(1)$ofile)))),
-      "data", "external_traits", "pelagic_traits.csv"
-    )) {
+    csv_file = file.path("data", "external_traits", "pelagic_traits.csv")) {
 
   result <- list(
     species = species_name,
