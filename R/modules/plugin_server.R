@@ -173,13 +173,32 @@ plugin_server <- function(input, output, session, plugin_states) {
 
   observeEvent(input$save_api_keys, {
     dir.create("config", showWarnings = FALSE)
-    keys_content <- paste0(
-      "# API Keys for EcoNeTool (auto-generated, gitignored)\n",
-      "API_KEYS$algaebase_username <- \"", input$api_key_algaebase_user, "\"\n",
-      "API_KEYS$algaebase_password <- \"", input$api_key_algaebase_pass, "\"\n",
-      "API_KEYS$freshwaterecology_key <- \"", input$api_key_freshwater, "\"\n"
+    if (!requireNamespace("jsonlite", quietly = TRUE)) {
+      showNotification("jsonlite package required. Install with: install.packages('jsonlite')", type = "error")
+      return()
+    }
+    # Use JSON format to avoid R code injection via source()
+    keys_list <- list(
+      algaebase_username = input$api_key_algaebase_user,
+      algaebase_password = input$api_key_algaebase_pass,
+      freshwaterecology_key = input$api_key_freshwater
     )
-    writeLines(keys_content, "config/api_keys.R")
+    jsonlite::write_json(keys_list, "config/api_keys.json", auto_unbox = TRUE, pretty = TRUE)
+
+    # Remove old vulnerable .R format if it exists
+    old_file <- "config/api_keys.R"
+    if (file.exists(old_file)) {
+      file.remove(old_file)
+      message("Removed legacy config/api_keys.R (replaced by config/api_keys.json)")
+    }
+
+    # Update in-memory API_KEYS if it exists
+    if (exists("API_KEYS", envir = .GlobalEnv)) {
+      API_KEYS$algaebase_username <<- input$api_key_algaebase_user
+      API_KEYS$algaebase_password <<- input$api_key_algaebase_pass
+      API_KEYS$freshwaterecology_key <<- input$api_key_freshwater
+    }
+
     removeModal()
     showNotification("API keys saved successfully!", type = "message")
   })

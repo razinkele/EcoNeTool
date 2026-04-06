@@ -217,6 +217,17 @@ if (file.exists(API_KEYS_FILE)) {
   }
 }
 
+# Also load from JSON format (safer, preferred)
+json_keys_file <- "config/api_keys.json"
+if (file.exists(json_keys_file)) {
+  tryCatch({
+    json_keys <- jsonlite::fromJSON(json_keys_file)
+    for (key in names(json_keys)) {
+      API_KEYS[[key]] <- json_keys[[key]]
+    }
+  }, error = function(e) message("Could not load API keys from JSON: ", e$message))
+}
+
 #' Get API key for a service
 #'
 #' @param service Character, name of the service (e.g., "algaebase_username")
