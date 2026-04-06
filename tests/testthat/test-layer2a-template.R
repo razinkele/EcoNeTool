@@ -83,3 +83,31 @@ test_that("harmonize_salinity_tolerance maps correctly", {
   expect_equal(harmonize_salinity_tolerance("marine"), "ST5")
   expect_equal(harmonize_salinity_tolerance("unknown"), NA_character_)
 })
+
+test_that("schema migration adds new columns without error", {
+  skip_if_not_installed("RSQLite")
+  skip_if_not_installed("DBI")
+  source(file.path(app_root, "R/functions/cache_sqlite.R"))
+
+  con <- dbConnect(RSQLite::SQLite(), ":memory:")
+  on.exit(dbDisconnect(con))
+  dbExecute(con, "CREATE TABLE species_traits (
+    species TEXT PRIMARY KEY, MS TEXT, FS TEXT, MB TEXT, EP TEXT, PR TEXT,
+    MS_confidence REAL, FS_confidence REAL, MB_confidence REAL,
+    EP_confidence REAL, PR_confidence REAL, primary_source TEXT
+  )")
+  dbExecute(con, "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT)")
+  dbExecute(con, "INSERT INTO metadata (key, value) VALUES ('version', '1.3.0')")
+
+  migrate_offline_schema(con)
+
+  cols <- dbListFields(con, "species_traits")
+  expect_true("RS" %in% cols)
+  expect_true("TT" %in% cols)
+  expect_true("ST" %in% cols)
+  expect_true("trophic_level" %in% cols)
+  expect_true("depth_min" %in% cols)
+  expect_true("is_hab" %in% cols)
+  expect_true("longevity_years" %in% cols)
+  expect_true("imputation_method" %in% cols)
+})

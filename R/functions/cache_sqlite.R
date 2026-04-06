@@ -730,3 +730,59 @@ print_cache_stats <- function(db_path = "cache/taxonomy.db") {
 # - migrate_rds_to_sqlite()
 # - get_cache_stats()
 # - print_cache_stats()
+# - migrate_offline_schema()
+
+
+# =============================================================================
+# OFFLINE TRAIT DB SCHEMA MIGRATION
+# =============================================================================
+
+#' Migrate offline trait DB schema to current version
+#'
+#' Adds new columns for expanded trait categories without losing existing data.
+#' Safe to call multiple times.
+#'
+#' @param con DBI connection to the offline_traits.db
+#' @return invisible(NULL)
+migrate_offline_schema <- function(con) {
+  new_columns <- list(
+    c("RS", "TEXT", "NULL"),
+    c("TT", "TEXT", "NULL"),
+    c("ST", "TEXT", "NULL"),
+    c("trophic_level", "REAL", "NULL"),
+    c("depth_min", "REAL", "NULL"),
+    c("depth_max", "REAL", "NULL"),
+    c("is_hab", "INTEGER", "NULL"),
+    c("longevity_years", "REAL", "NULL"),
+    c("growth_rate", "TEXT", "NULL"),
+    c("body_shape", "TEXT", "NULL"),
+    c("phyto_motility", "TEXT", "NULL"),
+    c("phyto_growth_form", "TEXT", "NULL"),
+    c("RS_confidence", "REAL", "NULL"),
+    c("TT_confidence", "REAL", "NULL"),
+    c("ST_confidence", "REAL", "NULL"),
+    c("imputation_method", "TEXT", "'observed'")
+  )
+
+  existing_cols <- dbListFields(con, "species_traits")
+
+  for (col_def in new_columns) {
+    col_name <- col_def[1]
+    col_type <- col_def[2]
+    col_default <- col_def[3]
+    if (!col_name %in% existing_cols) {
+      sql <- sprintf("ALTER TABLE species_traits ADD COLUMN %s %s DEFAULT %s",
+                     col_name, col_type, col_default)
+      tryCatch(dbExecute(con, sql), error = function(e) {
+        message("Schema migration: column ", col_name, " - ", e$message)
+      })
+    }
+  }
+
+  tryCatch(
+    dbExecute(con, "INSERT OR REPLACE INTO metadata (key, value) VALUES ('schema_version', '2.0')"),
+    error = function(e) message("Could not update schema version: ", e$message)
+  )
+
+  invisible(NULL)
+}

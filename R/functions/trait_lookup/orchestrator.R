@@ -55,6 +55,11 @@ lookup_offline_traits <- function(species_name, db_path = "cache/offline_traits.
     con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
     on.exit(DBI::dbDisconnect(con))
 
+    # Migrate schema if needed (adds new columns without losing data)
+    if (exists("migrate_offline_schema", mode = "function")) {
+      migrate_offline_schema(con)
+    }
+
     # Check staleness
     meta <- DBI::dbGetQuery(con, "SELECT value FROM metadata WHERE key = 'build_timestamp'")
     if (nrow(meta) > 0) {
@@ -67,7 +72,15 @@ lookup_offline_traits <- function(species_name, db_path = "cache/offline_traits.
     }
 
     result <- DBI::dbGetQuery(con,
-      "SELECT species, MS, FS, MB, EP, PR, MS_confidence, FS_confidence, MB_confidence, EP_confidence, PR_confidence, primary_source FROM species_traits WHERE species = ?",
+      "SELECT species, MS, FS, MB, EP, PR, RS, TT, ST,
+              trophic_level, depth_min, depth_max, is_hab,
+              longevity_years, growth_rate, body_shape,
+              phyto_motility, phyto_growth_form,
+              MS_confidence, FS_confidence, MB_confidence,
+              EP_confidence, PR_confidence,
+              RS_confidence, TT_confidence, ST_confidence,
+              primary_source, imputation_method
+       FROM species_traits WHERE species = ?",
       params = list(species_name))
 
     if (nrow(result) == 0) return(NULL)
