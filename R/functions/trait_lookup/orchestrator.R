@@ -317,6 +317,11 @@ lookup_species_traits <- function(species_name,
   query_ptdb <- FALSE
   query_algaebase <- FALSE
   # query_shark removed (SHARK database not used)
+  query_blacksea <- FALSE
+  query_arctic <- FALSE
+  query_cefas <- FALSE
+  query_coral <- FALSE
+  query_pelagic <- FALSE
 
   if (worms_data$success) {
     phylum <- tolower(raw_traits$worms$phylum)
@@ -329,6 +334,7 @@ lookup_species_traits <- function(species_name,
                                               "holocephali", "myxini", "petromyzonti",
                                               "teleostei", "chondrichthyes", "osteichthyes")) {
       query_fishbase <- TRUE
+      query_pelagic <- TRUE
       message("  \u2192 Detected FISH (", class, ") \u2192 Querying: FishBase")
       message("  \u2192 Skipping: SeaLifeBase, BIOTIC, MAREDAT, PTDB, AlgaeBase")
 
@@ -353,6 +359,13 @@ lookup_species_traits <- function(species_name,
       query_sealifebase <- TRUE
       query_species_enriched <- TRUE
       query_biotic <- TRUE
+      query_cefas <- TRUE
+      query_blacksea <- TRUE
+      query_arctic <- TRUE
+      if (class == "anthozoa") {
+        query_coral <- TRUE
+        message("  -> Anthozoa detected: also querying Coral Trait DB")
+      }
       message("  \u2192 Detected MARINE INVERTEBRATE (", phylum, ") \u2192 Querying: SeaLifeBase, SpeciesEnriched, BIOTIC")
       message("  \u2192 Skipping: FishBase, freshwater, MAREDAT, PTDB, AlgaeBase")
 
@@ -417,6 +430,11 @@ lookup_species_traits <- function(species_name,
     query_maredat <- TRUE
     query_ptdb <- TRUE
     query_algaebase <- TRUE
+    query_blacksea <- TRUE
+    query_arctic <- TRUE
+    query_cefas <- TRUE
+    query_coral <- TRUE
+    query_pelagic <- TRUE
   }
 
   message("")  # Blank line
@@ -782,6 +800,118 @@ lookup_species_traits <- function(species_name,
   if (!is.null(raw_traits$ptdb$growth_form)) result$phyto_growth_form <- raw_traits$ptdb$growth_form
   if (!is.null(raw_traits$ptdb$motility)) result$phyto_motility <- raw_traits$ptdb$motility
   if (!is.null(raw_traits$ptdb$is_hab)) result$is_hab <- raw_traits$ptdb$is_hab
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # BUNDLED CSV DATABASES
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # CSV: Black Sea Traits
+  if (query_blacksea) {
+    message("\n[CSV] Black Sea Traits DB...")
+    db_start <- Sys.time()
+    blacksea_data <- lookup_blacksea_traits(species_name)
+    if (blacksea_data$success) {
+      raw_traits$blacksea <- blacksea_data$traits
+      sources_used <- c(sources_used, "BlackSea")
+      if (!is.null(blacksea_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, blacksea_data$traits$feeding_mode)
+      if (!is.null(blacksea_data$traits$mobility_info)) mobility_info <- c(mobility_info, blacksea_data$traits$mobility_info)
+      if (!is.null(blacksea_data$traits$reproductive_mode)) {
+        result$RS <- harmonize_reproductive_strategy(blacksea_data$traits$reproductive_mode)
+      }
+      if (!is.null(blacksea_data$traits$temperature_affinity)) {
+        result$TT <- harmonize_temperature_tolerance(blacksea_data$traits$temperature_affinity)
+      }
+      if (!is.null(blacksea_data$traits$salinity_affinity)) {
+        result$ST <- harmonize_salinity_tolerance(blacksea_data$traits$salinity_affinity)
+      }
+      message("    Found: ", paste(names(blacksea_data$traits), collapse = ", "))
+    }
+    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+  }
+
+  # CSV: Arctic Traits DB
+  if (query_arctic) {
+    message("\n[CSV] Arctic Traits DB...")
+    db_start <- Sys.time()
+    arctic_data <- lookup_arctic_traits(species_name)
+    if (arctic_data$success) {
+      raw_traits$arctic <- arctic_data$traits
+      sources_used <- c(sources_used, "ArcticTraits")
+      if (!is.null(arctic_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, arctic_data$traits$feeding_mode)
+      if (!is.null(arctic_data$traits$mobility_info)) mobility_info <- c(mobility_info, arctic_data$traits$mobility_info)
+      if (!is.null(arctic_data$traits$reproductive_mode)) {
+        result$RS <- harmonize_reproductive_strategy(arctic_data$traits$reproductive_mode)
+      }
+      if (!is.null(arctic_data$traits$temperature_preference)) {
+        result$TT <- harmonize_temperature_tolerance(arctic_data$traits$temperature_preference)
+      }
+      message("    Found: ", paste(names(arctic_data$traits), collapse = ", "))
+    }
+    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+  }
+
+  # CSV: Cefas NW Europe Benthic
+  if (query_cefas) {
+    message("\n[CSV] Cefas NW Europe Benthic Traits...")
+    db_start <- Sys.time()
+    cefas_data <- lookup_cefas_traits(species_name)
+    if (cefas_data$success) {
+      raw_traits$cefas <- cefas_data$traits
+      sources_used <- c(sources_used, "Cefas")
+      if (!is.null(cefas_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, cefas_data$traits$feeding_mode)
+      if (!is.null(cefas_data$traits$mobility_info)) mobility_info <- c(mobility_info, cefas_data$traits$mobility_info)
+      if (!is.null(cefas_data$traits$longevity_years)) result$longevity_years <- cefas_data$traits$longevity_years
+      if (!is.null(cefas_data$traits$reproductive_mode)) {
+        result$RS <- harmonize_reproductive_strategy(cefas_data$traits$reproductive_mode)
+      }
+      message("    Found: ", paste(names(cefas_data$traits), collapse = ", "))
+    }
+    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+  }
+
+  # CSV: Coral Trait DB
+  if (query_coral) {
+    message("\n[CSV] Coral Trait DB...")
+    db_start <- Sys.time()
+    coral_data <- lookup_coral_traits(species_name)
+    if (coral_data$success) {
+      raw_traits$coral <- coral_data$traits
+      sources_used <- c(sources_used, "CoralTraits")
+      if (!is.null(coral_data$traits$reproductive_mode)) {
+        result$RS <- harmonize_reproductive_strategy(coral_data$traits$reproductive_mode)
+      }
+      if (!is.null(coral_data$traits$thermal_tolerance)) {
+        if (coral_data$traits$thermal_tolerance > 30) {
+          result$TT <- "TT4"
+        } else if (coral_data$traits$thermal_tolerance > 25) {
+          result$TT <- "TT3"
+        } else {
+          result$TT <- "TT2"
+        }
+      }
+      if (!is.null(coral_data$traits$depth_min)) result$depth_min <- coral_data$traits$depth_min
+      if (!is.null(coral_data$traits$depth_max)) result$depth_max <- coral_data$traits$depth_max
+      message("    Found: ", paste(names(coral_data$traits), collapse = ", "))
+    }
+    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+  }
+
+  # CSV: Pelagic Trait DB
+  if (query_pelagic) {
+    message("\n[CSV] Pelagic Trait DB...")
+    db_start <- Sys.time()
+    pelagic_data <- lookup_pelagic_traits(species_name)
+    if (pelagic_data$success) {
+      raw_traits$pelagic <- pelagic_data$traits
+      sources_used <- c(sources_used, "PelagicTraits")
+      if (!is.null(pelagic_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, pelagic_data$traits$feeding_mode)
+      if (!is.null(pelagic_data$traits$body_length_cm) && is.null(size_cm)) {
+        size_cm <- pelagic_data$traits$body_length_cm
+      }
+      message("    Found: ", paste(names(pelagic_data$traits), collapse = ", "))
+    }
+    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+  }
 
   # HARMONIZATION PHASE
   message("\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557")

@@ -218,3 +218,13 @@ test_that("lookup is case-insensitive for species names", {
   result <- lookup_blacksea_traits("MYTILUS GALLOPROVINCIALIS", csv_file = tmp)
   expect_true(result$success, info = "Should match case-insensitively")
 })
+
+test_that("orchestrator has CSV database routing flags", {
+  orch_text <- readLines(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"))
+  orch_joined <- paste(orch_text, collapse = "\n")
+  expect_true(grepl("query_blacksea", orch_joined), info = "Missing query_blacksea flag")
+  expect_true(grepl("query_arctic", orch_joined), info = "Missing query_arctic flag")
+  expect_true(grepl("query_cefas", orch_joined), info = "Missing query_cefas flag")
+  expect_true(grepl("query_coral", orch_joined), info = "Missing query_coral flag")
+  expect_true(grepl("query_pelagic", orch_joined), info = "Missing query_pelagic flag")
+})
