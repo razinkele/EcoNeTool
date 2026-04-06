@@ -48,3 +48,13 @@ test_that("SHARK is removed from trait routing in orchestrator", {
   expect_equal(length(shark_assignments), 0,
                info = "All query_shark <- TRUE assignments should be removed from orchestrator")
 })
+
+test_that("include_raw=TRUE requires raw_data in query", {
+  skip_if_not_installed("RSQLite")
+  source(file.path(app_root, "R/functions/cache_sqlite.R"))
+  fn_body <- deparse(body(load_species_from_cache))
+  fn_text <- paste(fn_body, collapse = "\n")
+  # After fix: the include_raw=TRUE branch should have IS NOT NULL
+  expect_true(grepl("include_raw.*IS NOT NULL|IS NOT NULL.*include_raw", fn_text, ignore.case = TRUE),
+              info = "include_raw=TRUE branch should require raw_data IS NOT NULL")
+})
