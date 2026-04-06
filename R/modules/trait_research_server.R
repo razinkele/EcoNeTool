@@ -877,6 +877,49 @@ trait_research_server <- function(input, output, session, shared_data) {
   })
 
   # ============================================================================
+  # RADAR CHART: FUZZY TRAIT PROFILE
+  # ============================================================================
+
+  output$trait_radar_chart <- plotly::renderPlotly({
+    req(rv$trait_results)
+    req(nrow(rv$trait_results) > 0)
+    species_data <- rv$trait_results[1, ]
+
+    trait_codes <- c("MS", "FS", "MB", "EP", "PR", "RS", "TT", "ST")
+    trait_labels <- c("Body Size", "Foraging", "Mobility", "Env. Position",
+                      "Protection", "Reproduction", "Temperature", "Salinity")
+
+    scores <- sapply(trait_codes, function(tc) {
+      val <- species_data[[tc]]
+      if (is.na(val) || val == "") return(-1)
+      num <- as.numeric(gsub("[^0-9]", "", val))
+      if (is.na(num)) return(-1)
+      num
+    })
+
+    max_vals <- c(7, 7, 5, 4, 8, 4, 4, 5)
+    normalized <- ifelse(scores < 0, 0, (scores + 0.5) / (max_vals + 0.5))
+
+    plotly::plot_ly(
+      type = 'scatterpolar',
+      r = c(normalized, normalized[1]),
+      theta = c(trait_labels, trait_labels[1]),
+      fill = 'toself',
+      fillcolor = 'rgba(0, 123, 255, 0.2)',
+      line = list(color = '#007bff'),
+      name = species_data$species
+    ) %>%
+      plotly::layout(
+        polar = list(
+          radialaxis = list(visible = TRUE, range = c(0, 1)),
+          angularaxis = list(tickfont = list(size = 12))
+        ),
+        title = paste("Trait Profile:", species_data$species),
+        showlegend = FALSE
+      )
+  })
+
+  # ============================================================================
   # OFFLINE DATABASE MANAGEMENT
   # ============================================================================
 

@@ -565,6 +565,20 @@ trait_research_ui <- function() {
       )  # End right column
     ),  # End fluidRow
 
+    # Trait Profile Radar Chart
+    fluidRow(
+      column(
+        width = 12,
+              box(
+                title = "Trait Profile Visualization",
+                status = "primary", solidHeader = TRUE, width = 12,
+                collapsible = TRUE, collapsed = TRUE, icon = icon("chart-pie"),
+                plotly::plotlyOutput("trait_radar_chart", height = "400px"),
+                helpText("Radar chart showing all 8 trait categories as a normalized profile.")
+              )
+      )
+    ),
+
     # Offline Database Management Panel
     fluidRow(
       column(
