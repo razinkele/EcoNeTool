@@ -455,10 +455,10 @@ impute_with_bhpmf <- function(trait_matrix, hierarchy, num_samples = 1000, burn_
 ```bash
 git commit -m "feat(ml): add BHPMF Bayesian batch trait gap-filling
 
-impute_with_bhpmf() calls BHPMF::GapFilling() for taxonomy-informed
+impute_with_bhpmf() calls BHPMF::gap_filling() for taxonomy-informed
 matrix factorization. Returns gap-filled matrix + SD matrix for
 uncertainty. Used only during offline DB rebuild (too slow for real-time).
-Optional package — graceful degradation if not installed."
+Package removed from CRAN 2017 — install from archive."
 ```
 
 ---
