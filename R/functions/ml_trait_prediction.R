@@ -29,11 +29,11 @@
 #' @export
 compute_phylo_eigenvectors <- function(taxonomy_df, n_vectors = 10) {
   if (!requireNamespace("ape", quietly = TRUE)) {
-    warning("Package 'ape' required for phylogenetic eigenvectors")
-    return(matrix(0, nrow = nrow(taxonomy_df), ncol = n_vectors))
+    warning("Package 'ape' required for phylogenetic eigenvectors. Install: install.packages('ape')")
+    return(NULL)
   }
   n_species <- nrow(taxonomy_df)
-  if (n_species < 3) return(matrix(0, nrow = n_species, ncol = n_vectors))
+  if (n_species < 3) return(NULL)
 
   dist_mat <- matrix(0, nrow = n_species, ncol = n_species)
   for (i in 1:(n_species - 1)) {
@@ -51,7 +51,7 @@ compute_phylo_eigenvectors <- function(taxonomy_df, n_vectors = 10) {
 
   pcoa_result <- tryCatch(ape::pcoa(as.dist(dist_mat)), error = function(e) NULL)
   if (is.null(pcoa_result) || is.null(pcoa_result$vectors)) {
-    return(matrix(0, nrow = n_species, ncol = n_vectors))
+    return(NULL)
   }
 
   available <- ncol(pcoa_result$vectors)
