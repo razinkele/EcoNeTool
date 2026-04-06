@@ -818,3 +818,54 @@ harmonize_protection <- function(skeleton_info = NULL, taxonomic_info = NULL) {
   # Default: no protection
   return("PR0")
 }
+
+#' Harmonize Reproductive Strategy
+#' @param reproduction_text Character, raw reproduction description
+#' @return Character, RS code (RS1-RS4) or NA
+harmonize_reproductive_strategy <- function(reproduction_text) {
+  if (is.null(reproduction_text) || is.na(reproduction_text) || reproduction_text == "") {
+    return(NA_character_)
+  }
+  text <- tolower(reproduction_text)
+  patterns <- HARMONIZATION_CONFIG$reproductive_patterns
+  for (i in seq_along(patterns)) {
+    if (grepl(patterns[[i]], text)) {
+      return(paste0("RS", i))
+    }
+  }
+  return(NA_character_)
+}
+
+#' Harmonize Temperature Tolerance
+#' @param temperature_text Character, raw temperature/biogeographic description
+#' @return Character, TT code (TT1-TT4) or NA
+harmonize_temperature_tolerance <- function(temperature_text) {
+  if (is.null(temperature_text) || is.na(temperature_text) || temperature_text == "") {
+    return(NA_character_)
+  }
+  text <- tolower(temperature_text)
+  patterns <- HARMONIZATION_CONFIG$temperature_patterns
+  for (i in seq_along(patterns)) {
+    if (grepl(patterns[[i]], text)) {
+      return(paste0("TT", i))
+    }
+  }
+  return(NA_character_)
+}
+
+#' Harmonize Salinity Tolerance
+#' @param salinity_text Character, raw salinity/habitat description
+#' @return Character, ST code (ST1-ST5) or NA
+harmonize_salinity_tolerance <- function(salinity_text) {
+  if (is.null(salinity_text) || is.na(salinity_text) || salinity_text == "") {
+    return(NA_character_)
+  }
+  text <- tolower(salinity_text)
+  patterns <- HARMONIZATION_CONFIG$salinity_patterns
+  for (i in seq_along(patterns)) {
+    if (grepl(patterns[[i]], text)) {
+      return(paste0("ST", i))
+    }
+  }
+  return(NA_character_)
+}

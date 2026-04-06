@@ -60,3 +60,26 @@ test_that("harmonization config has RS/TT/ST patterns", {
   expect_equal(length(HARMONIZATION_CONFIG$temperature_patterns), 4)
   expect_equal(length(HARMONIZATION_CONFIG$salinity_patterns), 5)
 })
+
+test_that("harmonize_reproductive_strategy maps correctly", {
+  expect_equal(harmonize_reproductive_strategy("broadcast spawner"), "RS1")
+  expect_equal(harmonize_reproductive_strategy("brooding"), "RS2")
+  expect_equal(harmonize_reproductive_strategy("budding"), "RS3")
+  expect_equal(harmonize_reproductive_strategy("unknown_text"), NA_character_)
+})
+
+test_that("harmonize_temperature_tolerance maps correctly", {
+  expect_equal(harmonize_temperature_tolerance("arctic species"), "TT1")
+  expect_equal(harmonize_temperature_tolerance("boreal"), "TT2")
+  expect_equal(harmonize_temperature_tolerance("temperate"), "TT3")
+  expect_equal(harmonize_temperature_tolerance("tropical"), "TT4")
+  expect_equal(harmonize_temperature_tolerance("unknown"), NA_character_)
+})
+
+test_that("harmonize_salinity_tolerance maps correctly", {
+  expect_equal(harmonize_salinity_tolerance("freshwater"), "ST1")
+  expect_equal(harmonize_salinity_tolerance("oligohaline"), "ST2")
+  expect_equal(harmonize_salinity_tolerance("mesohaline"), "ST3")
+  expect_equal(harmonize_salinity_tolerance("marine"), "ST5")
+  expect_equal(harmonize_salinity_tolerance("unknown"), NA_character_)
+})
