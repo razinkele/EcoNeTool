@@ -61,3 +61,16 @@ test_that("impute_with_bhpmf returns NULL without package", {
     expect_null(result)
   }
 })
+
+test_that("orchestrator ML block checks expanded traits and sets imputation_method", {
+  orch_text <- readLines(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"))
+  orch_joined <- paste(orch_text, collapse = "\n")
+  expect_true(grepl("is.na\\(result\\$RS\\)", orch_joined),
+              info = "ML block should check RS for gaps")
+  expect_true(grepl("is.na\\(result\\$TT\\)", orch_joined),
+              info = "ML block should check TT for gaps")
+  expect_true(grepl("is.na\\(result\\$ST\\)", orch_joined),
+              info = "ML block should check ST for gaps")
+  expect_true(grepl("rf_predicted", orch_joined),
+              info = "ML block should set imputation_method to rf_predicted")
+})

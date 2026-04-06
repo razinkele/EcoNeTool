@@ -1219,7 +1219,10 @@ lookup_species_traits <- function(species_name,
     if (is.na(result$FS)) "FS",
     if (is.na(result$MB)) "MB",
     if (is.na(result$EP)) "EP",
-    if (is.na(result$PR)) "PR"
+    if (is.na(result$PR)) "PR",
+    if (is.na(result$RS)) "RS",
+    if (is.na(result$TT)) "TT",
+    if (is.na(result$ST)) "ST"
   )
 
   if (length(missing_traits) > 0 && !is.null(raw_traits$worms)) {
@@ -1244,11 +1247,9 @@ lookup_species_traits <- function(species_name,
       tryCatch({
         # Prepare harmonized traits for ML prediction
         harmonized_for_ml <- list(
-          MS = result$MS,
-          FS = result$FS,
-          MB = result$MB,
-          EP = result$EP,
-          PR = result$PR
+          MS = result$MS, FS = result$FS, MB = result$MB,
+          EP = result$EP, PR = result$PR,
+          RS = result$RS, TT = result$TT, ST = result$ST
         )
 
         # Apply ML fallback (function defined in ml_trait_prediction.R)
@@ -1274,6 +1275,23 @@ lookup_species_traits <- function(species_name,
         if (!is.na(result_with_ml$PR) && is.na(result$PR)) {
           result$PR <- result_with_ml$PR
           sources_used <- c(sources_used, "ML")
+        }
+        if (!is.na(result_with_ml$RS) && is.na(result$RS)) {
+          result$RS <- result_with_ml$RS
+          sources_used <- c(sources_used, "ML")
+        }
+        if (!is.na(result_with_ml$TT) && is.na(result$TT)) {
+          result$TT <- result_with_ml$TT
+          sources_used <- c(sources_used, "ML")
+        }
+        if (!is.na(result_with_ml$ST) && is.na(result$ST)) {
+          result$ST <- result_with_ml$ST
+          sources_used <- c(sources_used, "ML")
+        }
+
+        # Set imputation metadata for ML-filled traits
+        if ("ML" %in% sources_used) {
+          result$imputation_method <- "rf_predicted"
         }
 
         # Store ML metadata if available
