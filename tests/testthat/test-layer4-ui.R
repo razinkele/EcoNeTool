@@ -12,6 +12,17 @@ test_that("trait_research_server.R includes expanded display columns", {
               info = "Confidence columns should be color-coded with styleInterval")
 })
 
+test_that("trait research UI has offline DB management panel", {
+  ui_text <- readLines(file.path(app_root, "R/ui/trait_research_ui.R"))
+  ui_joined <- paste(ui_text, collapse = "\n")
+  expect_true(grepl("Offline.*Database|offline_db", ui_joined, ignore.case = TRUE))
+})
+test_that("trait research server has offline DB rendering", {
+  server_text <- readLines(file.path(app_root, "R/modules/trait_research_server.R"))
+  server_joined <- paste(server_text, collapse = "\n")
+  expect_true(grepl("offline_db_species_count|offline_db_age", server_joined))
+})
+
 test_that("harmonization settings UI has 8 ecosystem profiles", {
   ui_text <- readLines(file.path(app_root, "R/ui/harmonization_settings_ui.R"))
   ui_joined <- paste(ui_text, collapse = "\n")

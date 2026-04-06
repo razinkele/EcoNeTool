@@ -565,6 +565,39 @@ trait_research_ui <- function() {
       )  # End right column
     ),  # End fluidRow
 
+    # Offline Database Management Panel
+    fluidRow(
+      column(
+        width = 12,
+              box(
+                title = "Offline Trait Database",
+                status = "info", solidHeader = TRUE, width = 12,
+                collapsible = TRUE, collapsed = TRUE, icon = icon("database"),
+                fluidRow(
+                  column(4, valueBoxOutput("offline_db_species_count", width = 12)),
+                  column(4, valueBoxOutput("offline_db_age", width = 12)),
+                  column(4, valueBoxOutput("offline_db_status", width = 12))
+                ),
+                hr(),
+                fluidRow(
+                  column(6,
+                    actionButton("rebuild_offline_db", "Rebuild Database",
+                                 icon = icon("sync"), class = "btn-warning"),
+                    helpText("Re-populates the offline database. May take several minutes.")
+                  ),
+                  column(6,
+                    actionButton("view_offline_db", "View Contents",
+                                 icon = icon("table"), class = "btn-info")
+                  )
+                ),
+                conditionalPanel(
+                  condition = "input.view_offline_db > 0",
+                  hr(), DT::dataTableOutput("offline_db_contents")
+                )
+              )
+      )
+    ),
+
     # Help Modal
     bsModal(
       id = "trait_research_help_modal",

@@ -877,6 +877,69 @@ trait_research_server <- function(input, output, session, shared_data) {
   })
 
   # ============================================================================
+  # OFFLINE DATABASE MANAGEMENT
+  # ============================================================================
+
+  output$offline_db_species_count <- renderValueBox({
+    db_path <- "cache/offline_traits.db"
+    count <- 0
+    if (file.exists(db_path) && requireNamespace("RSQLite", quietly = TRUE)) {
+      tryCatch({
+        con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+        on.exit(DBI::dbDisconnect(con))
+        count <- DBI::dbGetQuery(con, "SELECT COUNT(*) as n FROM species_traits")$n
+      }, error = function(e) {})
+    }
+    valueBox(count, "Species", icon = icon("fish"), color = "blue")
+  })
+
+  output$offline_db_age <- renderValueBox({
+    db_path <- "cache/offline_traits.db"
+    age_text <- "Not built"
+    color <- "red"
+    if (file.exists(db_path) && requireNamespace("RSQLite", quietly = TRUE)) {
+      tryCatch({
+        con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+        on.exit(DBI::dbDisconnect(con))
+        meta <- DBI::dbGetQuery(con, "SELECT value FROM metadata WHERE key = 'build_timestamp'")
+        if (nrow(meta) > 0) {
+          build_time <- as.POSIXct(meta$value[1])
+          age_days <- as.numeric(difftime(Sys.time(), build_time, units = "days"))
+          age_text <- paste0(round(age_days), " days")
+          color <- if (age_days < 30) "green" else if (age_days < 90) "yellow" else "red"
+        }
+      }, error = function(e) {})
+    }
+    valueBox(age_text, "Database Age", icon = icon("clock"), color = color)
+  })
+
+  output$offline_db_status <- renderValueBox({
+    db_path <- "cache/offline_traits.db"
+    status <- if (file.exists(db_path)) "Available" else "Not Found"
+    color <- if (file.exists(db_path)) "green" else "red"
+    valueBox(status, "Status", icon = icon("check-circle"), color = color)
+  })
+
+  observeEvent(input$rebuild_offline_db, {
+    showNotification("Offline database rebuild not yet implemented. Run scripts/initialization/build_offline_trait_db.R manually.",
+                     type = "warning", duration = 10)
+  })
+
+  output$offline_db_contents <- DT::renderDataTable({
+    req(input$view_offline_db > 0)
+    db_path <- "cache/offline_traits.db"
+    if (!file.exists(db_path) || !requireNamespace("RSQLite", quietly = TRUE)) {
+      return(DT::datatable(data.frame(Message = "Database not available")))
+    }
+    tryCatch({
+      con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+      on.exit(DBI::dbDisconnect(con))
+      data <- DBI::dbGetQuery(con, "SELECT species, MS, FS, MB, EP, PR, RS, TT, ST, primary_source FROM species_traits LIMIT 500")
+      DT::datatable(data, options = list(pageLength = 20, scrollX = TRUE), rownames = FALSE)
+    }, error = function(e) DT::datatable(data.frame(Error = e$message)))
+  })
+
+  # ============================================================================
   # RETURN MODULE DATA (for parent access)
   # ============================================================================
 
