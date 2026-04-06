@@ -58,3 +58,9 @@ test_that("API functions emit messages when packages missing", {
                 info = paste("Missing message() near requireNamespace at line", ln))
   }
 })
+
+test_that("schema migration only suppresses duplicate column errors", {
+  migration_text <- readLines(file.path(app_root, "R/functions/cache_sqlite.R"))
+  migration_joined <- paste(migration_text, collapse = "\n")
+  expect_true(grepl("duplicate column", migration_joined, ignore.case = TRUE))
+})

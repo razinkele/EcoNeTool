@@ -774,7 +774,12 @@ migrate_offline_schema <- function(con) {
       sql <- sprintf("ALTER TABLE species_traits ADD COLUMN %s %s DEFAULT %s",
                      col_name, col_type, col_default)
       tryCatch(dbExecute(con, sql), error = function(e) {
-        message("Schema migration: column ", col_name, " - ", e$message)
+        if (grepl("duplicate column", e$message, ignore.case = TRUE)) {
+          # Expected: column already exists (idempotent migration)
+        } else {
+          warning("Schema migration FAILED for column '", col_name, "': ", e$message,
+                  "\n  The offline trait database may be corrupt or read-only.", call. = FALSE)
+        }
       })
     }
   }
