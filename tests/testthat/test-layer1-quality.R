@@ -41,3 +41,10 @@ test_that("all taxonomic rule keys used in harmonization exist in config", {
     expect_true(key %in% names(rules), info = paste("Missing rule:", key))
   }
 })
+
+test_that("SHARK is removed from trait routing in orchestrator", {
+  orch_text <- readLines(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"))
+  shark_assignments <- grep("query_shark\\s*<-\\s*TRUE", orch_text)
+  expect_equal(length(shark_assignments), 0,
+               info = "All query_shark <- TRUE assignments should be removed from orchestrator")
+})

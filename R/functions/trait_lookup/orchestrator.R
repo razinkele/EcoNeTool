@@ -297,7 +297,7 @@ lookup_species_traits <- function(species_name,
   query_maredat <- FALSE
   query_ptdb <- FALSE
   query_algaebase <- FALSE
-  query_shark <- FALSE
+  # query_shark removed (SHARK database not used)
 
   if (worms_data$success) {
     phylum <- tolower(raw_traits$worms$phylum)
@@ -313,6 +313,20 @@ lookup_species_traits <- function(species_name,
       message("  \u2192 Detected FISH (", class, ") \u2192 Querying: FishBase")
       message("  \u2192 Skipping: SeaLifeBase, BIOTIC, MAREDAT, PTDB, AlgaeBase")
 
+    # Marine mammals
+    } else if (phylum == "chordata" && class %in% c("mammalia")) {
+      query_sealifebase <- TRUE
+      message("  -> Detected MARINE MAMMAL (", class, ") -> Querying: SeaLifeBase")
+
+    # Seabirds
+    } else if (phylum == "chordata" && class %in% c("aves")) {
+      message("  -> Detected SEABIRD (", class, ") -> Limited trait data available")
+
+    # Tunicates (only ascidiacea — thaliacea/appendicularia already in zooplankton branch)
+    } else if (phylum == "chordata" && class %in% c("ascidiacea")) {
+      query_sealifebase <- TRUE
+      message("  -> Detected TUNICATE (", class, ") -> Querying: SeaLifeBase")
+
     # Marine invertebrates -> SeaLifeBase + SpeciesEnriched + BIOTIC
     } else if (phylum %in% c("mollusca", "arthropoda", "annelida", "echinodermata",
                              "cnidaria", "porifera", "platyhelminthes", "nematoda",
@@ -320,8 +334,7 @@ lookup_species_traits <- function(species_name,
       query_sealifebase <- TRUE
       query_species_enriched <- TRUE
       query_biotic <- TRUE
-      query_shark <- TRUE  # May have occurrence data
-      message("  \u2192 Detected MARINE INVERTEBRATE (", phylum, ") \u2192 Querying: SeaLifeBase, SpeciesEnriched, BIOTIC, SHARK")
+      message("  \u2192 Detected MARINE INVERTEBRATE (", phylum, ") \u2192 Querying: SeaLifeBase, SpeciesEnriched, BIOTIC")
       message("  \u2192 Skipping: FishBase, freshwater, MAREDAT, PTDB, AlgaeBase")
 
     # Zooplankton -> MAREDAT + SeaLifeBase
@@ -340,6 +353,13 @@ lookup_species_traits <- function(species_name,
       query_bvol <- TRUE
       query_ptdb <- TRUE
       query_algaebase <- TRUE
+      # Macroalgae should NOT query BVOL/PTDB (unicellular databases)
+      if (phylum %in% c("rhodophyta", "ochrophyta", "chlorophyta") &&
+          class %in% c("phaeophyceae", "florideophyceae", "ulvophyceae")) {
+        query_bvol <- FALSE
+        query_ptdb <- FALSE
+        message("  -> Macroalgae detected: skipping BVOL/PTDB (unicellular only)")
+      }
       # Also query freshwater if species is not marine (freshwater phytoplankton)
       is_marine <- raw_traits$worms$isMarine
       if (!is.null(is_marine) && is_marine == FALSE) {
@@ -378,7 +398,6 @@ lookup_species_traits <- function(species_name,
     query_maredat <- TRUE
     query_ptdb <- TRUE
     query_algaebase <- TRUE
-    query_shark <- TRUE
   }
 
   message("")  # Blank line
@@ -674,30 +693,12 @@ lookup_species_traits <- function(species_name,
     message("\n[11/12] \U0001f331 AlgaeBase - SKIPPED (not algae based on taxonomy)")
   }
 
-  # 11. SHARK (for Swedish waters species)
-  if (query_shark) {
-    message("\n[12/12] \U0001f988 SHARK - Swedish Ocean Archives...")
-    db_start <- Sys.time()
-    shark_data <- lookup_shark_traits(species_name)
-    db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
-
-    if (shark_data$success) {
-      raw_traits$shark <- shark_data$traits
-      sources_used <- c(sources_used, "SHARK")
-      message("  \u2713 SUCCESS (", db_time, "s)")
-
-      if (is.null(depth_min) && !is.null(shark_data$traits$depth_range_m)) {
-        depth_min <- shark_data$traits$depth_range_m[1]
-        depth_max <- shark_data$traits$depth_range_m[2]
-        message("    \u2192 Depth Range: ", depth_min, "-", depth_max, " m [\u2192 EP]")
-      }
-      message("    \u2192 Provides: Geographic/depth data [\u2192 EP]")
-    } else {
-      message("  \u2717 FAILED (", db_time, "s) - Not in Swedish waters")
-    }
-  } else {
-    message("\n[12/12] \U0001f988 SHARK - SKIPPED (no Swedish waters data needed)")
-  }
+  # 11. SHARK (removed - not used in routing)
+  # if (query_shark) {
+  #   message("\n[12/12] SHARK - Swedish Ocean Archives...")
+  #   shark_data <- lookup_shark_traits(species_name)
+  #   ...
+  # }
 
   } # End of else block for early exit
 
