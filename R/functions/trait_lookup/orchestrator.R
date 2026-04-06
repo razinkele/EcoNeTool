@@ -111,10 +111,10 @@ lookup_species_traits <- function(species_name,
   message("\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563")
   message("\u2551 Target Traits:                                                 \u2551")
   message("\u2551   MS (Max Size) - Size class (MS1-MS7)                        \u2551")
-  message("\u2551   FS (Foraging Strategy) - Feeding mode (FS0-FS6)             \u2551")
+  message("\u2551   FS (Foraging Strategy) - Feeding mode (FS0-FS7)             \u2551")
   message("\u2551   MB (Mobility) - Movement capability (MB1-MB5)               \u2551")
-  message("\u2551   EP (Environmental Position) - Depth/habitat (EP1-EP4)       \u2551")
-  message("\u2551   PR (Predator Resistance) - Protection (PR1-PR3)             \u2551")
+  message("\u2551   EP (Environmental Position) - EP1=Pelagic to EP4=Endobenthic\u2551")
+  message("\u2551   PR (Predator Resistance) - Protection (PR0-PR8)             \u2551")
   message("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d")
 
   # Initialize result
