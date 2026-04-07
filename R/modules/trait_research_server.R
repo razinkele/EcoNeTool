@@ -292,129 +292,10 @@ trait_research_server <- function(input, output, session, shared_data) {
           }
         }
 
-        # Initialize raw data collector
-        raw_data <- list(
-          species = species,
-          worms = NULL,
-          fishbase = NULL,
-          sealifebase = NULL,
-          biotic = NULL,
-          freshwater = NULL,
-          maredat = NULL,
-          ptdb = NULL,
-          algaebase = NULL,
-          shark = NULL
-        )
-
-        # Query WoRMS
-        if ("worms" %in% databases_to_check) {
-          cat("  -> Querying WoRMS...")
-          worms_result <- lookup_worms_traits(species)
-          if (worms_result$success) {
-            raw_data$worms <- worms_result$traits
-            cat(" found\n")
-          } else {
-            cat(" not found\n")
-          }
-        }
-
-        # Query FishBase
-        if ("fishbase" %in% databases_to_check) {
-          cat("  -> Querying FishBase...")
-          fb_result <- lookup_fishbase_traits(species)
-          if (fb_result$success) {
-            raw_data$fishbase <- fb_result$traits
-            cat(" found\n")
-          } else {
-            cat(" not found\n")
-          }
-        }
-
-        # Query SeaLifeBase
-        if ("sealifebase" %in% databases_to_check) {
-          cat("  -> Querying SeaLifeBase...")
-          slb_result <- lookup_sealifebase_traits(species)
-          if (slb_result$success) {
-            raw_data$sealifebase <- slb_result$traits
-            cat(" found\n")
-          } else {
-            cat(" not found\n")
-          }
-        }
-
-        # Query BIOTIC
-        if ("biotic" %in% databases_to_check && !is.null(biotic_file) && file.exists(biotic_file)) {
-          cat("  -> Querying BIOTIC...")
-          biotic_result <- lookup_biotic_traits(species, biotic_file)
-          if (biotic_result$success) {
-            raw_data$biotic <- biotic_result$traits
-            cat(" found\n")
-          } else {
-            cat(" not found\n")
-          }
-        }
-
-        # Query freshwaterecology.info
-        if ("freshwater" %in% databases_to_check) {
-          cat("  -> Querying freshwaterecology.info...")
-          fw_result <- lookup_freshwaterecology_traits(species)
-          if (fw_result$success) {
-            raw_data$freshwater <- fw_result$traits
-            cat(" found\n")
-          } else {
-            cat(" not found\n")
-          }
-        }
-
-        # Query MAREDAT
-        if ("maredat" %in% databases_to_check && !is.null(maredat_file) && file.exists(maredat_file)) {
-          cat("  -> Querying MAREDAT...")
-          maredat_result <- lookup_maredat_traits(species, maredat_file)
-          if (maredat_result$success) {
-            raw_data$maredat <- maredat_result$traits
-            cat(" found\n")
-          } else {
-            cat(" not found\n")
-          }
-        }
-
-        # Query PTDB
-        if ("ptdb" %in% databases_to_check && !is.null(ptdb_file) && file.exists(ptdb_file)) {
-          cat("  -> Querying PTDB...")
-          ptdb_result <- lookup_ptdb_traits(species, ptdb_file)
-          if (ptdb_result$success) {
-            raw_data$ptdb <- ptdb_result$traits
-            cat(" found\n")
-          } else {
-            cat(" not found\n")
-          }
-        }
-
-        # Query AlgaeBase
-        if ("algaebase" %in% databases_to_check) {
-          cat("  -> Querying AlgaeBase...")
-          ab_result <- lookup_algaebase_traits(species)
-          if (ab_result$success) {
-            raw_data$algaebase <- ab_result$traits
-            cat(" found\n")
-          } else {
-            cat(" not found\n")
-          }
-        }
-
-        # Query SHARK
-        if ("shark" %in% databases_to_check) {
-          cat("  -> Querying SHARK...")
-          shark_result <- lookup_shark_traits(species)
-          if (shark_result$success) {
-            raw_data$shark <- shark_result$traits
-            cat(" found\n")
-          } else {
-            cat(" not found\n")
-          }
-        }
-
-        # Run full harmonized lookup
+        # Run harmonized lookup via orchestrator (handles smart routing,
+        # early exit, and all database queries in one pass)
+        # Previously this code queried each database individually THEN
+        # called lookup_species_traits again — doubling API calls.
         full_result <- lookup_species_traits(
           species,
           biotic_file = biotic_file,
@@ -424,6 +305,8 @@ trait_research_server <- function(input, output, session, shared_data) {
         )
 
         results_list[[i]] <- full_result
+        # Build raw_data summary from the orchestrator result
+        raw_data <- list(species = species, source = full_result$source)
         raw_list[[species]] <- raw_data
 
         # Cache the raw data too
