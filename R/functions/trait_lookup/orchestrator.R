@@ -950,24 +950,29 @@ lookup_species_traits <- function(species_name,
 
   # API: WoRMS Traits (uses AphiaID from WoRMS taxonomy lookup)
   if (query_worms_attrs && !is.null(raw_traits$worms$aphia_id)) {
-    message("\n[API] WoRMS Traits API...")
-    db_start <- Sys.time()
-    worms_attr_data <- lookup_worms_traits_api(
-      species_name = species_name,
-      aphia_id = raw_traits$worms$aphia_id
-    )
-    if (worms_attr_data$success) {
-      raw_traits$worms_attrs <- worms_attr_data$traits
-      sources_used <- c(sources_used, "WoRMS_Traits")
-      if (!is.null(worms_attr_data$traits$feeding_type)) feeding_mode <- c(feeding_mode, worms_attr_data$traits$feeding_type)
-      if (!is.null(worms_attr_data$traits$zone)) habitat_info <- c(habitat_info, worms_attr_data$traits$zone)
-      if (!is.null(worms_attr_data$traits$salinity)) {
-        result$ST <- harmonize_salinity_tolerance(worms_attr_data$traits$salinity)
-        result$ST_source <- "WoRMS_Traits"
+    completeness <- check_completeness()
+    if (!completeness$complete) {
+      message("\n[API] WoRMS Traits API...")
+      db_start <- Sys.time()
+      worms_attr_data <- lookup_worms_traits_api(
+        species_name = species_name,
+        aphia_id = raw_traits$worms$aphia_id
+      )
+      if (worms_attr_data$success) {
+        raw_traits$worms_attrs <- worms_attr_data$traits
+        sources_used <- c(sources_used, "WoRMS_Traits")
+        if (!is.null(worms_attr_data$traits$feeding_type)) feeding_mode <- c(feeding_mode, worms_attr_data$traits$feeding_type)
+        if (!is.null(worms_attr_data$traits$zone)) habitat_info <- c(habitat_info, worms_attr_data$traits$zone)
+        if (!is.null(worms_attr_data$traits$salinity)) {
+          result$ST <- harmonize_salinity_tolerance(worms_attr_data$traits$salinity)
+          result$ST_source <- "WoRMS_Traits"
+        }
+        message("    Found: ", paste(names(worms_attr_data$traits), collapse = ", "))
       }
-      message("    Found: ", paste(names(worms_attr_data$traits), collapse = ", "))
+      message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
+    } else {
+      message("\n[API] WoRMS Traits API: Skipped (all traits already collected)")
     }
-    message("    Time: ", round(difftime(Sys.time(), db_start, units = "secs"), 2), "s")
   }
 
   # API: PolyTraits (polychaete specialist)
@@ -1678,10 +1683,7 @@ batch_lookup_traits <- function(species_list, ...) {
     result <- lookup_species_traits(species_list[i], ...)
     results_list[[i]] <- result
 
-    # Rate limiting (be nice to APIs)
-    if (i < length(species_list)) {
-      Sys.sleep(0.5)
-    }
+    # Rate limiting handled by api_rate_limiter.R
   }
 
   # Combine results

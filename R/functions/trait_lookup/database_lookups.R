@@ -831,6 +831,7 @@ lookup_worms_traits <- function(species_name, timeout = 3) {
   # Try each strategy
   aphia_records <- NULL
   successful_strategy <- NULL
+  timeout_count <- 0
 
   for (i in seq_along(query_attempts)) {
     attempt <- query_attempts[[i]]
@@ -853,9 +854,17 @@ lookup_worms_traits <- function(species_name, timeout = 3) {
         break
       }
     }, error = function(e) {
-      # Continue to next strategy
+      if (grepl("timeout|time limit|elapsed", e$message, ignore.case = TRUE)) {
+        timeout_count <<- timeout_count + 1
+      }
       NULL
     })
+
+    # If 2+ timeouts, API is likely down — skip remaining strategies
+    if (timeout_count >= 2) {
+      message("      \u2192 WoRMS: Multiple timeouts, skipping remaining strategies")
+      break
+    }
   }
 
   # If still not found, return failure

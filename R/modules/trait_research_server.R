@@ -317,10 +317,7 @@ trait_research_server <- function(input, output, session, shared_data) {
         )
         saveRDS(cache_data, cache_file)
 
-        # Rate limiting
-        if (i < length(species_list)) {
-          Sys.sleep(0.3)
-        }
+        # Rate limiting handled by orchestrator
       }
 
       # Combine results
