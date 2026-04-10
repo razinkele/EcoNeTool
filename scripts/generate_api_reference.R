@@ -197,11 +197,38 @@ extract_function_signature <- function(lines, after_line) {
       name_match <- regmatches(lines[i], regexec("^([a-zA-Z_.][a-zA-Z0-9_.]*)", lines[i]))[[1]]
       func_name <- if (length(name_match) > 0) name_match[2] else ""
 
+      # Accumulate signature lines until parenthesis depth returns to 0
       sig_lines <- lines[i]
       j <- i
-      while (!grepl("\\)", sig_lines) && j < min(i + 20, length(lines))) {
+      check_depth <- function(text) {
+        d <- 0
+        opened <- FALSE
+        in_str <- FALSE
+        str_ch <- ""
+        prev <- ""
+        for (ch in strsplit(text, "")[[1]]) {
+          if (in_str) {
+            if (ch == str_ch && prev != "\\") in_str <- FALSE
+          } else if (ch %in% c("\"", "'")) {
+            in_str <- TRUE
+            str_ch <- ch
+          } else if (ch == "(") {
+            d <- d + 1
+            opened <- TRUE
+          } else if (ch == ")") {
+            d <- d - 1
+            if (opened && d == 0) return(list(closed = TRUE, depth = d))
+          }
+          prev <- ch
+        }
+        list(closed = FALSE, depth = d)
+      }
+
+      state <- check_depth(sig_lines)
+      while (!state$closed && j < min(i + 20, length(lines))) {
         j <- j + 1
         sig_lines <- paste(sig_lines, trimws(lines[j]))
+        state <- check_depth(sig_lines)
       }
       params_match <- regmatches(sig_lines, regexec("function\\s*\\((.*)\\)", sig_lines))[[1]]
       params_str <- if (length(params_match) > 0) trimws(params_match[2]) else ""
@@ -219,11 +246,12 @@ parse_function_params <- function(params_str) {
   current <- ""
   in_string <- FALSE
   string_char <- ""
+  prev_ch <- ""  # track previous char for escape handling
 
   for (ch in strsplit(params_str, "")[[1]]) {
     if (in_string) {
       current <- paste0(current, ch)
-      if (ch == string_char) in_string <- FALSE
+      if (ch == string_char && prev_ch != "\\") in_string <- FALSE
     } else if (ch %in% c("\"", "'")) {
       current <- paste0(current, ch)
       in_string <- TRUE
@@ -240,6 +268,7 @@ parse_function_params <- function(params_str) {
     } else {
       current <- paste0(current, ch)
     }
+    prev_ch <- ch
   }
   if (trimws(current) != "") params <- c(params, list(trimws(current)))
 
@@ -291,6 +320,23 @@ parse_all_files <- function() {
 
         in_block <- FALSE
         block_end <- NULL
+      }
+    }
+
+    # Handle trailing Roxygen block at end of file
+    if (in_block && !is.null(block_end)) {
+      roxygen <- parse_roxygen_block(lines, block_end)
+      sig <- extract_function_signature(lines, block_end)
+      if (!is.null(sig) && sig$name != "") {
+        sig_params <- parse_function_params(sig$params_str)
+        all_functions <- c(all_functions, list(list(
+          name = sig$name,
+          file = filepath,
+          line = sig$line,
+          domain = domain,
+          roxygen = roxygen,
+          sig_params = sig_params
+        )))
       }
     }
   }

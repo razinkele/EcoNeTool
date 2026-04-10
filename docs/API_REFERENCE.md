@@ -612,10 +612,10 @@ Looks up multiple species concurrently with progress tracking. Much faster than 
 | Name | Default | Description |
 |------|---------|-------------|
 | `species_list` | `—` | Character vector. Species names to lookup |
-| `databases` | `c("worms", "fishbase", "sealifebase"` | Character vector. Databases to query |
-| `cache_dir` | `—` | Character. Cache directory |
-| `workers` | `—` | Integer. Number of parallel workers for batch (default: 2) |
-| `show_progress` | `—` | Logical. Show progress bar (default: TRUE) |
+| `databases` | `c("worms", "fishbase", "sealifebase")` | Character vector. Databases to query |
+| `cache_dir` | `"cache/taxonomy"` | Character. Cache directory |
+| `workers` | `2` | Integer. Number of parallel workers for batch (default: 2) |
+| `show_progress` | `TRUE` | Logical. Show progress bar (default: TRUE) |
 
 **Returns:** List of trait lookup results
 
@@ -647,8 +647,8 @@ Benchmarks serial and parallel lookup to measure speedup.
 | Name | Default | Description |
 |------|---------|-------------|
 | `species_name` | `"Gadus morhua"` | Character. Species to test |
-| `databases` | `c("worms", "fishbase", "sealifebase"` | Character vector. Databases to query |
-| `n_trials` | `—` | Integer. Number of trials to average |
+| `databases` | `c("worms", "fishbase", "sealifebase")` | Character vector. Databases to query |
+| `n_trials` | `3` | Integer. Number of trials to average |
 
 **Returns:** Data frame with performance comparison
 
@@ -1422,10 +1422,10 @@ Executes all database queries concurrently for dramatic speedup. Falls back to s
 | Name | Default | Description |
 |------|---------|-------------|
 | `species_name` | `—` | Character. Species name to lookup |
-| `databases` | `c("worms", "fishbase", "sealifebase", "biotic", "algaebase", "shark", "freshwater", "maredat", "ptdb"` | Character vector. Databases to query (default: all) |
-| `cache_dir` | `—` | Character. Cache directory (optional) |
-| `use_rate_limiting` | `—` | Logical. Use API rate limiters (default: TRUE) |
-| `timeout` | `—` | Numeric. Timeout per database query in seconds (default: 30) |
+| `databases` | `c("worms", "fishbase", "sealifebase", "biotic", "algaebase", "shark", "freshwater", "maredat", "ptdb")` | Character vector. Databases to query (default: all) |
+| `cache_dir` | `NULL` | Character. Cache directory (optional) |
+| `use_rate_limiting` | `TRUE` | Logical. Use API rate limiters (default: TRUE) |
+| `timeout` | `30` | Numeric. Timeout per database query in seconds (default: 30) |
 
 **Returns:** List with results from all databases
 
@@ -1935,8 +1935,8 @@ Calculates topological metrics for each local network in a spatial grid. Returns
 |------|---------|-------------|
 | `local_networks` | `—` | Named list of igraph networks (from extract_local_networks) |
 | `hex_grid` | `NULL` | Optional sf hexagonal grid object (for spatial join) |
-| `metrics` | `c("S", "L", "C", "LD"` | Character vector of metrics to calculate. Options: - "S" = Species richness - "L" = Number of links - "C" = Connectance - "LD" = Link density - "meanTL" = Mean trophic level - "maxTL" = Maximum trophic level |
-| `progress` | `—` | Logical, show progress? (default TRUE) |
+| `metrics` | `c("S", "L", "C", "LD")` | Character vector of metrics to calculate. Options: - "S" = Species richness - "L" = Number of links - "C" = Connectance - "LD" = Link density - "meanTL" = Mean trophic level - "maxTL" = Maximum trophic level |
+| `progress` | `TRUE` | Logical, show progress? (default TRUE) |
 
 **Returns:** Data frame with hex_id and calculated metrics
 
