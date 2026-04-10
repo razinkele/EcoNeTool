@@ -1,509 +1,261 @@
-# 🌊 EcoNeTool - Marine Food Web Network Analysis Tool
+<div align="center">
 
+# EcoNeTool
+
+### Marine Food Web Network Analysis Tool
+
+[![CI](https://github.com/razinkele/EcoNeTool/actions/workflows/ci.yml/badge.svg)](https://github.com/razinkele/EcoNeTool/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/razinkele/EcoNeTool)](https://github.com/razinkele/EcoNeTool/releases)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](LICENSE)
-[![GitHub](https://img.shields.io/badge/GitHub-razinkele/EcoNeTool-blue)](https://github.com/razinkele/EcoNeTool)
-[![R Version](https://img.shields.io/badge/R-%E2%89%A5%204.0.0-blue.svg)](https://www.r-project.org/)
-[![Shiny](https://img.shields.io/badge/Shiny-Interactive-brightgreen.svg)](https://shiny.rstudio.com/)
+[![R >= 4.0.0](https://img.shields.io/badge/R-%E2%89%A5%204.0.0-blue.svg)](https://www.r-project.org/)
+[![Last Commit](https://img.shields.io/github/last-commit/razinkele/EcoNeTool)](https://github.com/razinkele/EcoNeTool/commits)
+[![Issues](https://img.shields.io/github/issues/razinkele/EcoNeTool)](https://github.com/razinkele/EcoNeTool/issues)
 
-**Interactive Shiny Dashboard for analyzing trophic interactions, biomass distributions, and energy fluxes in marine ecosystems**
-
-🌐 **Live Demo**: [http://laguna.ku.lt:3838/EcoNeTool/](http://laguna.ku.lt:3838/EcoNeTool/)
+</div>
 
 ---
 
-## 📋 Table of Contents
+## Overview
 
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Quick Start](#quick-start)
-- [Installation](#installation)
-- [Project Structure](#project-structure)
-- [Data Format](#data-format)
-- [Analysis Features](#analysis-features)
-- [Deployment](#deployment)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
-- [Citation](#citation)
-- [License](#license)
+EcoNeTool is an interactive R Shiny dashboard for analyzing trophic interactions, biomass distributions, and energy fluxes in marine food webs. It combines qualitative and quantitative network analysis with trait enrichment, spatial habitat integration, and Rpath/Ecosim modeling in a single reproducible workflow. Developed as part of the HORIZON EUROPE [MARBEFES project](https://cordis.europa.eu/project/id/101060937) at Klaipėda University, the tool supports marine biodiversity and ecosystem functioning research across European regional seas. It bridges the gap between food web datasets (EwE, CSV, RData) and publication-ready network analyses.
 
----
+## Live Demo
 
-## 📋 Overview
+> [!NOTE]
+> A live instance is hosted at **[http://laguna.ku.lt:3838/EcoNeTool/](http://laguna.ku.lt:3838/EcoNeTool/)** — try it without installing anything locally.
 
-EcoNeTool is an interactive web application built with R Shiny that provides comprehensive analysis tools for marine food web networks. The application integrates qualitative and quantitative network analysis approaches to understand food web structure and dynamics.
+## Key Features
 
-### Key Features
+| Category | Feature |
+|---|---|
+| **Network Analysis** | Topological metrics (connectance, generality, vulnerability), iterative trophic levels, keystoneness via Mixed Trophic Impact, energy flux calculations with `fluxweb` |
+| **Trait Research** | 12 integrated databases (WoRMS, OBIS, FishBase, SeaLifeBase, BVOL, SpeciesEnriched, AlgaeBase, SHARK, freshwaterecology.info, and more), provenance badge system, ML-based trait prediction, phylogenetic imputation |
+| **Spatial Analysis** | EMODnet EUSeaMap habitat integration, hexagonal grid aggregation, regional bounding-box filtering, Leaflet interactive maps |
+| **Rpath / Ecosim** | Import EwE databases, parameter and diet matrix editors, real-time balancing diagnostics, Ecosim simulations |
+| **Metawebs** | Regional metaweb databases (Baltic, Lithuanian Coast, Gulf of Riga) with export to RData |
+| **Data Import/Export** | EwE (.ewemdb, .eweaccdb), CSV, Excel, RData; download plots, tables, and full network objects |
 
-**📊 Interactive Network Visualization**: Dynamic, zoomable food web graphs with species-level details and trophic level layouts
-**📁 Multiple Data Import Formats**: Support for RData, CSV, Excel, and ECOPATH exports
-**📈 Topological Metrics**: Connectance, generality, vulnerability, and trophic levels
-**⚖️ Biomass Analysis**: Node-weighted metrics accounting for species abundance
-**⚡ Energy Flux Calculations**: Metabolic theory-based energy flow analysis using fluxweb
-**🔑 Keystoneness Analysis**: Identify keystone species using Mixed Trophic Impact (MTI)
-**🗺️ Spatial Analysis**: Hexagonal grid-based food web analysis with EMODnet habitat integration (MARBEFES WP3.2)
-**🌊 Habitat Data Integration**: Optimized EMODnet EUSeaMap loading with regional bbox filtering
-**🎨 Taxonomic Database Integration**: WoRMS, OBIS, FishBase, SeaLifeBase with geographic filtering
-**🦈 Swedish Ocean Archives**: SHARK4R integration for Baltic Sea data access
-**✏️ Internal Data Editor**: Edit species information and network matrices directly
-**🛠️ Parameter Editors**: Edit group parameters and diet matrices before balancing
-**🧮 Balancing Fixes**: Real-time validation and error diagnostics for Ecopath/Rpath balancing
-**🔗 ECOPATH/ECOSIM Integration**: Import, analyze, and simulate ECOPATH models using Rpath
-**📊 Export Capabilities**: Download results, plots, and data for publications
-**🎯 Metaweb Export**: Export current network to RData format for reuse
+## Quick Start
 
-### Recent Updates (v1.4.2 - 2025-12-26)
-
-📊 **Local Trait Databases Integration (v1.4.2)**
-- **+4,718 Species Added**: BVOL phytoplankton (3,846) + SpeciesEnriched invertebrates (915)
-- **12 Total Databases**: Now includes BVOL and SpeciesEnriched (was 10)
-- **Smart Routing**: Automatic database selection based on taxonomy
-- **Ultra-Fast Lookups**: 0.4-0.6ms with in-memory caching, fully local (no API calls)
-- **Zero Overlap**: 100% complementary coverage between databases
-- **High Confidence**: 0.85-0.95 trait confidence scores
-- **2 New Modules**: Local database loader (660 lines) + SQLite population script (223 lines)
-- **100% Success Rate**: 4,718 species populated with 0 errors
-
-🚀 **Phase 6: Performance & Robustness (v1.4.0 - 2025-12-25)**
-- **3-5× Faster Lookups**: Parallel database queries execute concurrently (600ms → 200ms)
-- **90× Faster Phylogenetic Searches**: SQLite indexed cache replaces file-based system (450ms → 5ms)
-- **Zero API Bans**: Token bucket rate limiting with automatic retry and exponential backoff
-- **Comprehensive Error Tracking**: Structured logging with health reports and system monitoring
-- **Enterprise-Grade Reliability**: 87% retry success rate, automatic network error recovery
-- **Scales to 100,000+ Species**: Optimized for large-scale production deployments
-- **7 New Files**: Error logging, rate limiting, parallel queries, SQLite cache, migration tools
-- **100% Test Coverage**: 10 integration tests, all passing
-
-🎉 **Phase 1-5: Complete Trait Inference Pipeline (v1.3.0)**
-- **GUI Harmonization** (v1.2.1): User-configurable thresholds, 6 ecosystem profiles, JSON export/import
-- **4 New Databases** (v1.2.2): SeaLifeBase, freshwaterecology.info, AlgaeBase, SHARK (Swedish waters)
-- **ML Trait Prediction** (v1.2.3): Random Forest models, 78.9% accuracy, 30ms inference
-- **Uncertainty Quantification** (v1.2.4): Probabilistic confidence scoring, network visualization
-- **Phylogenetic Imputation** (v1.3.0): Taxonomic distance-based inference, 98% trait completeness
-- **13,000-Word Methodology Guide**: Comprehensive documentation for all phases
-
-🎯 **Previous Updates (v1.1.0-v1.1.1):**
-- **Color Scheme Fix**: Phytoplankton now displays correctly as GREEN, Zooplankton as LIGHT BLUE
-- **Default Dataset**: Changed to Lithuanian Coastal Food Web (LTCoast.Rdata) - 41 species, 244 links
-- **Flux Network**: Fixed validation errors and empty edge handling
-- **Network Colors**: Legend colors now match node colors precisely with visNetwork integration
-- **Metaweb Export**: Export current network to RData format compatible with BalticFW structure
-- **Modular Architecture**: Complete code refactoring with organized R/ directory structure
-- **Performance**: Optimized spatial habitat loading with bbox filtering (10-20× faster)
-
-See [CHANGELOG.md](CHANGELOG.md) for complete version history and phase-specific documentation for detailed guides.
-
----
-
-## 🚀 Quick Start
-
-### 1. Running Locally
+> [!TIP]
+> Choose whichever entry point fits your workflow — all three launch the same app.
 
 ```r
-# Option 1: Using helper script (recommended)
-source("run_app.R")
+# 1. From a shell (recommended for reproducibility)
+Rscript run_app.R
 
-# Option 2: Direct run
+# 2. From RStudio — open the project and click "Run App"
 shiny::runApp()
 
-# Option 3: With auto-reload (development)
+# 3. With auto-launch in your default browser
 shiny::runApp(launch.browser = TRUE)
 ```
 
-### 2. Pre-flight Check
+## Installation
 
-Before running, validate your installation:
-
-```bash
-cd deployment
-Rscript pre-deploy-check.R
-```
-
-### 3. Online Access
-
-Visit the deployed application at: **[http://laguna.ku.lt:3838/EcoNeTool/](http://laguna.ku.lt:3838/EcoNeTool/)**
-
----
-
-## 📦 Installation
+<details>
+<summary><b>Prerequisites and install steps</b></summary>
 
 ### Prerequisites
 
-- **R**: ≥ 4.0.0
-- **Operating System**: Linux, macOS, or Windows
-- **Memory**: ≥ 4GB RAM recommended
-- **Disk Space**: ≥ 500MB for packages and data
+- **R** ≥ 4.0.0 (tested with 4.4.1)
+- **OS**: Linux, macOS, or Windows
+- **Memory**: ≥ 4 GB RAM recommended
+- **Disk**: ≥ 500 MB for packages and cached data
 
-### Automatic Installation
+### Install dependencies
 
 ```r
-# Install all dependencies automatically
+# Automatic — installs everything the app needs
 source("deployment/install_dependencies.R")
 ```
 
-### Manual Installation
+Or install the core set manually:
 
 ```r
-# Core packages
 install.packages(c(
-  "shiny",          # Web framework
-  "bs4Dash",        # Dashboard UI
-  "igraph",         # Network analysis
-  "fluxweb",        # Energy flux calculations
-  "visNetwork",     # Interactive visualization
-  "DT",             # Interactive tables
-  "MASS",           # Matrix operations
-  "leaflet",        # Spatial mapping
-  "sf"              # Spatial data handling
+  "shiny", "bs4Dash", "igraph", "fluxweb", "visNetwork",
+  "DT", "MASS", "leaflet", "sf"
 ))
 ```
 
-### Verification
+### Verify
 
 ```bash
-cd deployment
-Rscript pre-deploy-check.R
+Rscript deployment/pre-deploy-check.R
+# Expected: ALL CHECKS PASSED — Application is ready for deployment!
 ```
 
-Expected output:
-```
-✅ ALL CHECKS PASSED
-   Application is ready for deployment!
+</details>
+
+## Architecture
+
+```mermaid
+flowchart LR
+  A[Data Import] --> B[Network Analysis]
+  A --> C[Trait Enrichment]
+  B --> D[Visualization]
+  C --> D
+  D --> E[Export/Report]
+  C --> F[Spatial Analysis]
+  F --> D
 ```
 
----
+## Project Structure
 
-## 📁 Project Structure
+<details>
+<summary><b>Directory tree</b></summary>
 
 ```
 EcoNeTool/
-├── app.R                      # Main Shiny application (UI & Server)
-├── run_app.R                  # Application launcher
-│
-├── R/                         # Modular R code (organized by function)
-│   ├── config.R              # Configuration constants (COLOR_SCHEME, etc.)
-│   ├── config/               # Additional configuration
-│   │   └── plugins.R         # Plugin system
-│   ├── functions/            # Analysis and utility functions
-│   │   ├── functional_group_utils.R
-│   │   ├── validation_utils.R
-│   │   ├── trophic_levels.R
-│   │   ├── network_visualization.R
-│   │   ├── topological_metrics.R
-│   │   ├── flux_calculations.R
-│   │   ├── keystoneness.R
-│   │   ├── metaweb_core.R
-│   │   ├── metaweb_io.R
-│   │   ├── spatial_analysis.R
-│   │   ├── taxonomic_api_utils.R
-│   │   ├── shark_api_utils.R
-│   │   ├── emodnet_habitat_utils.R
-│   │   ├── ecobase_connection.R
-│   │   ├── ecopath/          # ECOPATH import
-│   │   └── rpath/            # Rpath integration
-│   ├── ui/                   # UI components (modular)
-│   │   ├── dashboard_ui.R
-│   │   ├── import_ui.R
-│   │   ├── network_ui.R
-│   │   ├── biomass_ui.R
-│   │   ├── fluxes_ui.R
-│   │   ├── topological_ui.R
-│   │   ├── keystoneness_ui.R
-│   │   ├── metaweb_ui.R
-│   │   ├── shark_ui.R
-│   │   ├── ecobase_ui.R
-│   │   ├── dataeditor_ui.R
-│   │   └── rpath_ui.R
-│   └── modules/              # Shiny modules
-│
-├── examples/                 # Example datasets
-│   ├── LTCoast.Rdata        # Lithuanian Coastal Food Web (default)
-│   ├── BalticFW.Rdata       # Gulf of Riga Food Web
-│   └── ...
-│
-├── deployment/               # Deployment & validation scripts
-│   ├── deploy.sh            # Main deployment script
-│   ├── pre-deploy-check.R   # Validation script
-│   ├── verify-deployment.sh # Deployment verification
-│   ├── force-reload.sh      # Force app reload
-│   ├── install_dependencies.R # Dependency installer
-│   └── README.md            # Deployment documentation
-│
-├── docs/                    # Documentation
-│   ├── README.md           # Documentation hub
-│   ├── user-guides/        # User manuals
-│   ├── development/        # Developer docs
-│   ├── testing/            # Test results
-│   └── deployment/         # Deployment guides
-│
-├── tests/                   # Test scripts and validation
-├── cache/                   # Cached data (taxonomic, spatial)
-├── www/                     # Web assets (img/, css/)
-│
-├── README.md               # This file
-├── CHANGELOG.md            # Version history
-└── LICENSE                 # License information
+├── app.R                    # Main Shiny app entry point
+├── run_app.R                # Application launcher
+├── R/
+│   ├── config.R             # Global constants (COLOR_SCHEME, etc.)
+│   ├── config/              # Plugins, harmonization config
+│   ├── functions/           # Analysis + API integration (41 files)
+│   │   ├── trait_lookup/    # Trait database lookups
+│   │   ├── ecopath/         # ECOPATH import
+│   │   └── rpath/           # Rpath integration
+│   ├── ui/                  # UI modules, one per dashboard tab
+│   └── modules/             # Shiny server modules
+├── data/                    # Datasets (CSV, Rdata, trait databases)
+├── examples/                # Example EwE files + LTCoast.Rdata default
+├── metawebs/                # Regional metaweb data
+├── deployment/              # Deploy scripts and checklists
+├── tests/                   # testthat + custom test suites
+├── docs/                    # User and developer documentation
+├── www/                     # Static web assets
+├── CHANGELOG.md
+└── LICENSE
 ```
 
-### Core Files
+</details>
 
-- **`app.R`**: Main application with UI definition and server logic
-- **`R/config.R`**: Configuration constants (COLOR_SCHEME, DATA_FILE, etc.)
-- **`R/functions/`**: Modular analysis functions organized by domain
-- **`R/ui/`**: Modular UI components for each analysis tab
-- **`examples/LTCoast.Rdata`**: Default dataset (Lithuanian Coastal Food Web)
+## Data Format
 
----
+<details>
+<summary><b>Required structure, supported formats, and functional groups</b></summary>
 
-## 📖 Data Format
+EcoNeTool needs two components: a **network adjacency matrix** (who eats whom) and a **species information table**.
 
-### Required Data Structure
+### Supported formats
 
-EcoNeTool requires two main components:
+- **RData** — `net` (igraph object) + `info` (data.frame)
+- **CSV / Excel** — network matrix + species info table
+- **EwE** — native `.ewemdb` / `.eweaccdb` / `.mdb`, or exported CSV
 
-1. **Network Adjacency Matrix** - Who eats whom (directed graph)
-2. **Species Information Table** - Attributes for each species
+### Required columns in `info`
 
-### Supported Formats
+| Column | Type | Description | Example |
+|---|---|---|---|
+| `species` | character | Species name | "Cod" |
+| `meanB` | numeric | Mean biomass (g/m²) | 1250.5 |
+| `fg` | factor | Functional group | "Fish" |
+| `bodymasses` | numeric | Individual body mass (g) | 50.0 |
+| `met.types` | character | Metabolic type | "ectotherm vertebrates" |
+| `efficiencies` | numeric | Assimilation efficiency (0–1) | 0.85 |
 
-- **RData**: `net` (igraph object) + `info` (data.frame)
-- **CSV/Excel**: Network matrix + Species info table
-- **ECOPATH**: Native database (.mdb, .ewemdb, .eweaccdb) or exported CSV files
+### Functional groups (with default colour scheme)
 
-### Creating Your Dataset
+| Group | Colour |
+|---|---|
+| Benthos | Burlywood |
+| Birds | Purple |
+| Detritus | Brown |
+| Fish | Blue |
+| Mammals | Red |
+| Phytoplankton | Green |
+| Zooplankton | Light blue |
+
+### Minimal example
 
 ```r
 library(igraph)
-
-# 1. Create network from adjacency matrix
-adjacency_matrix <- matrix(...)  # Your predator-prey matrix
-net <- graph_from_adjacency_matrix(adjacency_matrix, mode = 'directed')
-
-# 2. Create species information data frame
+net  <- graph_from_adjacency_matrix(adjacency_matrix, mode = "directed")
 info <- data.frame(
-  species = c('Species_A', 'Species_B', 'Species_C'),
-  fg = factor(c('Fish', 'Zooplankton', 'Phytoplankton')),
-  meanB = c(1250.5, 850.2, 2100.0),        # Biomass (g/m²)
-  bodymasses = c(50.0, 0.5, 0.001),         # Individual mass (g)
-  met.types = c('ectotherm vertebrates',    # Metabolic type
-                'invertebrates',
-                'Other'),
-  efficiencies = c(0.85, 0.75, 0.40)        # Assimilation efficiency
+  species       = c("Species_A", "Species_B", "Species_C"),
+  fg            = factor(c("Fish", "Zooplankton", "Phytoplankton")),
+  meanB         = c(1250.5, 850.2, 2100.0),
+  bodymasses    = c(50.0, 0.5, 0.001),
+  met.types     = c("ectotherm vertebrates", "invertebrates", "Other"),
+  efficiencies  = c(0.85, 0.75, 0.40)
 )
-
-# 3. Save as RData
 save(net, info, file = "MyFoodWeb.Rdata")
 ```
 
-### Required Columns in `info`
+The default bundled dataset is the **Lithuanian Coastal Food Web** (`examples/LTCoast.Rdata`) — 41 species, 244 trophic links across 6 functional groups.
 
-| Column | Type | Description | Example |
-|--------|------|-------------|---------|
-| `species` | character | Species names | "Cod", "Sprat" |
-| `meanB` | numeric | Mean biomass (g/m²) | 1250.5 |
-| `fg` | factor | Functional group | "Fish", "Zooplankton", "Phytoplankton" |
-| `bodymasses` | numeric | Individual body mass (g) | 50.0 |
-| `met.types` | character | Metabolic type | "ectotherm vertebrates", "invertebrates", "Other" |
-| `efficiencies` | numeric | Assimilation efficiency (0-1) | 0.85 |
+</details>
 
-### Functional Groups
+## Analysis Features
 
-Standard functional groups with color scheme:
-1. **Benthos** → Light brown (burlywood)
-2. **Birds** → Purple
-3. **Detritus** → Brown
-4. **Fish** → Blue
-5. **Mammals** → Red
-6. **Phytoplankton** → Green
-7. **Zooplankton** → Light blue
+### Network Metrics
 
----
+Species richness (S), connectance (C), generality (G), vulnerability (V), iterative trophic levels, omnivory (SD of prey TL), and biomass-weighted variants that account for species abundance.
 
-## 🔬 Analysis Features
+### Trait Research
 
-### 1. Network Visualization
-- **Interactive Graphs**: Force-directed and trophic-level layouts with visNetwork
-- **Color Coding**: Consistent color scheme by functional groups
-- **Node Sizing**: Proportional to biomass or fixed size
-- **Edge Weights**: Show interaction strength or energy flux
-- **Export**: Download networks as images or RData files
+Twelve integrated databases with smart routing based on taxonomy, ultra-fast in-memory lookups (0.4–0.6 ms), provenance badges indicating trait source and confidence (0.85–0.95), and ML-based trait prediction (Random Forest, ~79% accuracy) plus phylogenetic imputation for gaps. Token-bucket rate limiting protects remote APIs.
 
-### 2. Topological Metrics
-- **Species Richness (S)**: Number of taxa
-- **Connectance (C)**: Proportion of realized links (L / S(S-1))
-- **Generality (G)**: Mean number of prey per predator
-- **Vulnerability (V)**: Mean number of predators per prey
-- **Trophic Levels**: Iterative calculation based on prey TL
-- **Omnivory**: Standard deviation of prey trophic levels
+### Spatial Analysis
 
-### 3. Biomass-Weighted Analysis
-- **Node-Weighted Connectance**: Accounts for species biomass
-- **Node-Weighted Generality/Vulnerability**: Biomass-adjusted metrics
-- **Biomass-Based Importance**: Size spectrum and distributions
+EMODnet EUSeaMap habitat integration with regional bbox filtering (10–20× faster than full loads), hexagonal grid spatial aggregation of species occurrences, and Leaflet-based interactive maps with tooltips.
 
-### 4. Energy Flux Analysis
-- **Metabolic Theory**: Based on Brown et al. (2004)
-- **Allometric Scaling**: Temperature-adjusted metabolic rates
-- **Flux Calculations**: Using the fluxweb package (Gauzens et al. 2019)
-- **Link-Weighted Metrics**: Shannon diversity of energy flows (Bersier et al. 2002)
-- **Flux Network Visualization**: Edge widths proportional to energy flow
+### Rpath / Ecosim
 
-### 5. Keystoneness Analysis
-- **Mixed Trophic Impact (MTI)**: Direct and indirect species effects (ECOPATH approach)
-- **Keystoneness Index**: KS = log(1 + Overall Effect) / log(1 + Relative Biomass)
-- **Species Classification**: Keystone, Dominant, or Rare
-- **Impact Visualization**: Heatmaps showing species interactions
+Import native EwE databases, edit group parameters and diet matrices before balancing, receive real-time balancing diagnostics, and run Ecosim dynamic simulations on balanced models.
 
-### 6. Spatial Analysis
-- **Hexagonal Grid**: Spatial aggregation of species occurrences
-- **Habitat Integration**: EMODnet EUSeaMap habitat data
-- **Regional Optimization**: Fast loading with bbox filtering
-- **Interactive Maps**: Leaflet-based visualization with tooltips
+## Documentation
 
-### 7. Taxonomic Database Integration
-- **WoRMS**: World Register of Marine Species classification
-- **OBIS**: Ocean Biodiversity Information System occurrences
-- **FishBase/SeaLifeBase**: Biological traits and body mass data
-- **Geographic Filtering**: Bounding box filtering for multiple matches
-- **Caching**: Local cache for fast repeated queries
+- [API Reference](docs/API_REFERENCE.md)
+- [User Manual](docs/USER_MANUAL.md)
+- [Changelog](CHANGELOG.md)
+- [Deployment Guide](deployment/README.md)
+- [Documentation Hub](docs/README.md)
 
----
+### Scientific references
 
-## 📊 Default Dataset
+- **Brown, J. H., et al. (2004).** Toward a metabolic theory of ecology. *Ecology*, 85(7), 1771–1789.
+- **Bersier, L. F., et al. (2002).** Quantitative descriptors of food web matrices. *Ecology*, 83(9), 2394–2407.
+- **Libralato, S., et al. (2006).** A method for identifying keystone species in food web models. *Ecological Modelling*, 195(3–4), 153–171.
+- **Williams, R. J., & Martinez, N. D. (2004).** Limits to trophic levels and omnivory in complex food webs. *Proc. Roy. Soc. B*, 271(1540), 549–556.
+- **Gauzens, B., et al. (2019).** fluxweb: An R package to easily estimate energy fluxes in food webs. *Methods Ecol. Evol.*, 10(2), 270–279.
+- **Kortsch, S., Frelat, R., Pecuchet, L., et al.** *Qualitative and quantitative network descriptors reveal complementary patterns of change in temporal food web dynamics.*
 
-The application includes the **Lithuanian Coastal Food Web** dataset:
+Original tutorial: [BalticFoodWeb](https://rfrelat.github.io/BalticFoodWeb.html) · [BalticFoodWeb on GitHub](https://github.com/rfrelat/BalticFoodWeb)
 
-| Property | Value |
-|----------|-------|
-| **Source** | LTCoastal Food Web Model |
-| **Location** | Lithuanian Coast, Southeastern Baltic Sea |
-| **Ecosystem** | Coastal food web |
-| **Taxa** | 41 species across 6 functional groups |
-| **Links** | 244 trophic interactions |
-| **Functional Groups** | Phytoplankton, Zooplankton, Benthos, Fish, Birds, Detritus |
+## Deployment
 
-### Alternative Datasets (examples/ folder)
+<details>
+<summary><b>Production deployment to Shiny Server</b></summary>
 
-- **BalticFW.Rdata**: Gulf of Riga Food Web (Frelat & Kortsch, 2020) - 34 species, 207 links
-- **LTgoby.eweaccdb**: ECOPATH model with Round Goby invasion scenario
-- Various ECOPATH .ewemdb and .eweaccdb files for testing
-
----
-
-## 🚢 Deployment
-
-### Development Mode
-
-```r
-# Run locally with auto-reload
-shiny::runApp(launch.browser = TRUE)
-```
-
-### Production Deployment to Shiny Server
+> [!WARNING]
+> Deployment requires SSH access to `laguna.ku.lt` as user `razinka`, sudo privileges on the target host, and a pre-deploy check that passes locally. Never deploy without running the validation script first.
 
 ```bash
-cd deployment
+# 1. Validate locally
+Rscript deployment/pre-deploy-check.R
 
-# Step 1: Pre-deployment validation
-Rscript pre-deploy-check.R
+# 2. Deploy
+./deploy.sh                       # Unix/macOS
+powershell ./deploy-windows.ps1   # Windows
 
-# Step 2: Deploy to Shiny Server
-sudo ./deploy.sh --shiny-server
-
-# Step 3: Verify deployment
-sudo ./verify-deployment.sh
-
-# If issues occur: Force reload
-sudo ./force-reload.sh
+# 3. Verify
+sudo ./deployment/verify-deployment.sh
 ```
 
-### Deployment Scripts
+If the server shows a stale build, run `sudo ./deployment/force-reload.sh` to stop the server, clear caches, and redeploy. See [deployment/README.md](deployment/README.md) for full instructions and troubleshooting.
 
-- **`pre-deploy-check.R`**: Validates files, dependencies, syntax, and structure
-- **`deploy.sh`**: Deploys to Shiny Server with cache clearing
-- **`verify-deployment.sh`**: Checks what's actually deployed on server
-- **`force-reload.sh`**: Nuclear option - stops server, clears all caches, redeploys
+</details>
 
-### Troubleshooting Deployment
+## Contributing
 
-If the server shows an old version:
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow. In short: fork, branch, run `Rscript deployment/pre-deploy-check.R`, and open a PR.
 
-1. **Clear browser cache**: Ctrl+Shift+R (or Cmd+Shift+R on Mac)
-2. **Verify deployment**: `sudo ./verify-deployment.sh`
-3. **Force reload**: `sudo ./force-reload.sh`
-4. **Check logs**: `sudo tail -f /var/log/shiny-server.log`
+**Code style:** snake_case functions, `<-` for assignment, 120-char max line length, no tabs or trailing whitespace. `lintr` and pre-commit hooks enforce this automatically. Shiny modules follow the `*_ui.R` / `*_server.R` naming pattern.
 
-See [deployment/README.md](deployment/README.md) for detailed instructions.
-
----
-
-## 📚 Documentation
-
-### Quick Start
-- **[Quick Manual](docs/QUICK_MANUAL.md)** - Startup and usage guide
-
-### User Guides
-- **[Parameter Editors Guide](docs/user-guides/PARAMETER_EDITORS_GUIDE.md)** - Edit group parameters and diet matrices
-- **[Balancing Guide](docs/user-guides/RPATH_BALANCING_FIX.md)** - Fix balancing issues
-- **[ECOPATH/ECOSIM Integration](docs/user-guides/RPATH_INTEGRATION_GUIDE.md)** - Import and analyze ECOPATH models
-- **[ECOPATH Windows Import](docs/user-guides/ECOPATH_WINDOWS_IMPORT_GUIDE.md)** - Import ECOPATH databases on Windows
-
-### Feature Documentation
-- **[Taxonomic API Integration](TAXONOMIC_API_IMPROVEMENTS.md)** - WoRMS, OBIS, FishBase integration
-- **[Spatial Habitat Integration](SPATIAL_HABITAT_INTEGRATION_COMPLETE.md)** - EMODnet habitat data
-- **[SHARK4R Integration](SHARK4R_INTEGRATION_COMPLETE.md)** - Swedish ocean archives
-
-### Testing Documentation
-- **[RStudio Testing Guide](docs/user-guides/RSTUDIO_TESTING_GUIDE.md)** - Test the app in RStudio
-- **[Manual Testing Guide](docs/user-guides/MANUAL_TESTING_GUIDE.md)** - Manual testing procedures
-- **[Test Results](docs/testing/FINAL_TEST_SUMMARY.md)** - Latest test results and validation
-
-### Development Documentation
-- **[Project Organization](docs/testing/PROJECT_ORGANIZATION_ANALYSIS.md)** - Structure and organization
-- **[Modularization Guide](MODULARIZATION_GUIDE.md)** - Code organization principles
-- **[Development Notes](docs/development/)** - Feature implementations and fixes
-
-### Deployment
-- **[Deployment Guide](deployment/README.md)** - Server deployment and troubleshooting
-- **[Deployment Improvements](docs/deployment/DEPLOYMENT_IMPROVEMENTS.md)** - Recent enhancements
-
-### Full Documentation Hub
-- **[Documentation Hub](docs/README.md)** - Complete documentation navigation
-
-### Scientific References
-
-Key methodologies implemented:
-
-- **Brown, J. H., et al. (2004).** Toward a metabolic theory of ecology. *Ecology*, 85(7), 1771-1789.
-- **Bersier, L. F., et al. (2002).** Quantitative descriptors of food web matrices. *Ecology*, 83(9), 2394-2407.
-- **Libralato, S., et al. (2006).** A method for identifying keystone species in food web models. *Ecological Modelling*, 195(3-4), 153-171.
-- **Williams, R. J., & Martinez, N. D. (2004).** Limits to trophic levels and omnivory in complex food webs. *Proceedings of the Royal Society B*, 271(1540), 549-556.
-- **Gauzens, B., et al. (2019).** fluxweb: An R package to easily estimate energy fluxes in food webs. *Methods in Ecology and Evolution*, 10(2), 270-279.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! To contribute:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Make your changes
-4. Run validation (`Rscript deployment/pre-deploy-check.R`)
-5. Commit your changes (`git commit -m 'Add AmazingFeature'`)
-6. Push to the branch (`git push origin feature/AmazingFeature`)
-7. Open a Pull Request
-
-### Code Style
-
-- Follow [tidyverse style guide](https://style.tidyverse.org/)
-- Document functions using Roxygen2 comments
-- Include examples and scientific references
-- Test changes with pre-deploy-check.R
-- Maintain modular structure in R/ directory
-
----
-
-## 📖 Citation
+## Citation
 
 If you use EcoNeTool in your research, please cite:
 
@@ -512,72 +264,49 @@ If you use EcoNeTool in your research, please cite:
   title = {EcoNeTool: Marine Food Web Network Analysis Tool},
   author = {MARBEFES Project Team},
   year = {2025},
-  version = {1.1.1},
+  version = {1.4.2},
   institution = {Klaipėda University},
   url = {https://github.com/razinkele/EcoNeTool},
   note = {Interactive R Shiny application for marine food web analysis}
 }
 ```
 
-### Based on the methodology from:
+Methodology builds on Kortsch et al. (temporal food web dynamics) and the BalticFoodWeb tutorial by Frelat & Kortsch (2020). See the scientific references above for all underlying methods.
 
-**Kortsch, S., Frelat, R., Pecuchet, L., Olivier, P., Putnis, I., Bonsdorff, E., Ojaveer, H., Jurgensone, I., Strāķe, S., Rubene, G., Krūze, Ē., & Nordström, M.** *Qualitative and quantitative network descriptors reveal complementary patterns of change in temporal food web dynamics.*
+## Authors & Acknowledgments
 
-This work builds upon:
-- **Original tutorial**: [BalticFoodWeb](https://rfrelat.github.io/BalticFoodWeb.html)
-- **GitHub repository**: [BalticFoodWeb on GitHub](https://github.com/rfrelat/BalticFoodWeb)
+**Authors** — MARBEFES Project Team, Klaipėda University, Lithuania.
 
----
+**Funding** — [HORIZON EUROPE MARBEFES](https://cordis.europa.eu/project/id/101060937): *Marine Biodiversity and Ecosystem Functioning leading to Ecosystem Services*.
 
-## 👥 Authors & Acknowledgments
-
-### Authors
-- **MARBEFES Project Team**
-- Klaipėda University, Lithuania
-
-### Funding
-- **HORIZON EUROPE** - [MARBEFES Project](https://cordis.europa.eu/project/id/101060937)
-- Marine biodiversity and ecosystem functioning across scales
-
-### Acknowledgments
-- Gulf of Riga food web data: Frelat, R., & Kortsch, S. (2020)
-- fluxweb package: Gauzens, B., et al. (2019)
+**Data sources & libraries**
+- Gulf of Riga food web: Frelat, R. & Kortsch, S. (2020)
+- `fluxweb` R package: Gauzens, B., et al. (2019)
 - Original BalticFoodWeb analysis tools and methodology
-- EMODnet for habitat data access
-- WoRMS, OBIS, FishBase, SeaLifeBase for taxonomic data
+- EMODnet EUSeaMap for habitat data
+- WoRMS, OBIS, FishBase, SeaLifeBase, AlgaeBase, SHARK, BVOL, freshwaterecology.info
+
+## License
+
+This project is dual-licensed:
+
+- **[GPL-3.0](LICENSE)** for source code
+- <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/80x15.png" /></a> **Creative Commons Attribution-ShareAlike 4.0 International** for documentation and data
+
+## Contact & Support
+
+- **Issues & feature requests** — [GitHub Issues](https://github.com/razinkele/EcoNeTool/issues)
+- **Source** — [github.com/razinkele/EcoNeTool](https://github.com/razinkele/EcoNeTool)
+- **Project** — [MARBEFES on CORDIS](https://cordis.europa.eu/project/id/101060937)
 
 ---
 
-## 📄 License
+## Version Information
 
-This project is licensed under:
-- **GPL-3.0 License** - See the [LICENSE](LICENSE) file for details
-- <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/80x15.png" /></a> Creative Commons Attribution-ShareAlike 4.0 International License
+**Current Version**: 1.4.2
+**Last Updated**: 2025-12-26
+**Status**: Production Ready
 
----
-
-## 📞 Contact & Support
-
-- **Issues**: [GitHub Issues](https://github.com/razinkele/EcoNeTool/issues)
-- **Project**: [GitHub Repository](https://github.com/razinkele/EcoNeTool)
-- **MARBEFES**: [HORIZON EUROPE Project Page](https://cordis.europa.eu/project/id/101060937)
-
----
-
-## 🔄 Version Information
-
-**Current Version**: 1.4.0
-**Last Updated**: 2025-12-25
-**Status**: Production Ready - Enterprise Grade
+<!-- VERSION:1.4.2 -->
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
-
----
-
-<div align="center">
-
-**Built with ❤️ for marine ecology research**
-
-[Live Demo](http://laguna.ku.lt:3838/EcoNeTool/) · [Report Bug](https://github.com/razinkele/EcoNeTool/issues) · [Request Feature](https://github.com/razinkele/EcoNeTool/issues)
-
-</div>
