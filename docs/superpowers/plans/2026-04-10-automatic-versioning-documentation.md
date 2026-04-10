@@ -1580,7 +1580,7 @@ git clone https://github.com/razinkele/EcoNeTool.git
 cd EcoNeTool
 
 # Install dependencies
-Rscript -e "source('install_dependencies.R')"
+Rscript deployment/install_dependencies.R
 
 # Run the app
 Rscript run_app.R
