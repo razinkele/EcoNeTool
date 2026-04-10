@@ -2033,8 +2033,8 @@ Add a new job to the existing `ci.yml` file, **before** the `ci-status` job. Ins
 
       - name: Check VERSION vs latest tag
         run: |
-          # Read version from VERSION file
-          FILE_VERSION=$(grep "^VERSION=" VERSION | cut -d= -f2)
+          # Read version from VERSION file (tr -d '\r' handles CRLF line endings)
+          FILE_VERSION=$(grep "^VERSION=" VERSION | cut -d= -f2 | tr -d '\r')
           echo "VERSION file: $FILE_VERSION"
 
           # Get latest tag
