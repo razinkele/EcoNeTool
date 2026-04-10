@@ -51,14 +51,28 @@ run_release <- function(opts = parse_release_args()) {
          "Current directory: ", getwd(), call. = FALSE)
   }
 
-  # Step 1: Validate clean working tree
+  # Step 1: Validate that files the release will modify are clean.
+  # We don't require the ENTIRE working tree to be clean — only the files
+  # this script touches. This lets users work on unrelated files while
+  # running a release.
   cat("[1/8] Checking working tree...\n")
+  release_files <- c("VERSION", "app.R", "README.md", "CHANGELOG.md",
+                     "docs/API_REFERENCE.md")
   status <- system("git status --porcelain", intern = TRUE)
   if (length(status) > 0 && !opts$dry_run) {
-    cat("ERROR: Working tree is not clean. Commit or stash changes first.\n")
-    cat("Uncommitted changes:\n")
-    cat(paste("  ", status, collapse = "\n"), "\n")
-    stop("Dirty working tree", call. = FALSE)
+    # Parse porcelain output: first 2 chars are status, rest is file path
+    dirty_paths <- trimws(substr(status, 4, nchar(status)))
+    # Strip quotes from paths that contain spaces
+    dirty_paths <- gsub('^"|"$', '', dirty_paths)
+    conflicts <- intersect(dirty_paths, release_files)
+    if (length(conflicts) > 0) {
+      cat("ERROR: Files the release will modify have uncommitted changes:\n")
+      for (f in conflicts) cat(sprintf("  %s\n", f))
+      cat("\nCommit, stash, or revert these files before releasing.\n")
+      stop("Release file conflicts", call. = FALSE)
+    }
+    cat(sprintf("  (Working tree has %d unrelated modifications; none affect release files)\n",
+                length(status)))
   }
 
   # Step 2: Source helper scripts
