@@ -88,7 +88,9 @@ write_version_file <- function(info, path = "VERSION") {
     sprintf("DEPLOYED_BY=%s", if (!is.null(info$DEPLOYED_BY)) info$DEPLOYED_BY else ""),
     sprintf("DEPLOYED_ON=%s", if (!is.null(info$DEPLOYED_ON)) info$DEPLOYED_ON else "")
   )
-  writeLines(lines, path)
+  con <- file(path, open = "wb")
+  writeLines(lines, con, sep = "\r\n")
+  close(con)
 }
 
 # --- Bump calculation -------------------------------------------------------
@@ -201,6 +203,9 @@ update_app_r <- function(new_version, release_date, dry_run = FALSE) {
     warning("Could not find '# CURRENT VERSION:' line in app.R")
     return(invisible(NULL))
   }
+  if (length(idx) > 1) {
+    warning(sprintf("Found %d '# CURRENT VERSION:' lines in app.R; updating only the first", length(idx)))
+  }
 
   new_line <- sprintf("# CURRENT VERSION: v%s (%s)", new_version, release_date)
 
@@ -224,7 +229,7 @@ update_readme <- function(old_version, new_version, release_date, dry_run = FALS
   original <- content
 
   content <- gsub(
-    sprintf("version = \\{%s\\}", gsub("\\.", "\\\\.", old_version)),
+    "version = \\{[0-9]+\\.[0-9]+\\.[0-9]+\\}",
     sprintf("version = {%s}", new_version),
     content
   )
@@ -281,6 +286,9 @@ version_bump <- function(opts = parse_bump_args()) {
     bump_type <- "explicit"
   } else {
     bump_type <- if (!is.null(opts$bump)) opts$bump else detect_bump_type()
+    if (!bump_type %in% c("major", "minor", "patch")) {
+      stop("Invalid bump type: ", bump_type, ". Must be major, minor, or patch.", call. = FALSE)
+    }
     new <- calculate_new_version(current, bump_type)
   }
 
