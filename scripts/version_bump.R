@@ -275,6 +275,10 @@ version_bump <- function(opts = parse_bump_args()) {
   cat(sprintf("Current version: %s\n", old_version))
 
   if (!is.null(opts$version)) {
+    if (!grepl("^[0-9]+\\.[0-9]+\\.[0-9]+$", opts$version)) {
+      stop("Version must match MAJOR.MINOR.PATCH with digits only (e.g. '1.4.3')",
+           call. = FALSE)
+    }
     parts <- strsplit(opts$version, "\\.")[[1]]
     if (length(parts) != 3) stop("Version must be in MAJOR.MINOR.PATCH format")
     new <- list(

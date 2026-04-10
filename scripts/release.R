@@ -45,6 +45,12 @@ run_release <- function(opts = parse_release_args()) {
   cat("EcoNeTool Release Process\n")
   cat("=============================================================================\n\n")
 
+  # Guard: must be run from project root
+  if (!file.exists("VERSION") || !file.exists("scripts/version_bump.R")) {
+    stop("release.R must be run from the project root directory. ",
+         "Current directory: ", getwd(), call. = FALSE)
+  }
+
   # Step 1: Validate clean working tree
   cat("[1/8] Checking working tree...\n")
   status <- system("git status --porcelain", intern = TRUE)
@@ -72,21 +78,33 @@ run_release <- function(opts = parse_release_args()) {
   bump_result <- version_bump(bump_opts)
   new_version <- bump_result$version
 
-  # Step 4: Generate CHANGELOG (pass version so it labels correctly before tag exists)
-  cat("\n[4/8] Generating CHANGELOG...\n")
-  if (opts$dry_run) {
-    generate_changelog(list(preview = TRUE, output = "CHANGELOG.md", version = new_version))
-  } else {
-    generate_changelog(list(preview = FALSE, output = "CHANGELOG.md", version = new_version))
-  }
+  # Wrap post-bump steps so we can give recovery instructions if they fail
+  tryCatch({
+    # Step 4: Generate CHANGELOG (pass version so it labels correctly before tag exists)
+    cat("\n[4/8] Generating CHANGELOG...\n")
+    if (opts$dry_run) {
+      generate_changelog(list(preview = TRUE, output = "CHANGELOG.md", version = new_version))
+    } else {
+      generate_changelog(list(preview = FALSE, output = "CHANGELOG.md", version = new_version))
+    }
 
-  # Step 5: Generate API Reference
-  cat("\n[5/8] Generating API Reference...\n")
-  if (!opts$dry_run) {
-    generate_api_reference(list(output = "docs/API_REFERENCE.md"))
-  } else {
-    cat("  [dry-run] Would regenerate docs/API_REFERENCE.md\n")
-  }
+    # Step 5: Generate API Reference
+    cat("\n[5/8] Generating API Reference...\n")
+    if (!opts$dry_run) {
+      generate_api_reference(list(output = "docs/API_REFERENCE.md"))
+    } else {
+      cat("  [dry-run] Would regenerate docs/API_REFERENCE.md\n")
+    }
+  }, error = function(e) {
+    if (!opts$dry_run) {
+      cat("\nERROR: Release aborted during post-bump steps.\n")
+      cat("Version files have been modified but NOT committed.\n")
+      cat("\nTo restore:\n")
+      cat("  git checkout -- VERSION app.R README.md\n")
+      cat(sprintf("\nOr re-run with explicit version to resume: --version %s\n", new_version))
+    }
+    stop(e)
+  })
 
   if (opts$dry_run) {
     cat("\n=============================================================================\n")
