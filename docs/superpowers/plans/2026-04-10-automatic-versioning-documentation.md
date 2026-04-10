@@ -29,9 +29,10 @@ This script parses the full git history, groups commits by version tags, categor
 # generate_changelog.R — Generate CHANGELOG.md from git commit history
 # =============================================================================
 # Usage:
-#   Rscript scripts/generate_changelog.R              # Full regeneration
-#   Rscript scripts/generate_changelog.R --preview     # Preview unreleased only
-#   Rscript scripts/generate_changelog.R --output FILE # Custom output path
+#   Rscript scripts/generate_changelog.R                      # Full regeneration
+#   Rscript scripts/generate_changelog.R --preview             # Preview unreleased only
+#   Rscript scripts/generate_changelog.R --version 1.4.3       # Label unreleased as version
+#   Rscript scripts/generate_changelog.R --output FILE         # Custom output path
 #
 # Pure base R — zero external dependencies.
 # =============================================================================
@@ -39,7 +40,7 @@ This script parses the full git history, groups commits by version tags, categor
 # --- CLI argument parsing ---------------------------------------------------
 
 parse_changelog_args <- function(args = commandArgs(trailingOnly = TRUE)) {
-  opts <- list(preview = FALSE, output = "CHANGELOG.md")
+  opts <- list(preview = FALSE, output = "CHANGELOG.md", version = NULL)
   i <- 1
   while (i <= length(args)) {
     if (args[i] == "--preview") {
@@ -47,6 +48,9 @@ parse_changelog_args <- function(args = commandArgs(trailingOnly = TRUE)) {
     } else if (args[i] == "--output" && i < length(args)) {
       i <- i + 1
       opts$output <- args[i]
+    } else if (args[i] == "--version" && i < length(args)) {
+      i <- i + 1
+      opts$version <- args[i]
     }
     i <- i + 1
   }
@@ -90,40 +94,52 @@ get_tag_date <- function(tag) {
 }
 
 get_commits <- function(from = NULL, to = "HEAD") {
-  # Format: hash|date|subject|body (body uses \x00 as line separator)
-  sep <- "---COMMIT_SEP---"
+  # Use marker-based format to avoid delimiter collisions in subject/body
+  start_marker <- "---COMMIT_START---"
+  end_marker <- "---COMMIT_END---"
+  # Format: each commit block is START\nhash\ndate\nsubject\n---BODY---\nbody\nEND
+  fmt <- sprintf(
+    "--format=%s%%n%%h%%n%%ai%%n%%s%%n---BODY---%%n%%b%%n%s",
+    start_marker, end_marker
+  )
   if (is.null(from)) {
-    cmd <- sprintf(
-      "git log %s --format=\"%%h|%%ai|%%s|%%b%s\" --reverse",
-      to, sep
-    )
+    cmd <- sprintf("git log %s %s --reverse", fmt, to)
   } else {
-    cmd <- sprintf(
-      "git log %s..%s --format=\"%%h|%%ai|%%s|%%b%s\" --reverse",
-      from, to, sep
-    )
+    cmd <- sprintf("git log %s %s..%s --reverse", fmt, from, to)
   }
   raw <- system(cmd, intern = TRUE)
-  raw <- paste(raw, collapse = "\n")
-  if (raw == "") return(data.frame())
+  raw_text <- paste(raw, collapse = "\n")
+  if (raw_text == "") return(data.frame())
 
-  entries <- strsplit(raw, sep)[[1]]
-  entries <- trimws(entries)
-  entries <- entries[entries != ""]
+  # Split into commit blocks
+  blocks <- strsplit(raw_text, start_marker)[[1]]
+  blocks <- trimws(blocks)
+  blocks <- blocks[blocks != ""]
 
-  result <- lapply(entries, function(entry) {
-    # First line has hash|date|subject, rest is body
-    lines <- strsplit(entry, "\n")[[1]]
-    first_line <- lines[1]
-    body <- if (length(lines) > 1) paste(lines[-1], collapse = "\n") else ""
+  result <- lapply(blocks, function(block) {
+    # Remove end marker
+    block <- sub(paste0("\\s*", end_marker, "\\s*$"), "", block)
+    lines <- strsplit(block, "\n")[[1]]
+    lines <- lines[lines != ""]
 
-    parts <- strsplit(first_line, "\\|", fixed = FALSE)[[1]]
-    if (length(parts) < 3) return(NULL)
+    if (length(lines) < 3) return(NULL)
+
+    hash <- lines[1]
+    date_str <- lines[2]
+    subject <- lines[3]
+
+    # Body is everything after the ---BODY--- marker
+    body_start <- which(lines == "---BODY---")
+    body <- ""
+    if (length(body_start) > 0 && body_start[1] < length(lines)) {
+      body_lines <- lines[(body_start[1] + 1):length(lines)]
+      body <- paste(body_lines, collapse = "\n")
+    }
 
     data.frame(
-      hash = parts[1],
-      date = as.Date(substr(parts[2], 1, 10)),
-      subject = paste(parts[3:length(parts)], collapse = "|"),
+      hash = hash,
+      date = as.Date(substr(date_str, 1, 10)),
+      subject = subject,
       body = body,
       stringsAsFactors = FALSE
     )
@@ -265,20 +281,30 @@ generate_changelog <- function(opts = parse_changelog_args()) {
   sections <- character(0)
   compare_links <- character(0)
 
+  # Determine label for unreleased commits
+  # --version flag overrides "Unreleased" (used during release before tag exists)
+  unreleased_label <- if (!is.null(opts$version)) opts$version else "Unreleased"
+  unreleased_date <- if (!is.null(opts$version)) Sys.Date() else Sys.Date()
+
   if (nrow(tags) == 0) {
-    # No tags — all commits go into "Unreleased"
+    # No tags — all commits go into one section
     commits <- get_commits(from = NULL, to = "HEAD")
     if (!is.null(commits) && nrow(commits) > 0) {
-      sections <- c(sections, format_version_section("Unreleased", Sys.Date(), commits))
+      sections <- c(sections, format_version_section(unreleased_label, unreleased_date, commits))
     }
   } else {
-    # Commits after latest tag → Unreleased
+    # Commits after latest tag → Unreleased (or version label)
     unreleased <- get_commits(from = tags$tag[1], to = "HEAD")
     if (!is.null(unreleased) && nrow(unreleased) > 0) {
-      sections <- c(sections, format_version_section("Unreleased", Sys.Date(), unreleased))
+      sections <- c(sections, format_version_section(unreleased_label, unreleased_date, unreleased))
       if (!is.null(repo_url)) {
-        compare_links <- c(compare_links,
-          sprintf("[Unreleased]: %s/compare/%s...HEAD", repo_url, tags$tag[1]))
+        if (unreleased_label == "Unreleased") {
+          compare_links <- c(compare_links,
+            sprintf("[Unreleased]: %s/compare/%s...HEAD", repo_url, tags$tag[1]))
+        } else {
+          compare_links <- c(compare_links,
+            sprintf("[%s]: %s/compare/%s...HEAD", unreleased_label, repo_url, tags$tag[1]))
+        }
       }
     }
 
@@ -1386,12 +1412,12 @@ run_release <- function(opts = parse_release_args()) {
   bump_result <- version_bump(bump_opts)
   new_version <- bump_result$version
 
-  # Step 4: Generate CHANGELOG
+  # Step 4: Generate CHANGELOG (pass version so it labels correctly before tag exists)
   cat("\n[4/8] Generating CHANGELOG...\n")
   if (opts$dry_run) {
-    generate_changelog(list(preview = TRUE, output = "CHANGELOG.md"))
+    generate_changelog(list(preview = TRUE, output = "CHANGELOG.md", version = new_version))
   } else {
-    generate_changelog(list(preview = FALSE, output = "CHANGELOG.md"))
+    generate_changelog(list(preview = FALSE, output = "CHANGELOG.md", version = new_version))
   }
 
   # Step 5: Generate API Reference
@@ -1878,14 +1904,16 @@ jobs:
 
       - name: Run release script
         run: |
-          ARGS="--bump ${{ inputs.bump_type }}"
+          ARGS=()
           if [ -n "${{ inputs.version_override }}" ]; then
-            ARGS="--version ${{ inputs.version_override }}"
+            ARGS+=(--version "${{ inputs.version_override }}")
+          else
+            ARGS+=(--bump "${{ inputs.bump_type }}")
           fi
           if [ -n "${{ inputs.release_name }}" ]; then
-            ARGS="$ARGS --name \"${{ inputs.release_name }}\""
+            ARGS+=(--name "${{ inputs.release_name }}")
           fi
-          Rscript scripts/release.R $ARGS
+          Rscript scripts/release.R "${ARGS[@]}"
         shell: bash
 
       - name: Push commit and tag
