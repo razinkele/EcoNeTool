@@ -4,21 +4,21 @@
 # Format: MAJOR.MINOR.PATCH
 # See CHANGELOG.md for detailed change history
 
-VERSION=1.4.2
-VERSION_NAME=Local Databases Integration + Performance & Robustness
-RELEASE_DATE=2025-12-26
+VERSION=1.4.3
+VERSION_NAME=Versioning & Documentation
+RELEASE_DATE=2026-04-11
 STATUS=stable
 
 # Version components
 MAJOR=1
 MINOR=4
-PATCH=2
+PATCH=3
 
 # Git information (if available)
 # Set by deployment scripts
-GIT_COMMIT=
-GIT_BRANCH=
-BUILD_DATE=
+GIT_COMMIT=7806bb9
+GIT_BRANCH=master
+BUILD_DATE=2026-04-11T00:47:57
 
 # Deployment information
 DEPLOYED_BY=

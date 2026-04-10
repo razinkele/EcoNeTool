@@ -1,7 +1,7 @@
 # EcoNeTool API Reference
 
 > Auto-generated from source code — do not edit manually.
-> Generated: 2026-04-11 | Version: 1.4.2
+> Generated: 2026-04-11 | Version: 1.4.3
 > Regenerate: `Rscript scripts/generate_api_reference.R`
 
 ## Table of Contents
