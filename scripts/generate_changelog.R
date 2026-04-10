@@ -46,9 +46,13 @@ get_repo_url <- function() {
 }
 
 get_all_tags <- function() {
-  raw <- system(
-    "git tag -l \"v*\" --sort=-version:refname --format=\"%(refname:short) %(objectname:short)\"",
-    intern = TRUE
+  raw <- tryCatch(
+    system(
+      "git tag -l \"v*\" --sort=-version:refname --format=\"%(refname:short) %(objectname:short)\"",
+      intern = TRUE, ignore.stderr = TRUE
+    ),
+    warning = function(w) character(0),
+    error = function(e) character(0)
   )
   if (length(raw) == 0 || (length(raw) == 1 && raw[1] == "")) return(data.frame())
   parts <- strsplit(raw, " ")
@@ -84,7 +88,11 @@ get_commits <- function(from = NULL, to = "HEAD") {
   } else {
     cmd <- sprintf("git log %s %s..%s --reverse", fmt, from, to)
   }
-  raw <- system(cmd, intern = TRUE)
+  raw <- tryCatch(
+    system(cmd, intern = TRUE, ignore.stderr = TRUE),
+    warning = function(w) character(0),
+    error = function(e) character(0)
+  )
   raw_text <- paste(raw, collapse = "\n")
   if (raw_text == "") return(data.frame())
 
@@ -124,7 +132,9 @@ get_commits <- function(from = NULL, to = "HEAD") {
     )
   })
 
-  do.call(rbind, Filter(Negate(is.null), result))
+  result_clean <- Filter(Negate(is.null), result)
+  if (length(result_clean) == 0) return(data.frame())
+  do.call(rbind, result_clean)
 }
 
 # --- Commit parsing ----------------------------------------------------------
@@ -219,7 +229,7 @@ format_version_section <- function(version_label, date, commits_df) {
   }
 
   lines <- character(0)
-  lines <- c(lines, sprintf("## [%s] - %s", version_label, format(date)))
+  lines <- c(lines, sprintf("## [%s] - %s", version_label, format(date, "%Y-%m-%d")))
   lines <- c(lines, "")
 
   if (length(breaking_lines) > 0) {
@@ -250,7 +260,7 @@ generate_changelog <- function(opts = parse_changelog_args()) {
   compare_links <- character(0)
 
   unreleased_label <- if (!is.null(opts$version)) opts$version else "Unreleased"
-  unreleased_date <- if (!is.null(opts$version)) Sys.Date() else Sys.Date()
+  unreleased_date <- Sys.Date()
 
   if (nrow(tags) == 0) {
     commits <- get_commits(from = NULL, to = "HEAD")
