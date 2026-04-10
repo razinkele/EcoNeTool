@@ -86,7 +86,7 @@ Rscript scripts/release.R [--bump patch|minor|major] [--version 1.4.3] [--name "
 
 **Output:** `CHANGELOG.md` — full regeneration from git history on every release.
 
-**Data source:** Parses all 118+ commits from `git log --format` with hash, date, subject, body.
+**Data source:** Parses all 119+ commits from `git log --format` with hash, date, subject, body.
 
 ### 3.2 Commit Parsing
 
@@ -327,7 +327,7 @@ Contributor Covenant v2.1 (industry standard, used by most open-source R project
 
 ### 7.2 Parsing Rules
 
-For each `.R` file in `R/functions/`, `R/modules/`, `R/ui/`, `R/config/`:
+For each `.R` file in `R/`, `R/functions/` (including subdirectories `ecopath/`, `rpath/`, `trait_lookup/`), `R/modules/`, `R/ui/`, `R/config/`:
 1. Find `#' @export` tagged functions
 2. Extract Roxygen2 tags: `@title`, `@description`, `@param`, `@return`, `@examples`, `@family`, `@seealso`
 3. Extract function signature from the line after the comment block
@@ -339,14 +339,17 @@ Functions grouped by domain (not by file):
 
 | Domain | Source directories/files |
 |--------|------------------------|
-| Network Analysis | `R/functions/topological_metrics.R`, `R/functions/trophic_levels.R`, `R/functions/keystoneness.R` |
-| Data Import/Export | `R/functions/ecopath/`, `R/functions/rpath/`, `R/functions/metaweb_*.R` |
-| Trait Lookup | `R/functions/trait_lookup/`, `R/functions/local_trait_databases.R` |
-| Spatial Analysis | `R/functions/spatial_*.R`, `R/functions/emodnet_*.R` |
-| Taxonomic APIs | `R/functions/worms_*.R`, `R/functions/obis_*.R`, `R/functions/fishbase_*.R` |
+| Network Analysis | `topological_metrics.R`, `trophic_levels.R`, `keystoneness.R`, `flux_calculations.R`, `network_visualization.R` |
+| Data Import/Export | `ecopath/`, `rpath/`, `metaweb_core.R`, `metaweb_io.R`, `ecobase_connection.R`, `R/data_loading.R` |
+| Trait Lookup | `trait_lookup/`, `local_trait_databases.R`, `trait_foodweb.R`, `trait_help_content.R`, `parallel_lookup.R` |
+| Trait Imputation | `ml_trait_prediction.R`, `bhpmf_imputation.R`, `rphylopars_imputation.R`, `phylogenetic_imputation.R` |
+| Spatial Analysis | `spatial_analysis.R`, `emodnet_habitat_utils.R`, `euseamap_regional_config.R` |
+| Taxonomic APIs | `taxonomic_api_utils.R`, `shark_api_utils.R` |
 | Shiny Modules | `R/modules/`, `R/ui/` |
 | Configuration | `R/config.R`, `R/config/` |
-| Utilities | `R/functions/validation_utils.R`, `R/functions/error_logging.R`, `R/functions/cache_*.R` |
+| Utilities | `validation_utils.R`, `error_logging.R`, `cache_sqlite.R`, `api_rate_limiter.R`, `logger.R`, `auxillary_parser.R`, `functional_group_utils.R`, `uncertainty_quantification.R` |
+
+All paths above are relative to `R/functions/` unless otherwise noted.
 
 **Domain assignment:** Based on file path matching rules in the script. A mapping table in the script associates file path patterns to domain names.
 
@@ -366,7 +369,7 @@ Functions grouped by domain (not by file):
 
 **Returns:** Description from @return tag
 
-**Source:** [`R/functions/trait_lookup/lookup.R:145`](../R/functions/trait_lookup/lookup.R#L145)
+**Source:** [`R/functions/trait_lookup/orchestrator.R:145`](../R/functions/trait_lookup/orchestrator.R#L145)
 ```
 
 ### 7.5 Header
@@ -403,7 +406,7 @@ Hand-written, curated guide for marine scientists using the EcoNeTool dashboard.
    - Common import errors and how to fix them
 
 3. **Dashboard Overview**
-   - Tab-by-tab guide to all 16 dashboard tabs
+   - Tab-by-tab guide to all 15 dashboard tabs
    - Navigation and layout orientation
 
 4. **Network Analysis**
@@ -550,11 +553,11 @@ Can be run independently without a version bump.
 
 - [ ] `Rscript scripts/release.R --bump patch --dry-run` previews correctly
 - [ ] `Rscript scripts/release.R --bump patch` bumps VERSION, updates app.R, README, regenerates CHANGELOG and API ref, commits, tags
-- [ ] `Rscript scripts/generate_changelog.R` produces valid CHANGELOG from all 118+ commits
-- [ ] `Rscript scripts/generate_api_reference.R` documents all 178+ exported functions
+- [ ] `Rscript scripts/generate_changelog.R` produces valid CHANGELOG from all 119+ commits (110 conventional + 9 non-conventional)
+- [ ] `Rscript scripts/generate_api_reference.R` documents all 178 exported functions across 40 source files
 - [ ] GitHub Actions `release.yml` creates a GitHub Release with changelog body
 - [ ] GitHub Actions `auto-changelog.yml` posts preview comment on PRs
 - [ ] CI detects version drift between VERSION file and latest tag
 - [ ] README.md renders correctly on GitHub with badges, admonitions, mermaid, collapsible sections
-- [ ] USER_MANUAL.md covers all 16 dashboard tabs
+- [ ] USER_MANUAL.md covers all 15 dashboard tabs
 - [ ] SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md present and linked from README
