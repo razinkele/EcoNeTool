@@ -221,12 +221,45 @@ jobs:
         continue-on-error: true  # Don't fail build on lint warnings
 
   # ===========================================================================
+  # Version drift detection
+  # ===========================================================================
+  version-drift:
+    name: Version drift check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check VERSION vs latest tag
+        run: |
+          # Read version from VERSION file (tr -d '\r' handles CRLF line endings)
+          FILE_VERSION=$(grep "^VERSION=" VERSION | cut -d= -f2 | tr -d '\r')
+          echo "VERSION file: $FILE_VERSION"
+
+          LATEST_TAG=$(git describe --tags --abbrev=0 --match="v*" 2>/dev/null || echo "none")
+          echo "Latest tag: $LATEST_TAG"
+
+          if [ "$LATEST_TAG" = "none" ]; then
+            echo "::notice::No version tags found. Consider creating an initial tag: git tag -a v$FILE_VERSION -m 'Release $FILE_VERSION'"
+          else
+            TAG_VERSION=${LATEST_TAG#v}
+            if [ "$FILE_VERSION" != "$TAG_VERSION" ]; then
+              echo "::warning::VERSION file ($FILE_VERSION) differs from latest tag ($LATEST_TAG). Unreleased changes detected."
+            else
+              echo "VERSION file matches latest tag"
+            fi
+          fi
+
+  # ===========================================================================
   # Summary job (always runs, provides overall status)
   # ===========================================================================
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [pre-commit, repo-hygiene, shellcheck, r-syntax]
+    needs: [pre-commit, repo-hygiene, shellcheck, r-syntax, version-drift]
     if: always()
     steps:
       - name: Check job results

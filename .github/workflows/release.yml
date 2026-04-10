@@ -1,0 +1,83 @@
+# =============================================================================
+# EcoNeTool - Release Workflow
+# =============================================================================
+# Manually triggered to create a new release.
+# Runs the release.R script, pushes commit + tag, creates GitHub Release.
+# =============================================================================
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      version_override:
+        description: 'Explicit version (e.g., 2.0.0) - overrides bump_type'
+        required: false
+        type: string
+      release_name:
+        description: 'Release name (e.g., "Trait Provenance")'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.4.1'
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run release script
+        run: |
+          ARGS=()
+          if [ -n "${{ inputs.version_override }}" ]; then
+            ARGS+=(--version "${{ inputs.version_override }}")
+          else
+            ARGS+=(--bump "${{ inputs.bump_type }}")
+          fi
+          if [ -n "${{ inputs.release_name }}" ]; then
+            ARGS+=(--name "${{ inputs.release_name }}")
+          fi
+          Rscript scripts/release.R "${ARGS[@]}"
+        shell: bash
+
+      - name: Push commit and tag
+        run: git push --follow-tags
+
+      - name: Extract changelog for release body
+        id: changelog
+        run: |
+          VERSION=$(grep -m1 "^## \[" CHANGELOG.md | sed 's/## \[\(.*\)\].*/\1/')
+          awk '/^## \[/{n++} n==1{print} n==2{exit}' CHANGELOG.md | tail -n +2 > release_body.md
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.changelog.outputs.version }}" \
+            --title "v${{ steps.changelog.outputs.version }}" \
+            --notes-file release_body.md
