@@ -24,17 +24,17 @@ lookup_fishbase_traits <- function(species_name, timeout = 5) {
     stop("timeout must be a positive number", call. = FALSE)
   }
 
-  if (!requireNamespace("rfishbase", quietly = TRUE)) {
-    warning("Package 'rfishbase' not installed. Install with: install.packages('rfishbase')")
-    return(NULL)
-  }
-
   result <- list(
     species = species_name,
     source = "FishBase",
     success = FALSE,
     traits = list()
   )
+
+  if (!requireNamespace("rfishbase", quietly = TRUE)) {
+    warning("Package 'rfishbase' not installed. Install with: install.packages('rfishbase')")
+    return(result)
+  }
 
   tryCatch({
     # Get species data (let rfishbase handle its own timeout)

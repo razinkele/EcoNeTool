@@ -184,7 +184,7 @@ lookup_species_traits <- function(species_name,
   worms_data <- lookup_worms_traits(species_name)
   db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
-  if (worms_data$success) {
+  if (!is.null(worms_data) && isTRUE(worms_data$success)) {
     raw_traits$worms <- worms_data$traits
     sources_used <- c(sources_used, "WoRMS")
     message("  \u2713 SUCCESS (", db_time, "s)")
@@ -207,7 +207,7 @@ lookup_species_traits <- function(species_name,
   db_start <- Sys.time()
 
   # Try to lookup by AphiaID if available, otherwise by name
-  aphia_id_for_lookup <- if (worms_data$success && !is.null(raw_traits$worms$aphia_id)) {
+  aphia_id_for_lookup <- if (!is.null(worms_data) && isTRUE(worms_data$success) && !is.null(raw_traits$worms$aphia_id)) {
     raw_traits$worms$aphia_id
   } else {
     NULL
@@ -219,7 +219,7 @@ lookup_species_traits <- function(species_name,
   )
   db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
-  if (ontology_data$success) {
+  if (isTRUE(ontology_data$success)) {
     raw_traits$ontology <- ontology_data$traits
     sources_used <- c(sources_used, "Ontology")
     message("  \u2713 SUCCESS (", db_time, "s)")
@@ -245,17 +245,17 @@ lookup_species_traits <- function(species_name,
   # Initialize variables for trait merging
   # Start with WoRMS Traits Portal data if available
   size_cm <- NULL
-  if (worms_data$success && !is.null(raw_traits$worms$max_length_cm)) {
+  if (!is.null(worms_data) && isTRUE(worms_data$success) && !is.null(raw_traits$worms$max_length_cm)) {
     size_cm <- raw_traits$worms$max_length_cm
   }
   trophic_level <- NULL
   feeding_mode <- character()
   mobility_info <- character()
   habitat_info <- character()
-  if (worms_data$success && !is.null(raw_traits$worms$habitat)) {
+  if (!is.null(worms_data) && isTRUE(worms_data$success) && !is.null(raw_traits$worms$habitat)) {
     habitat_info <- c(habitat_info, raw_traits$worms$habitat)
   }
-  if (worms_data$success && !is.null(raw_traits$worms$functional_group)) {
+  if (!is.null(worms_data) && isTRUE(worms_data$success) && !is.null(raw_traits$worms$functional_group)) {
     habitat_info <- c(habitat_info, raw_traits$worms$functional_group)
   }
   protection_info <- character()
@@ -337,7 +337,7 @@ lookup_species_traits <- function(species_name,
   query_obis <- FALSE
   query_traitbank <- FALSE
 
-  if (worms_data$success) {
+  if (!is.null(worms_data) && isTRUE(worms_data$success)) {
     query_worms_attrs <- TRUE
     phylum <- tolower(raw_traits$worms$phylum)
     class <- tolower(raw_traits$worms$class)
@@ -469,7 +469,7 @@ lookup_species_traits <- function(species_name,
     fishbase_data <- lookup_fishbase_traits(species_name)
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
-    if (fishbase_data$success) {
+    if (!is.null(fishbase_data) && isTRUE(fishbase_data$success)) {
       raw_traits$fishbase <- fishbase_data$traits
       sources_used <- c(sources_used, "FishBase")
       message("  \u2713 SUCCESS (", db_time, "s)")
@@ -518,7 +518,7 @@ lookup_species_traits <- function(species_name,
     sealifebase_data <- lookup_sealifebase_traits(species_name)
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
-    if (sealifebase_data$success) {
+    if (isTRUE(sealifebase_data$success)) {
       raw_traits$sealifebase <- sealifebase_data$traits
       sources_used <- c(sources_used, "SeaLifeBase")
       message("  \u2713 SUCCESS (", db_time, "s)")
@@ -546,7 +546,7 @@ lookup_species_traits <- function(species_name,
     biotic_data <- lookup_biotic_traits(species_name, biotic_file)
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
-    if (biotic_data$success) {
+    if (isTRUE(biotic_data$success)) {
       raw_traits$biotic <- biotic_data$traits
       sources_used <- c(sources_used, "BIOTIC")
       message("  \u2713 SUCCESS (", db_time, "s)")
@@ -675,7 +675,7 @@ lookup_species_traits <- function(species_name,
     freshwater_data <- lookup_freshwaterecology_traits(species_name)
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
-    if (freshwater_data$success) {
+    if (isTRUE(freshwater_data$success)) {
       raw_traits$freshwater <- freshwater_data$traits
       sources_used <- c(sources_used, "freshwaterecology.info")
       message("  \u2713 SUCCESS (", db_time, "s)")
@@ -703,7 +703,7 @@ lookup_species_traits <- function(species_name,
     maredat_data <- lookup_maredat_traits(species_name, maredat_file)
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
-    if (maredat_data$success) {
+    if (isTRUE(maredat_data$success)) {
       raw_traits$maredat <- maredat_data$traits
       sources_used <- c(sources_used, "MAREDAT")
       message("  \u2713 SUCCESS (", db_time, "s)")
@@ -722,7 +722,7 @@ lookup_species_traits <- function(species_name,
     ptdb_data <- lookup_ptdb_traits(species_name, ptdb_file)
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
-    if (ptdb_data$success) {
+    if (isTRUE(ptdb_data$success)) {
       raw_traits$ptdb <- ptdb_data$traits
       sources_used <- c(sources_used, "PTDB")
       message("  \u2713 SUCCESS (", db_time, "s)")
@@ -741,7 +741,7 @@ lookup_species_traits <- function(species_name,
     algaebase_data <- lookup_algaebase_traits(species_name)
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
-    if (algaebase_data$success) {
+    if (isTRUE(algaebase_data$success)) {
       raw_traits$algaebase <- algaebase_data$traits
       sources_used <- c(sources_used, "AlgaeBase")
       message("  \u2713 SUCCESS (", db_time, "s)")
@@ -833,7 +833,7 @@ lookup_species_traits <- function(species_name,
     message("\n[CSV] Black Sea Traits DB...")
     db_start <- Sys.time()
     blacksea_data <- lookup_blacksea_traits(species_name)
-    if (blacksea_data$success) {
+    if (isTRUE(blacksea_data$success)) {
       raw_traits$blacksea <- blacksea_data$traits
       sources_used <- c(sources_used, "BlackSea")
       if (!is.null(blacksea_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, blacksea_data$traits$feeding_mode)
@@ -860,7 +860,7 @@ lookup_species_traits <- function(species_name,
     message("\n[CSV] Arctic Traits DB...")
     db_start <- Sys.time()
     arctic_data <- lookup_arctic_traits(species_name)
-    if (arctic_data$success) {
+    if (isTRUE(arctic_data$success)) {
       raw_traits$arctic <- arctic_data$traits
       sources_used <- c(sources_used, "ArcticTraits")
       if (!is.null(arctic_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, arctic_data$traits$feeding_mode)
@@ -883,7 +883,7 @@ lookup_species_traits <- function(species_name,
     message("\n[CSV] Cefas NW Europe Benthic Traits...")
     db_start <- Sys.time()
     cefas_data <- lookup_cefas_traits(species_name)
-    if (cefas_data$success) {
+    if (isTRUE(cefas_data$success)) {
       raw_traits$cefas <- cefas_data$traits
       sources_used <- c(sources_used, "Cefas")
       if (!is.null(cefas_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, cefas_data$traits$feeding_mode)
@@ -903,7 +903,7 @@ lookup_species_traits <- function(species_name,
     message("\n[CSV] Coral Trait DB...")
     db_start <- Sys.time()
     coral_data <- lookup_coral_traits(species_name)
-    if (coral_data$success) {
+    if (isTRUE(coral_data$success)) {
       raw_traits$coral <- coral_data$traits
       sources_used <- c(sources_used, "CoralTraits")
       if (!is.null(coral_data$traits$reproductive_mode)) {
@@ -932,7 +932,7 @@ lookup_species_traits <- function(species_name,
     message("\n[CSV] Pelagic Trait DB...")
     db_start <- Sys.time()
     pelagic_data <- lookup_pelagic_traits(species_name)
-    if (pelagic_data$success) {
+    if (isTRUE(pelagic_data$success)) {
       raw_traits$pelagic <- pelagic_data$traits
       sources_used <- c(sources_used, "PelagicTraits")
       if (!is.null(pelagic_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, pelagic_data$traits$feeding_mode)
@@ -958,7 +958,7 @@ lookup_species_traits <- function(species_name,
         species_name = species_name,
         aphia_id = raw_traits$worms$aphia_id
       )
-      if (worms_attr_data$success) {
+      if (isTRUE(worms_attr_data$success)) {
         raw_traits$worms_attrs <- worms_attr_data$traits
         sources_used <- c(sources_used, "WoRMS_Traits")
         if (!is.null(worms_attr_data$traits$feeding_type)) feeding_mode <- c(feeding_mode, worms_attr_data$traits$feeding_type)
@@ -980,7 +980,7 @@ lookup_species_traits <- function(species_name,
     message("\n[API] PolyTraits...")
     db_start <- Sys.time()
     poly_data <- lookup_polytraits(species_name)
-    if (poly_data$success) {
+    if (isTRUE(poly_data$success)) {
       raw_traits$polytraits <- poly_data$traits
       sources_used <- c(sources_used, "PolyTraits")
       if (!is.null(poly_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, poly_data$traits$feeding_mode)
@@ -999,7 +999,7 @@ lookup_species_traits <- function(species_name,
     message("\n[API] EMODnet Btrait...")
     db_start <- Sys.time()
     emodnet_data <- lookup_emodnet_traits(species_name)
-    if (emodnet_data$success) {
+    if (isTRUE(emodnet_data$success)) {
       raw_traits$emodnet <- emodnet_data$traits
       sources_used <- c(sources_used, "EMODnet")
       if (!is.null(emodnet_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, emodnet_data$traits$feeding_mode)
@@ -1014,7 +1014,7 @@ lookup_species_traits <- function(species_name,
     message("\n[API] OBIS MoF...")
     db_start <- Sys.time()
     obis_data <- lookup_obis_traits(species_name)
-    if (obis_data$success) {
+    if (isTRUE(obis_data$success)) {
       raw_traits$obis <- obis_data$traits
       sources_used <- c(sources_used, "OBIS")
       if (!is.null(obis_data$traits$depth_min) && is.null(depth_min)) {
@@ -1033,7 +1033,7 @@ lookup_species_traits <- function(species_name,
     message("\n[API] TraitBank/EOL...")
     db_start <- Sys.time()
     tb_data <- lookup_traitbank(species_name)
-    if (tb_data$success) {
+    if (isTRUE(tb_data$success)) {
       raw_traits$traitbank <- tb_data$traits
       sources_used <- c(sources_used, "TraitBank")
       if (!is.null(tb_data$traits$diet)) feeding_mode <- c(feeding_mode, tb_data$traits$diet)
@@ -1414,7 +1414,13 @@ lookup_species_traits <- function(species_name,
 
     # Calculate confidence for all traits
     message("  [DEBUG] Calling calculate_all_trait_confidence...")
-    confidence_data <- calculate_all_trait_confidence(trait_record)
+    confidence_data <- tryCatch(
+      calculate_all_trait_confidence(trait_record),
+      error = function(e) {
+        message("  Warning: Uncertainty quantification failed: ", e$message)
+        list()
+      }
+    )
     message("  [DEBUG] calculate_all_trait_confidence completed")
 
     # Merge confidence data into result

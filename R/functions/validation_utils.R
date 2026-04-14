@@ -52,13 +52,18 @@ NULL
 #' result <- with_timeout(api_call(), timeout = 30, on_timeout = list(), verbose = TRUE)
 #' }
 with_timeout <- function(expr, timeout = 10, on_timeout = NULL, verbose = FALSE) {
+  # Reset time limits unconditionally when leaving this function
+  on.exit(setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE), add = TRUE)
+
   tryCatch({
     # Set time limits
     setTimeLimit(cpu = timeout, elapsed = timeout, transient = TRUE)
-    on.exit(setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE), add = TRUE)
 
     # Execute expression
     result <- expr
+
+    # Reset immediately after success
+    setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE)
     return(result)
 
   }, error = function(e) {
