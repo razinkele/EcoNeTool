@@ -849,7 +849,11 @@ trait_research_server <- function(input, output, session, shared_data) {
   # OFFLINE DATABASE MANAGEMENT
   # ============================================================================
 
+  # Reactive trigger to refresh offline DB value boxes after rebuild
+  offline_db_trigger <- reactiveVal(0)
+
   output$offline_db_species_count <- renderValueBox({
+    offline_db_trigger()  # Re-render when trigger changes
     db_path <- "cache/offline_traits.db"
     count <- 0
     if (file.exists(db_path) && requireNamespace("RSQLite", quietly = TRUE)) {
@@ -863,6 +867,7 @@ trait_research_server <- function(input, output, session, shared_data) {
   })
 
   output$offline_db_age <- renderValueBox({
+    offline_db_trigger()
     db_path <- "cache/offline_traits.db"
     age_text <- "Not built"
     color <- "danger"
@@ -883,15 +888,110 @@ trait_research_server <- function(input, output, session, shared_data) {
   })
 
   output$offline_db_status <- renderValueBox({
+    offline_db_trigger()
     db_path <- "cache/offline_traits.db"
     status <- if (file.exists(db_path)) "Available" else "Not Found"
     color <- if (file.exists(db_path)) "success" else "danger"
     valueBox(status, "Status", icon = icon("check-circle"), color = color)
   })
 
+  # Background process handle for async rebuild
+  offline_rebuild_process <- reactiveVal(NULL)
+
   observeEvent(input$rebuild_offline_db, {
-    showNotification("Offline database rebuild not yet implemented. Run scripts/initialization/build_offline_trait_db.R manually.",
-                     type = "warning", duration = 10)
+    # Prevent double-click while rebuilding
+    proc <- offline_rebuild_process()
+    if (!is.null(proc) && proc$is_alive()) {
+      showNotification("Rebuild already in progress...", type = "warning")
+      return()
+    }
+
+    build_script <- "scripts/initialization/build_offline_trait_db.R"
+    if (!file.exists(build_script)) {
+      showNotification(
+        paste("Build script not found:", build_script),
+        type = "error"
+      )
+      return()
+    }
+
+    showNotification(
+      HTML("<b>Rebuilding offline trait database...</b><br>This may take a minute."),
+      type = "message", duration = NULL, id = "rebuild_progress"
+    )
+
+    tryCatch({
+      # Run the build script as a background Rscript process
+      rscript_path <- file.path(R.home("bin"), "Rscript")
+      proc <- processx::process$new(
+        rscript_path,
+        args = normalizePath(build_script),
+        wd = normalizePath("."),
+        stdout = "|", stderr = "|",
+        supervise = TRUE
+      )
+      offline_rebuild_process(proc)
+
+      # Poll for completion
+      observe({
+        invalidateLater(2000, session)
+        proc <- offline_rebuild_process()
+        if (is.null(proc)) return()
+        if (proc$is_alive()) return()  # Still running
+
+        # Process finished - get result
+        isolate({
+          exit_status <- proc$get_exit_status()
+          removeNotification("rebuild_progress")
+
+          if (exit_status == 0) {
+            # Read stdout for summary
+            output_text <- tryCatch(
+              proc$read_all_output_lines(),
+              error = function(e) character(0)
+            )
+            output_text <- paste(output_text, collapse = "\n")
+            # Extract total species count from build output
+            total_match <- regmatches(output_text,
+              regexpr("Total species in database: [0-9]+", output_text))
+            summary <- if (length(total_match) > 0) total_match else "Build complete"
+
+            showNotification(
+              HTML(paste0("<b>Offline database rebuilt!</b><br>", summary)),
+              type = "message", duration = 8
+            )
+          } else {
+            stderr_text <- tryCatch(
+              paste(proc$read_all_error_lines(), collapse = "\n"),
+              error = function(e) ""
+            )
+            # Show last meaningful error line
+            err_lines <- strsplit(stderr_text, "\n")[[1]]
+            err_lines <- err_lines[nchar(trimws(err_lines)) > 0]
+            last_err <- if (length(err_lines) > 0) {
+              tail(err_lines, 1)
+            } else {
+              "Unknown error"
+            }
+            showNotification(
+              HTML(paste0("<b>Rebuild failed</b> (exit ", exit_status, ")<br>",
+                          htmltools::htmlEscape(last_err))),
+              type = "error", duration = 15
+            )
+          }
+
+          # Refresh value boxes
+          offline_db_trigger(offline_db_trigger() + 1)
+          offline_rebuild_process(NULL)
+        })
+      })
+    }, error = function(e) {
+      removeNotification("rebuild_progress")
+      showNotification(
+        paste("Failed to start rebuild:", e$message),
+        type = "error"
+      )
+    })
   })
 
   output$offline_db_contents <- DT::renderDataTable({
