@@ -27,7 +27,7 @@ source("R/config/harmonization_config.R")  # Harmonization configuration for tra
 source("R/functions/validation_utils.R")  # Core utilities (%||%, with_timeout, validators) - MUST load early
 
 # =============================================================================
-# CURRENT VERSION: v1.4.3 (2026-04-11)
+# CURRENT VERSION: v1.4.4 (2026-04-14)
 # =============================================================================
 # LATEST: Local Databases Integration (v1.4.2)
 # - BVOL phytoplankton database: 3,846 species

@@ -4,21 +4,21 @@
 # Format: MAJOR.MINOR.PATCH
 # See CHANGELOG.md for detailed change history
 
-VERSION=1.4.3
-VERSION_NAME=Versioning & Documentation
-RELEASE_DATE=2026-04-11
+VERSION=1.4.4
+VERSION_NAME=Trait Research Stability
+RELEASE_DATE=2026-04-14
 STATUS=stable
 
 # Version components
 MAJOR=1
 MINOR=4
-PATCH=3
+PATCH=4
 
 # Git information (if available)
 # Set by deployment scripts
-GIT_COMMIT=7806bb9
+GIT_COMMIT=fdd2f82
 GIT_BRANCH=master
-BUILD_DATE=2026-04-11T00:47:57
+BUILD_DATE=2026-04-14T18:55:00
 
 # Deployment information
 DEPLOYED_BY=
