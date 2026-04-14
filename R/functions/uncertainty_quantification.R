@@ -193,7 +193,7 @@ calculate_trait_confidence <- function(trait_value, raw_value = NA, source = "Un
   base_confidence <- get_database_weight(source)
 
   # Adjust for ML probability if available
-  if (!is.na(ml_probability)) {
+  if (!is.null(ml_probability) && length(ml_probability) == 1 && !is.na(ml_probability)) {
     base_confidence <- base_confidence * ml_probability
   }
 
@@ -222,7 +222,7 @@ calculate_trait_confidence <- function(trait_value, raw_value = NA, source = "Un
   notes <- paste0(
     "Source: ", source,
     " | Confidence: ", round(final_confidence * 100, 1), "%",
-    if (!is.na(ml_probability)) paste0(" | ML prob: ", round(ml_probability * 100, 1), "%"),
+    if (!is.null(ml_probability) && length(ml_probability) == 1 && !is.na(ml_probability)) paste0(" | ML prob: ", round(ml_probability * 100, 1), "%"),
     if (threshold_distance < 1.0) paste0(" | Near boundary (", round(threshold_distance * 100, 1), "%)"),
     ""
   )
@@ -408,7 +408,6 @@ map_confidence_to_opacity <- function(confidence, min_opacity = 0.3, max_opacity
 #' calculate_all_trait_confidence(record)
 #'
 calculate_all_trait_confidence <- function(trait_record) {
-  message("  [DEBUG] Inside calculate_all_trait_confidence function")
 
   result <- list()
 

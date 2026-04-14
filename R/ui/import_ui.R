@@ -95,7 +95,8 @@ import_ui <- function() {
                     br(),
                     actionButton("load_data", "Load Data", icon = icon("upload"), class = "btn-primary"),
                     hr(),
-                    verbatimTextOutput("data_upload_status")
+                    verbatimTextOutput("data_upload_status"),
+                    uiOutput("diet_download_ui")
                   )
                 ),
                 column(6,

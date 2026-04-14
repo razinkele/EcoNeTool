@@ -48,7 +48,55 @@ assign_functional_group <- function(sp_name, pb = NA, indegree = NA, outdegree =
 
   # Check benthos BEFORE zooplankton (critical fix!)
   # This prevents "Macrozoobenthos" from matching "zoo" first
-  if (grepl("benthos|benthic|^bent\\b|mussel|clam|worm|shrimp|crab|bottom|macro.*bent|meio.*bent|amphipod|isopod|gastropod|bivalve|polychaete", sp_lower)) {
+  # Includes marine invertebrate phyla, classes, orders, and common families
+  if (grepl(paste0(
+    "benthos|benthic|^bent\\b|mussel|clam|worm|shrimp|crab|bottom|macro.*bent|meio.*bent",
+    "|amphipod|isopod|gastropod|bivalve|bivalvia|polychaete|polychaeta",
+    "|porifera|sponge|cnidaria|hydrozoa|anthozoa|anemone",
+    "|sipuncul|echiur|priapul|nemertea|nemertini",
+    "|annelid|oligochaet|hirudin",
+    "|scaphopod|chiton|nudibranch|opisthobranch|cephalopod",
+    "|decapod|stomatopod|cumacea|tanaidacea|cirriped|barnacle",
+    "|echinoderm|ophiur|asteroid|echinoid|holothur|crinoid|sea urchin|starfish|sea cucumber",
+    "|bryozoa|ectoprocta|phoronid|brachiopod|tunicat|ascidian",
+    "|nematod|turbellari|plathelminth|platyhelminth",
+    # Common polychaete families
+    "|capitellid|cirratulid|lumbrinerid|nephtyid|nereid|phyllodocid|sabellid|serpulid",
+    "|spionid|syllid|terebellid|oweniid|maldanid|amphinomid|glycerid|eunicid|onuphid",
+    "|acoetid|polynoid|hesionid|dorvilleid|pectinarid|flabelligerid|paraonid|cossurid",
+    # Common polychaete genera
+    "|glycera|drilonereis|levinsenia|goniada|melinna|pista|lagis|chone|platynereis",
+    "|armandia|aponuphis|micronephthys|syllis|marphysa|diopatra|hyalinoecia",
+    # Sipunculan genera (phylum caught above, but genera have different names)
+    "|aspidosiphon|phascolosoma|golfingia|nephasoma|themiste",
+    # Common bivalve/gastropod genera
+    "|abra |nucul|corbul|mytil|cardium|papillicard|palliolum|loripinus|mimachlamys|musculus|myrtea|lembulus",
+    "|turritell|megastomia|turbonilla|roxaniella|phylliroe|lataxiena",
+    # Cephalopod genera
+    "|illex|loligo|sepia|octopus|eledone|alloteuthis|todarodes",
+    # Common crustacean families/genera
+    "|pagurid|majidae|portunid|alpheidae|palaemon|crangon|pandalus|galathea",
+    "|apseud|tanais|crustacea|anomura|diplostraca|ostracoda|cirripedia",
+    "|squilla|alpheus|anapagurus|callianassa|dardanus|ebalia|inachus|goneplax",
+    "|polybius|periclimenes|philocheras|pilumnus|processa|upogebia|athanas",
+    "|chlorotocus|pagurus|liocarcinus|macropodia|atelecyclus",
+    # Mysid genera
+    "|anchialina|erythrops|haplostylus|leptomysis|paraleptomysis|siriella",
+    # Cumacean genera
+    "|diastylis|diastyloides|iphinoe|leucon\\b",
+    # Isopod/tanaid genera
+    "|leptochelia|cirolana|cymothoid|gnathia|paranthura",
+    # Amphipod genera
+    "|ampelisca|apherusa|corophium|halicoides|harpinia|hyperiid|lembos|leucothoe",
+    "|leptocheirus|lucifer|melphidippella|microdeutopus|deflexilodes|tryphosa",
+    "|parvipalpus|perioculodes|phtisica|scopelocheirus|stenothoe|tryphosites",
+    "|urothoe|westwoodilla",
+    # Other marine invertebrate taxa
+    "|pycnogonid|sea spider|edwardsia|appendiculari",
+    # Misc invertebrate terms
+    "|invertebrat|infauna|epifauna|macro.*fauna|meio.*fauna",
+    "|ctenophor|hydroid|actinia|gorgon|coral"
+  ), sp_lower)) {
     return("Benthos")
   }
 
