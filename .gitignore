@@ -72,3 +72,6 @@ examples/*.zip
 
 # Claude Code settings (user-specific)
 .claude/settings.local.json
+
+# Playwright MCP test artifacts (console logs, snapshots)
+.playwright-mcp/
