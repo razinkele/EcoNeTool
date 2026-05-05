@@ -1511,13 +1511,16 @@ lookup_species_traits <- function(species_name,
         verbose = TRUE
       )
 
-      # Update sources if phylogenetic imputation was used
+      # Update sources if phylogenetic imputation was used.
+      # Use isTRUE() so an NA source (set when phylo finds no close relatives,
+      # which is common for bird/mammal species) doesn't propagate into the
+      # `if (...)` and trigger "missing value where TRUE/FALSE needed".
       phylo_sources <- c(
-        if (!is.null(result$MS_source) && result$MS_source == "Phylogenetic") "Phylogenetic",
-        if (!is.null(result$FS_source) && result$FS_source == "Phylogenetic") "Phylogenetic",
-        if (!is.null(result$MB_source) && result$MB_source == "Phylogenetic") "Phylogenetic",
-        if (!is.null(result$EP_source) && result$EP_source == "Phylogenetic") "Phylogenetic",
-        if (!is.null(result$PR_source) && result$PR_source == "Phylogenetic") "Phylogenetic"
+        if (isTRUE(result$MS_source == "Phylogenetic")) "Phylogenetic",
+        if (isTRUE(result$FS_source == "Phylogenetic")) "Phylogenetic",
+        if (isTRUE(result$MB_source == "Phylogenetic")) "Phylogenetic",
+        if (isTRUE(result$EP_source == "Phylogenetic")) "Phylogenetic",
+        if (isTRUE(result$PR_source == "Phylogenetic")) "Phylogenetic"
       )
 
       if (length(phylo_sources) > 0) {

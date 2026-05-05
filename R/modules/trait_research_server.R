@@ -204,12 +204,10 @@ trait_research_server <- function(input, output, session, shared_data) {
   # ============================================================================
 
   observeEvent(input$trait_research_run_lookup, {
-    req(input$trait_research_species_list)
-
-    # Parse species list
-    species_list <- strsplit(input$trait_research_species_list, "\n")[[1]]
-    species_list <- trimws(species_list)
-    species_list <- species_list[species_list != ""]
+    # Read from the same source as the species count badge so the lookup count
+    # always matches what the UI advertises (test mode previously fell through
+    # to the textarea, which still held the manual-mode default of 5 species).
+    species_list <- get_species_list()
 
     if (length(species_list) == 0) {
       showNotification("Please enter at least one species name", type = "warning")
@@ -320,8 +318,13 @@ trait_research_server <- function(input, output, session, shared_data) {
         # Rate limiting handled by orchestrator
       }
 
-      # Combine results
-      results_df <- do.call(rbind, results_list)
+      # Combine results. Per-species result data.frames have heterogeneous
+      # columns: the orchestrator only adds *_interval_lower / *_interval_upper
+      # / *_confidence_category for traits that actually have data. Fish (all 5
+      # traits) get all 15 interval columns; birds with only MS/PR get 6. So
+      # `do.call(rbind, …)` fails on a mixed batch — use bind_rows() which fills
+      # missing columns with NA.
+      results_df <- as.data.frame(dplyr::bind_rows(results_list))
       rownames(results_df) <- NULL
 
       # Store results
@@ -671,21 +674,19 @@ trait_research_server <- function(input, output, session, shared_data) {
 
   # Get current species list from input
   get_species_list <- reactive({
-    if (input$trait_research_input_method == "manual") {
-      species_text <- input$trait_research_species_list
-      if (is.null(species_text) || species_text == "") return(character(0))
-      species <- strsplit(species_text, "\n")[[1]]
-      species <- trimws(species)
-      species <- species[species != ""]
-      return(species)
-    } else if (input$trait_research_input_method == "file") {
-      req(input$trait_research_species_file)
-      # File handling done elsewhere
-      return(character(0))
-    } else if (input$trait_research_input_method == "test") {
+    # Test mode: read directly from the selected dataset.
+    # Manual and File modes both ultimately use the textarea — manual because
+    # the user types into it, file because the upload observer writes parsed
+    # rows back via updateTextAreaInput(). Treat them identically here so the
+    # badge count and the lookup count never disagree.
+    if (isTRUE(input$trait_research_input_method == "test")) {
+      req(input$trait_research_test_dataset)
       return(get_test_dataset(input$trait_research_test_dataset))
     }
-    return(character(0))
+    species_text <- input$trait_research_species_list
+    if (is.null(species_text) || species_text == "") return(character(0))
+    species <- trimws(strsplit(species_text, "\n")[[1]])
+    species[species != ""]
   })
 
   output$trait_research_species_display <- renderUI({
