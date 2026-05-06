@@ -84,3 +84,8 @@ CLAUDE.md
 # new working/import data from being staged accidentally. Use `git add -f`
 # to track a new file in here intentionally.
 data/
+
+# Planning notes — same convention as data/. The 8 plans in
+# docs/superpowers/plans/ tracked before this rule remain tracked.
+docs/plans/
+docs/superpowers/plans/
