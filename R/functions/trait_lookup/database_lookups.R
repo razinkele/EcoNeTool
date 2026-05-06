@@ -759,13 +759,43 @@ lookup_ptdb_traits <- function(species_name, ptdb_file = NULL) {
 }
 
 
+#' Look up WoRMS AphiaRecordsByName via direct REST call.
+#'
+#' Replaces `worrms::wm_records_name(...)` in the slow path: that wrapper goes
+#' through crul, where R's `setTimeLimit()` (used by `with_timeout`) cannot
+#' interrupt a blocking curl read. With `httr::timeout()` the deadline is
+#' enforced at the curl level, so a slow WoRMS day is bounded by `timeout_sec`
+#' instead of multiplying through retry strategies.
+#'
+#' Returns the same data.frame shape `worrms::wm_records_name` does (or NULL on
+#' timeout / 4xx / empty), so downstream code in lookup_worms_traits is unchanged.
+worms_records_by_name_http <- function(name, fuzzy = FALSE, marine_only = FALSE, timeout_sec = 10) {
+  url <- paste0("https://www.marinespecies.org/rest/AphiaRecordsByName/",
+                utils::URLencode(name, reserved = TRUE))
+  resp <- tryCatch(
+    httr::GET(url,
+              query = list(like = tolower(as.character(fuzzy)),
+                           marine_only = tolower(as.character(marine_only))),
+              httr::timeout(timeout_sec)),
+    error = function(e) NULL
+  )
+  if (is.null(resp) || httr::status_code(resp) != 200) return(NULL)
+  res <- tryCatch(
+    jsonlite::fromJSON(httr::content(resp, as = "text", encoding = "UTF-8"), flatten = TRUE),
+    error = function(e) NULL
+  )
+  if (is.null(res) || !is.data.frame(res) || nrow(res) == 0) return(NULL)
+  res
+}
+
 #' Use WoRMS for taxonomic information and basic traits
 #'
 #' @param species_name Scientific name
-#' @param timeout Timeout in seconds (default: 3s)
+#' @param timeout Timeout in seconds (default: 10s — applied to each HTTP call
+#'   via `httr::timeout()`, enforced at the curl layer)
 #' @return List with taxonomic and habitat information
 #' @export
-lookup_worms_traits <- function(species_name, timeout = 3) {
+lookup_worms_traits <- function(species_name, timeout = 10) {
 
   result <- list(
     species = species_name,
@@ -838,20 +868,26 @@ lookup_worms_traits <- function(species_name, timeout = 3) {
     if (is.null(attempt)) next  # Skip if strategy wasn't added
 
     tryCatch({
-      aphia_records <- with_timeout(
-        worrms::wm_records_name(
-          name = attempt$name,
-          fuzzy = attempt$fuzzy,
-          marine_only = attempt$marine_only
-        ),
-        timeout = timeout,
-        on_timeout = NULL
+      # Direct httr::GET so the timeout is enforced at the curl layer; the
+      # previous worrms::wm_records_name wrapped in with_timeout couldn't
+      # interrupt a blocking network read because setTimeLimit() doesn't
+      # fire mid-syscall.
+      aphia_records <- worms_records_by_name_http(
+        name = attempt$name,
+        fuzzy = attempt$fuzzy,
+        marine_only = attempt$marine_only,
+        timeout_sec = timeout
       )
 
       if (!is.null(aphia_records) && length(aphia_records) > 0) {
         successful_strategy <- attempt$label
         message("      \u2192 WoRMS: Found via ", attempt$label, " ('", attempt$name, "')")
         break
+      } else {
+        # NULL from worms_records_by_name_http includes the curl-timeout case
+        # (httr::GET throws an error caught by its tryCatch and returns NULL).
+        # Treat each NULL as a possible timeout for the "API down" guard below.
+        timeout_count <- timeout_count + 1
       }
     }, error = function(e) {
       if (grepl("timeout|time limit|elapsed", e$message, ignore.case = TRUE)) {
