@@ -75,3 +75,12 @@ examples/*.zip
 
 # Playwright MCP test artifacts (console logs, snapshots)
 .playwright-mcp/
+
+# Per-project Claude Code instructions (user-managed, not source)
+CLAUDE.md
+
+# Untracked data files. Existing reference data (CSV, GeoJSON, etc.) was
+# tracked before this rule was added and remains tracked; this ignore stops
+# new working/import data from being staged accidentally. Use `git add -f`
+# to track a new file in here intentionally.
+data/
