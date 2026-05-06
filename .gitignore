@@ -89,3 +89,6 @@ data/
 # docs/superpowers/plans/ tracked before this rule remain tracked.
 docs/plans/
 docs/superpowers/plans/
+
+# GitHub Copilot per-user config
+.github/copilot/
