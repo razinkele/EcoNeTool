@@ -11,7 +11,7 @@
 #' @param timeout Timeout in seconds (default: 5s, must be > 0)
 #' @return List with raw trait data
 #' @export
-lookup_fishbase_traits <- function(species_name, timeout = 5) {
+lookup_fishbase_traits <- function(species_name, timeout = 20) {
 
   # Input validation
   if (missing(species_name) || is.null(species_name) || !is.character(species_name)) {
@@ -37,34 +37,39 @@ lookup_fishbase_traits <- function(species_name, timeout = 5) {
   }
 
   tryCatch({
-    # Get species data (let rfishbase handle its own timeout)
-    species_data <- tryCatch({
-      rfishbase::species(species_name)
-    }, error = function(e) {
-      # Handle connection errors gracefully
-      if (grepl("open|connection|timeout|time limit", e$message, ignore.case = TRUE)) {
-        message("      \u26a0\ufe0f  Connection error or timeout - FishBase may be unavailable")
+    # rfishbase uses duckdbfs::open_dataset against remote parquet files; without
+    # an enforced timeout each call can hang for 30s+ when FishBase's CDN is slow.
+    # Wrap in with_timeout() (setTimeLimit-based) \u2014 rfishbase's R-level dplyr
+    # collect step is interruptible, so the deadline fires within ~1s of the
+    # set value (verified at 3.7s for a 2s deadline). The previous code took the
+    # `timeout` parameter but never applied it.
+    species_data <- tryCatch(
+      with_timeout(rfishbase::species(species_name),
+                   timeout = timeout, on_timeout = NULL),
+      error = function(e) {
+        if (grepl("open|connection|timeout|time limit", e$message, ignore.case = TRUE)) {
+          message("      \u26a0\ufe0f  Connection error or timeout - FishBase may be unavailable")
+          return(NULL)
+        }
+        message("      \u26a0\ufe0f  Error: ", e$message)
         return(NULL)
-      }
-      # Other errors - return NULL but log them
-      message("      \u26a0\ufe0f  Error: ", e$message)
-      return(NULL)
-    })
+      })
 
     if (is.null(species_data) || nrow(species_data) == 0) {
       result$note <- "Connection error, timeout, or species not found"
       return(result)
     }
 
-    # Get morphology data (optional - don't fail if unavailable)
-    morph_data <- tryCatch({
-      rfishbase::morphology(species_name)
-    }, error = function(e) NULL)
+    # Optional auxiliary lookups; on timeout treat as missing data.
+    morph_data <- tryCatch(
+      with_timeout(rfishbase::morphology(species_name),
+                   timeout = timeout, on_timeout = NULL),
+      error = function(e) NULL)
 
-    # Get ecology data (optional - don't fail if unavailable)
-    ecology_data <- tryCatch({
-      rfishbase::ecology(species_name)
-    }, error = function(e) NULL)
+    ecology_data <- tryCatch(
+      with_timeout(rfishbase::ecology(species_name),
+                   timeout = timeout, on_timeout = NULL),
+      error = function(e) NULL)
 
     # Extract relevant traits using safe_get() for consistent NULL/NA handling
     traits <- list()
@@ -127,7 +132,7 @@ lookup_fishbase_traits <- function(species_name, timeout = 5) {
 #' @param timeout Timeout in seconds (default: 10s)
 #' @return List with raw trait data
 #' @export
-lookup_sealifebase_traits <- function(species_name, timeout = 10) {
+lookup_sealifebase_traits <- function(species_name, timeout = 20) {
 
   result <- list(
     species = species_name,
@@ -143,19 +148,20 @@ lookup_sealifebase_traits <- function(species_name, timeout = 10) {
   }
 
   tryCatch({
-    # Query SeaLifeBase using rfishbase (let rfishbase handle its own timeout)
-    species_data <- tryCatch({
-      rfishbase::species(species_name, server = "sealifebase")
-    }, error = function(e) {
-      # Handle connection errors gracefully
-      if (grepl("open|connection|timeout|time limit", e$message, ignore.case = TRUE)) {
-        message("      \u26a0\ufe0f  Connection error or timeout - SeaLifeBase may be unavailable")
+    # SeaLifeBase shares rfishbase's duckdbfs+parquet backend. Same timeout
+    # rationale as lookup_fishbase_traits \u2014 wrap each rfishbase call in
+    # with_timeout() so a slow CDN day is bounded.
+    species_data <- tryCatch(
+      with_timeout(rfishbase::species(species_name, server = "sealifebase"),
+                   timeout = timeout, on_timeout = NULL),
+      error = function(e) {
+        if (grepl("open|connection|timeout|time limit", e$message, ignore.case = TRUE)) {
+          message("      \u26a0\ufe0f  Connection error or timeout - SeaLifeBase may be unavailable")
+          return(NULL)
+        }
+        message("      \u26a0\ufe0f  Error: ", e$message)
         return(NULL)
-      }
-      # Other errors - return NULL but log them
-      message("      \u26a0\ufe0f  Error: ", e$message)
-      return(NULL)
-    })
+      })
 
     if (is.null(species_data) || nrow(species_data) == 0) {
       result$note <- "Connection error, timeout, or species not found in SeaLifeBase"
@@ -193,9 +199,10 @@ lookup_sealifebase_traits <- function(species_name, timeout = 10) {
     }
 
     # Try to get morphology data (optional - don't fail if unavailable)
-    morph_data <- tryCatch({
-      rfishbase::morphology(species_name, server = "sealifebase")
-    }, error = function(e) NULL)
+    morph_data <- tryCatch(
+      with_timeout(rfishbase::morphology(species_name, server = "sealifebase"),
+                   timeout = timeout, on_timeout = NULL),
+      error = function(e) NULL)
 
     # Body shape (for mobility inference) - check column exists
     if (!is.null(morph_data) && "BodyShapeI" %in% names(morph_data)) {
