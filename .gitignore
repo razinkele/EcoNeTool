@@ -70,8 +70,8 @@ examples/*.zip
 # Nested git repositories
 **/.git/
 
-# Claude Code settings (user-specific)
-.claude/settings.local.json
+# Claude Code per-user state (settings, custom agents, custom skills)
+.claude/
 
 # Playwright MCP test artifacts (console logs, snapshots)
 .playwright-mcp/
