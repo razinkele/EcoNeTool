@@ -941,12 +941,14 @@ lookup_worms_traits <- function(species_name, timeout = 10) {
       traits$class <- classification$scientificname[classification$rank == "Class"]
       traits$order <- classification$scientificname[classification$rank == "Order"]
       traits$family <- classification$scientificname[classification$rank == "Family"]
+      traits$genus <- classification$scientificname[classification$rank == "Genus"]
 
       # Handle multiple matches
       if (length(traits$phylum) > 1) traits$phylum <- traits$phylum[1]
       if (length(traits$class) > 1) traits$class <- traits$class[1]
       if (length(traits$order) > 1) traits$order <- traits$order[1]
       if (length(traits$family) > 1) traits$family <- traits$family[1]
+      if (length(traits$genus) > 1) traits$genus <- traits$genus[1]
     }
 
     # Marine/brackish/freshwater (handle data.frame structure)
