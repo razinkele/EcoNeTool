@@ -204,12 +204,19 @@ find_closest_relatives <- function(target_taxonomy,
         }
       }
 
-      # Check if this relative has the needed traits
-      has_needed_traits <- all(sapply(missing_traits, function(t) {
+      # Keep this relative if it provides AT LEAST ONE of the missing traits.
+      # Previously the gate required all() — but impute_traits_from_relatives
+      # already does per-trait NA filtering inside its loop (it skips relatives
+      # whose value for that specific trait is NA), so dropping a partial
+      # relative here just throws away usable data. A cached Somateria with
+      # only MS + PR could not contribute to inferring Branta's MS or PR,
+      # which is why almost every bird/mammal logged "No close relatives
+      # found" even with several relatives within the same order.
+      has_any_needed_trait <- any(sapply(missing_traits, function(t) {
         !is.null(relative_traits[[t]]) && !is.na(relative_traits[[t]])
       }))
 
-      if (!has_needed_traits) next
+      if (!has_any_needed_trait) next
 
       # Get species name
       species_name <- if (!is.null(cache_data$species)) {

@@ -285,7 +285,16 @@ trait_research_server <- function(input, output, session, shared_data) {
           if (cache_age_days < 30) {
             cat("  -> Using cached data\n")
             results_list[[i]] <- cached$traits
-            raw_list[[species]] <- cached$raw_data
+            # cached$raw_data is only present in legacy caches written by the
+            # old re-save here; orchestrator-written caches don't carry it.
+            # Synthesise a minimal raw_data summary from the traits row so the
+            # raw-details UI still has something to render either way.
+            raw_list[[species]] <- if (!is.null(cached$raw_data)) {
+              cached$raw_data
+            } else {
+              list(species = species,
+                   source = if (is.data.frame(cached$traits)) cached$traits$source else NA)
+            }
             next
           }
         }
@@ -307,13 +316,15 @@ trait_research_server <- function(input, output, session, shared_data) {
         raw_data <- list(species = species, source = full_result$source)
         raw_list[[species]] <- raw_data
 
-        # Cache the raw data too
-        cache_data <- list(
-          traits = full_result,
-          raw_data = raw_data,
-          timestamp = Sys.time()
-        )
-        saveRDS(cache_data, cache_file)
+        # NOTE: do NOT re-saveRDS() the cache file here. lookup_species_traits()
+        # already writes a richer cache structure on its way out
+        # (R/functions/trait_lookup/orchestrator.R near `saveRDS(cache_data, …)`)
+        # which includes $harmonized — the taxonomy block (phylum/class/order/
+        # family/genus) that phylogenetic_imputation.R::find_closest_relatives
+        # needs to compute taxonomic distance. Overwriting that file with a
+        # smaller {traits, raw_data, timestamp} structure dropped the taxonomy
+        # and made phylo imputation fall through with "no close relatives" for
+        # every species. Trust the orchestrator's cache.
 
         # Rate limiting handled by orchestrator
       }
