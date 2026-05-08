@@ -29,6 +29,45 @@
 #' @param timeout      Numeric. Seconds before aborting the API call (default 10).
 #' @return Named list: species, source, success (logical), traits (named list).
 #' @export
+#' Flatten the nested AphiaAttributesByAphiaID JSON into a data.frame
+#'
+#' WoRMS returns each top-level attribute with a `children[]` array of
+#' sub-attributes; `worrms::wm_attr_data` flattens them to a single
+#' data.frame with measurementType / measurementValue columns. We do the
+#' same when going direct.
+worms_attrs_flatten <- function(node) {
+  rows <- list()
+  walk <- function(items) {
+    if (is.null(items) || length(items) == 0) return()
+    if (is.data.frame(items)) {
+      for (i in seq_len(nrow(items))) {
+        rows[[length(rows) + 1L]] <<- list(
+          measurementType  = items$measurementType[i],
+          measurementValue = items$measurementValue[i]
+        )
+        if (!is.null(items$children) && length(items$children) >= i) {
+          walk(items$children[[i]])
+        }
+      }
+    } else if (is.list(items)) {
+      for (item in items) {
+        rows[[length(rows) + 1L]] <<- list(
+          measurementType  = item$measurementType,
+          measurementValue = item$measurementValue
+        )
+        walk(item$children)
+      }
+    }
+  }
+  walk(node)
+  if (length(rows) == 0) {
+    return(data.frame(measurementType = character(),
+                      measurementValue = character(),
+                      stringsAsFactors = FALSE))
+  }
+  do.call(rbind, lapply(rows, as.data.frame, stringsAsFactors = FALSE))
+}
+
 lookup_worms_traits_api <- function(species_name = NULL, aphia_id = NULL, timeout = 10) {
   result <- list(
     species = species_name %||% paste0("AphiaID:", aphia_id),
@@ -38,18 +77,26 @@ lookup_worms_traits_api <- function(species_name = NULL, aphia_id = NULL, timeou
   )
 
   if (is.null(aphia_id) || !is.numeric(aphia_id) || aphia_id <= 0) return(result)
-  if (!requireNamespace("worrms", quietly = TRUE)) {
-    message("  [WoRMS Traits] Package 'worrms' not installed. Install: install.packages('worrms')")
-    return(result)
-  }
 
   tryCatch({
-    attrs <- with_timeout(
-      worrms::wm_attr_data(aphia_id),
-      timeout    = timeout,
-      on_timeout = NULL
-    )
-    if (is.null(attrs) || nrow(attrs) == 0) return(result)
+    # Direct httr::GET to the AphiaAttributesByAphiaID REST endpoint. The
+    # previous worrms::wm_attr_data() call uses crul under the hood; with_timeout
+    # cannot interrupt a blocking curl read in crul, so a slow WoRMS day stretched
+    # this hop unbounded — same root cause and same fix as the records-by-name
+    # call (see worms_records_by_name_http() in database_lookups.R).
+    url  <- paste0("https://www.marinespecies.org/rest/AphiaAttributesByAphiaID/",
+                   utils::URLencode(as.character(aphia_id), reserved = TRUE))
+    resp <- tryCatch(httr::GET(url, httr::timeout(timeout)), error = function(e) NULL)
+    if (is.null(resp) || httr::status_code(resp) != 200) return(result)
+
+    body <- tryCatch(
+      jsonlite::fromJSON(httr::content(resp, as = "text", encoding = "UTF-8"),
+                         simplifyVector = FALSE),
+      error = function(e) NULL)
+    if (is.null(body) || length(body) == 0) return(result)
+
+    attrs <- worms_attrs_flatten(body)
+    if (nrow(attrs) == 0) return(result)
 
     traits <- list()
     for (i in seq_len(nrow(attrs))) {
