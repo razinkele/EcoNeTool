@@ -290,11 +290,14 @@ check_prerequisites() {
     fi
   else
     log_info "Running in local deployment mode (on server)"
-    log_info "Checking write permissions to ${SHINY_SERVER_ROOT}..."
-    if [ -w "$SHINY_SERVER_ROOT" ] || [ "$(id -u)" = "0" ]; then
-      log_info "Have write permissions to deployment directory"
+    # We only need write to the app dir itself; ${SHINY_SERVER_ROOT} is
+    # owned by root but ${APP_DEPLOY_PATH} is razinka:shiny since 2026-05-08.
+    log_info "Checking write permissions to ${APP_DEPLOY_PATH}..."
+    if [ -w "$APP_DEPLOY_PATH" ] || [ "$(id -u)" = "0" ]; then
+      log_info "Have write permissions to app directory"
     else
-      log_error "No write permissions to ${SHINY_SERVER_ROOT}. Run with sudo."
+      log_error "No write permissions to ${APP_DEPLOY_PATH}."
+      log_error "Either run with sudo, or chown the dir: sudo chown -R razinka:shiny ${APP_DEPLOY_PATH}"
       checks_passed=false
     fi
   fi
@@ -533,15 +536,20 @@ restart_shiny_server() {
   log_info "Restarting Shiny Server..."
 
   if [ "$IS_LOCAL_DEPLOYMENT" = true ]; then
-    # Local restart
-    if sudo systemctl restart shiny-server 2>/dev/null; then
-      log_info "Shiny Server restarted successfully (systemctl)"
+    # Per-app reload: truncating restart.txt tells shiny-server to recycle
+    # only this Shiny app, not the whole server (which would bounce ~20
+    # other apps). The file is razinka:shiny mode 664 so no sudo needed.
+    # Falls back to systemctl if for some reason restart.txt isn't writable.
+    if [ -w "${APP_DEPLOY_PATH}/restart.txt" ] && : > "${APP_DEPLOY_PATH}/restart.txt"; then
+      log_info "App reload triggered via restart.txt (no full server restart)"
+    elif sudo systemctl restart shiny-server 2>/dev/null; then
+      log_warn "restart.txt not writable; fell back to full systemctl restart"
     elif sudo service shiny-server restart 2>/dev/null; then
-      log_info "Shiny Server restarted successfully (service)"
+      log_warn "restart.txt not writable; fell back to full service restart"
     else
-      log_warn "Could not restart Shiny Server automatically"
-      log_warn "You may need to restart it manually with:"
-      echo "  sudo systemctl restart shiny-server"
+      log_warn "Could not reload app automatically"
+      log_warn "You may need to manually run:"
+      echo "  : > ${APP_DEPLOY_PATH}/restart.txt"
     fi
   else
     # Remote restart via SSH
