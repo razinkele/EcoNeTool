@@ -322,8 +322,12 @@ cat("===========================================================================
 models <- list()
 performance <- list()
 
-# Features for prediction
-feature_cols <- c("phylum", "class", "order", "family", "genus")
+# Features for prediction. Family + genus are dropped because randomForest
+# can't handle factor predictors with > 53 levels (we have ~56 families,
+# ~76 genera in the cache), and with only ~80 training samples splitting on
+# genus would overfit to single-species leaves anyway. phylum/class/order
+# generalise better and cover most variance in trait values.
+feature_cols <- c("phylum", "class", "order")
 
 # Train model for each trait
 for (trait in c("MS", "FS", "MB", "EP", "PR")) {

@@ -157,13 +157,15 @@ prepare_ml_features <- function(taxonomic_info) {
     return(NULL)
   }
 
-  # Create feature data frame
+  # Create feature data frame. Only the columns the model was trained on
+  # (phylum/class/order — see scripts/train_trait_models.R for why family
+  # and genus are dropped). predict.randomForest is strict about column
+  # alignment so extra columns would cause a "Type of predictors in new
+  # data do not match" error.
   features <- data.frame(
     phylum = factor(phylum),
     class = factor(class),
     order = factor(order),
-    family = factor(family),
-    genus = factor(genus),
     stringsAsFactors = FALSE
   )
 
@@ -205,6 +207,20 @@ predict_trait_ml <- function(trait_name, taxonomic_info, models_package = NULL) 
 
   # Get model
   model <- models_package$models[[trait_name]]
+
+  # Align factor levels to the trained model's xlevels. predict.randomForest
+  # requires every predictor's factor levels to match training exactly; a fresh
+  # factor() built from a single value (the species we're predicting) only
+  # carries that one level, which trips "Type of predictors in new data do not
+  # match". Coercing with `levels = …` produces the same factor structure the
+  # model was trained on, with NA for any rank value the training set didn't
+  # see (e.g. a class outside the cached species).
+  for (col in names(model$forest$xlevels)) {
+    if (col %in% names(features)) {
+      features[[col]] <- factor(as.character(features[[col]]),
+                                levels = model$forest$xlevels[[col]])
+    }
+  }
 
   # Make prediction
   tryCatch({
