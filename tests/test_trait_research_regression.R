@@ -13,18 +13,19 @@ cat("===========================================================================
 cat("TRAIT RESEARCH REGRESSION TESTS\n")
 cat("=============================================================================\n\n")
 
-# Load dependencies
+# Load only the dependencies the assertions below actually exercise. The
+# tests cover code inspection (no R loading needed) plus three functions:
+# bind_rows (dplyr), predict_trait_ml (ml_trait_prediction.R, which uses
+# randomForest), and find_closest_relatives + impute_traits_from_relatives
+# (phylogenetic_imputation.R). Sourcing the full trait_lookup/load_all.R
+# chain pulls in readxl, R6, etc. that the regression tests never use,
+# which would needlessly bloat CI deps.
 suppressPackageStartupMessages({
-  library(httr); library(jsonlite); library(dplyr)
+  library(dplyr)
 })
 source("R/functions/validation_utils.R")
-source("R/functions/api_rate_limiter.R")
-source("R/functions/error_logging.R")
-source("R/functions/taxonomic_api_utils.R")
-source("R/functions/local_trait_databases.R")
 source("R/functions/phylogenetic_imputation.R")
 source("R/functions/ml_trait_prediction.R")
-suppressMessages(source("R/functions/trait_lookup/load_all.R"))
 
 test_count <- 0; pass_count <- 0; fail_count <- 0
 
