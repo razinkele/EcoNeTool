@@ -51,6 +51,7 @@ jobs:
             any::jsonlite
             any::dplyr
             any::randomForest
+            any::digest
 
       - name: Run regression tests
         run: Rscript tests/test_trait_research_regression.R
