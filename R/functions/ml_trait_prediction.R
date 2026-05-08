@@ -92,6 +92,19 @@ load_ml_models <- function() {
     return(NULL)
   }
 
+  # Ensure the randomForest namespace is loaded *before* anything tries to
+  # call predict() on a deserialised model. The .rds objects have class
+  # c("randomForest.formula", "randomForest") and rely on S3 dispatch to
+  # randomForest:::predict.randomForest — which is registered when the
+  # namespace is loaded. Without this, every predict() call in
+  # predict_trait_ml() failed with "no applicable method for 'predict'
+  # applied to an object of class 'c(randomForest.formula, randomForest)'",
+  # silently dropping every ML-imputed trait.
+  if (!requireNamespace("randomForest", quietly = TRUE)) {
+    message("⚠️  Package 'randomForest' not installed — ML prediction unavailable")
+    return(NULL)
+  }
+
   tryCatch({
     models <- readRDS(models_file)
 
