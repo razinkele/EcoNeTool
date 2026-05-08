@@ -137,38 +137,51 @@ load_ml_models <- function() {
 
 #' Prepare taxonomic features for ML prediction
 #'
-#' Converts taxonomic information into the format expected by ML models.
+#' Converts taxonomic information into a one-row data.frame with the columns
+#' the model was trained on. Pulls the column list from the model package's
+#' `feature_cols` (or a caller-supplied vector) so a future retrain with a
+#' different feature set doesn't require editing this function.
 #'
-#' @param taxonomic_info List containing phylum, class, order, family, genus
-#' @return Data frame with feature columns as factors, or NULL if insufficient data
+#' Final factor-level alignment to `model$forest$xlevels` happens in
+#' `predict_trait_ml()` — `predict.randomForest` is strict about column
+#' alignment and a freshly-built factor() carries only the new species' value
+#' as its single level, which trips "Type of predictors in new data do not
+#' match" until coerced.
+#'
+#' @param taxonomic_info List with named taxonomic ranks (phylum, class, order,
+#'   family, genus). Missing ranks default to "".
+#' @param feature_cols Character vector of rank names to include. Defaults to
+#'   c("phylum", "class", "order"), matching the bundled model.
+#' @return Data frame with the requested columns as factors, or NULL if the
+#'   minimum (phylum + class) is missing.
 #' @export
-prepare_ml_features <- function(taxonomic_info) {
+prepare_ml_features <- function(taxonomic_info,
+                                feature_cols = c("phylum", "class", "order")) {
 
-  # Extract taxonomic ranks
-  phylum <- tolower(taxonomic_info$phylum %||% "")
-  class <- tolower(taxonomic_info$class %||% "")
-  order <- tolower(taxonomic_info$order %||% "")
-  family <- tolower(taxonomic_info$family %||% "")
-  genus <- tolower(taxonomic_info$genus %||% "")
+  ranks <- list(
+    phylum = tolower(taxonomic_info$phylum %||% ""),
+    class  = tolower(taxonomic_info$class  %||% ""),
+    order  = tolower(taxonomic_info$order  %||% ""),
+    family = tolower(taxonomic_info$family %||% ""),
+    genus  = tolower(taxonomic_info$genus  %||% "")
+  )
 
-  # Check if we have minimum required data (at least phylum and class)
-  if (phylum == "" || class == "") {
+  # Phylum + class are always the floor — even a model that doesn't use
+  # them should fail here since taxonomy that thin won't generalise.
+  if (ranks$phylum == "" || ranks$class == "") {
     message("    ⚠️  Insufficient taxonomic data for ML prediction (need at least phylum and class)")
     return(NULL)
   }
 
-  # Create feature data frame. Only the columns the model was trained on
-  # (phylum/class/order — see scripts/train_trait_models.R for why family
-  # and genus are dropped). predict.randomForest is strict about column
-  # alignment so extra columns would cause a "Type of predictors in new
-  # data do not match" error.
-  features <- data.frame(
-    phylum = factor(phylum),
-    class = factor(class),
-    order = factor(order),
-    stringsAsFactors = FALSE
-  )
+  unknown <- setdiff(feature_cols, names(ranks))
+  if (length(unknown) > 0) {
+    message("    ⚠️  Unknown ML feature column(s): ", paste(unknown, collapse = ", "))
+    return(NULL)
+  }
 
+  values <- ranks[feature_cols]
+  features <- as.data.frame(lapply(values, factor), stringsAsFactors = FALSE)
+  names(features) <- feature_cols
   return(features)
 }
 
@@ -199,8 +212,14 @@ predict_trait_ml <- function(trait_name, taxonomic_info, models_package = NULL) 
     return(NULL)
   }
 
-  # Prepare features
-  features <- prepare_ml_features(taxonomic_info)
+  # Prepare features using whatever feature columns the model was trained on
+  # (read from the model package so a retrain with a different feature set
+  # — e.g. adding family back if the training data later supports it —
+  # doesn't require editing this function or prepare_ml_features).
+  features <- prepare_ml_features(
+    taxonomic_info,
+    feature_cols = models_package$feature_cols %||% c("phylum", "class", "order")
+  )
   if (is.null(features)) {
     return(NULL)
   }
