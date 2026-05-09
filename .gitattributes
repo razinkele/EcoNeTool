@@ -1,0 +1,28 @@
+# Default rule: auto-detect text vs binary, normalize text files to LF on
+# both commit and checkout. The deploy target (laguna.ku.lt) is Linux and
+# R/Shiny tolerate LF on Windows; this prevents OneDrive's CRLF
+# normalization from showing files as modified after every checkout.
+* text=auto eol=lf
+
+# Explicit binary types so git never tries line-ending conversion on them.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+*.tar   binary
+*.ttf   binary
+*.woff  binary
+*.woff2 binary
+*.eot   binary
+*.otf   binary
+*.rds   binary
+*.rda   binary
+*.Rdata binary
+*.xlsx  binary
+*.xls   binary
+*.docx  binary
+*.doc   binary
