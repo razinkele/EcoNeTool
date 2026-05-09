@@ -1271,6 +1271,18 @@ lookup_species_traits <- function(species_name,
     if (is.na(result$ST)) "ST"
   )
 
+  if (length(missing_traits) > 0 && is.null(raw_traits$worms)) {
+    # Surface the silent skip: ML and phylogenetic imputation tiers both
+    # require WoRMS taxonomy, so a NULL worms result silently bypasses
+    # the entire fallback hierarchy. warning() routes through R's normal
+    # condition system (visible in console, tests, Shiny error reporter).
+    warning(sprintf(
+      "Trait lookup for '%s': skipping ML/phylogenetic imputation - WoRMS taxonomy unavailable. Missing traits: %s",
+      species_name, paste(missing_traits, collapse = ", ")
+    ), call. = FALSE)
+    result$imputation_skipped <- "no_taxonomy"
+  }
+
   if (length(missing_traits) > 0 && !is.null(raw_traits$worms)) {
     message("\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557")
     message("\u2551 ML FALLBACK - Predicting missing traits                       \u2551")
@@ -1488,6 +1500,23 @@ lookup_species_traits <- function(species_name,
     if (is.na(result$EP)) "EP",
     if (is.na(result$PR)) "PR"
   )
+
+  # Surface the silent skip when phylogenetic imputation can't run because
+  # taxonomy is missing. Already covered for the ML tier above; emit a
+  # single combined warning here so callers get one observable signal per
+  # species rather than two separate ones for the same root cause.
+  if (length(missing_after_ml) > 0 && (is.null(raw_traits$worms) || is.null(cache_dir))) {
+    skip_reason <- if (is.null(raw_traits$worms)) "no_taxonomy" else "no_cache_dir"
+    if (is.null(result$imputation_skipped)) {
+      result$imputation_skipped <- skip_reason
+      if (skip_reason == "no_cache_dir") {
+        warning(sprintf(
+          "Trait lookup for '%s': skipping phylogenetic imputation - cache_dir not provided. Missing traits: %s",
+          species_name, paste(missing_after_ml, collapse = ", ")
+        ), call. = FALSE)
+      }
+    }
+  }
 
   if (length(missing_after_ml) > 0 && !is.null(raw_traits$worms) && !is.null(cache_dir)) {
     # Source phylogenetic imputation functions

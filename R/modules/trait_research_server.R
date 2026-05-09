@@ -910,6 +910,67 @@ trait_research_server <- function(input, output, session, shared_data) {
   # Background process handle for async rebuild
   offline_rebuild_process <- reactiveVal(NULL)
 
+  # Single session-level poller for rebuild completion. req() suspends
+  # the observer when no process is in flight, so it costs nothing while
+  # idle. Created ONCE at module init; previous design created a fresh
+  # observe() inside every observeEvent click, which leaked observers
+  # under repeated clicks since they had no destroy hook.
+  observe({
+    proc <- offline_rebuild_process()
+    req(proc)
+    if (proc$is_alive()) {
+      invalidateLater(2000, session)
+      return()
+    }
+
+    # Process finished - handle completion. Wrap the body in tryCatch so a
+    # rendering / notification failure doesn't leave the process reactive
+    # in a "finished but unhandled" state forever.
+    tryCatch(isolate({
+      exit_status <- proc$get_exit_status()
+      removeNotification("rebuild_progress")
+
+      if (exit_status == 0) {
+        output_text <- tryCatch(
+          proc$read_all_output_lines(),
+          error = function(e) character(0)
+        )
+        output_text <- paste(output_text, collapse = "\n")
+        total_match <- regmatches(output_text,
+          regexpr("Total species in database: [0-9]+", output_text))
+        summary <- if (length(total_match) > 0) total_match else "Build complete"
+
+        showNotification(
+          HTML(paste0("<b>Offline database rebuilt!</b><br>", summary)),
+          type = "message", duration = 8
+        )
+      } else {
+        stderr_text <- tryCatch(
+          paste(proc$read_all_error_lines(), collapse = "\n"),
+          error = function(e) ""
+        )
+        err_lines <- strsplit(stderr_text, "\n")[[1]]
+        err_lines <- err_lines[nchar(trimws(err_lines)) > 0]
+        last_err <- if (length(err_lines) > 0) {
+          tail(err_lines, 1)
+        } else {
+          "Unknown error"
+        }
+        showNotification(
+          HTML(paste0("<b>Rebuild failed</b> (exit ", exit_status, ")<br>",
+                      htmltools::htmlEscape(last_err))),
+          type = "error", duration = 15
+        )
+      }
+
+      offline_db_trigger(offline_db_trigger() + 1)
+      offline_rebuild_process(NULL)
+    }), error = function(e) {
+      message("[rebuild observer] handler error: ", conditionMessage(e))
+      isolate(offline_rebuild_process(NULL))
+    })
+  })
+
   observeEvent(input$rebuild_offline_db, {
     # Prevent double-click while rebuilding
     proc <- offline_rebuild_process()
@@ -933,7 +994,9 @@ trait_research_server <- function(input, output, session, shared_data) {
     )
 
     tryCatch({
-      # Run the build script as a background Rscript process
+      # Run the build script as a background Rscript process. The
+      # session-level observer above takes over once we set the process
+      # reactive — no nested observe() needed here.
       rscript_path <- file.path(R.home("bin"), "Rscript")
       proc <- processx::process$new(
         rscript_path,
@@ -943,60 +1006,6 @@ trait_research_server <- function(input, output, session, shared_data) {
         supervise = TRUE
       )
       offline_rebuild_process(proc)
-
-      # Poll for completion
-      observe({
-        invalidateLater(2000, session)
-        proc <- offline_rebuild_process()
-        if (is.null(proc)) return()
-        if (proc$is_alive()) return()  # Still running
-
-        # Process finished - get result
-        isolate({
-          exit_status <- proc$get_exit_status()
-          removeNotification("rebuild_progress")
-
-          if (exit_status == 0) {
-            # Read stdout for summary
-            output_text <- tryCatch(
-              proc$read_all_output_lines(),
-              error = function(e) character(0)
-            )
-            output_text <- paste(output_text, collapse = "\n")
-            # Extract total species count from build output
-            total_match <- regmatches(output_text,
-              regexpr("Total species in database: [0-9]+", output_text))
-            summary <- if (length(total_match) > 0) total_match else "Build complete"
-
-            showNotification(
-              HTML(paste0("<b>Offline database rebuilt!</b><br>", summary)),
-              type = "message", duration = 8
-            )
-          } else {
-            stderr_text <- tryCatch(
-              paste(proc$read_all_error_lines(), collapse = "\n"),
-              error = function(e) ""
-            )
-            # Show last meaningful error line
-            err_lines <- strsplit(stderr_text, "\n")[[1]]
-            err_lines <- err_lines[nchar(trimws(err_lines)) > 0]
-            last_err <- if (length(err_lines) > 0) {
-              tail(err_lines, 1)
-            } else {
-              "Unknown error"
-            }
-            showNotification(
-              HTML(paste0("<b>Rebuild failed</b> (exit ", exit_status, ")<br>",
-                          htmltools::htmlEscape(last_err))),
-              type = "error", duration = 15
-            )
-          }
-
-          # Refresh value boxes
-          offline_db_trigger(offline_db_trigger() + 1)
-          offline_rebuild_process(NULL)
-        })
-      })
     }, error = function(e) {
       removeNotification("rebuild_progress")
       showNotification(
