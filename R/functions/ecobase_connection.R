@@ -282,16 +282,21 @@ get_ecobase_model_metadata <- function(model_id) {
 #' model <- convert_ecobase_to_econetool(403)
 #' }
 convert_ecobase_to_econetool <- function(model_id, use_output = TRUE) {
+  # The OUTPUT endpoint does not carry diet_descr, so a pure-OUTPUT pass
+  # produces a network with zero edges. Delegate to the hybrid path
+  # (parameters from OUTPUT, diet from INPUT) — the only sensible
+  # interpretation of "use the balanced parameters and give me a real
+  # network". The use_output=FALSE branch below remains for callers who
+  # explicitly want the raw input-only conversion.
+  if (use_output) {
+    return(convert_ecobase_to_econetool_hybrid(model_id))
+  }
+
   library(igraph)
 
   message("Converting EcoBase model ", model_id, " to EcoNeTool format...")
 
-  # Get model data
-  if (use_output) {
-    model_data <- get_ecobase_model_output(model_id)
-  } else {
-    model_data <- get_ecobase_model_input(model_id)
-  }
+  model_data <- get_ecobase_model_input(model_id)
 
   # Get metadata
   metadata <- get_ecobase_model_metadata(model_id)
@@ -679,9 +684,11 @@ test_ecobase_connection <- function() {
     models <- get_ecobase_models()
     message("✓ Successfully retrieved ", nrow(models), " models")
 
-    # Show sample models
+    # Show sample models. Column set picked from what EcoBase actually
+    # returns (the legacy "model.ecosystem_name" column does not exist in
+    # the current API response).
     message("\nSample models:")
-    sample_models <- head(models[, c("model.model_number", "model.model_name", "model.ecosystem_name")], 5)
+    sample_models <- head(models[, c("model.model_number", "model.model_name", "model.ecosystem_type")], 5)
     print(sample_models)
 
     return(TRUE)
