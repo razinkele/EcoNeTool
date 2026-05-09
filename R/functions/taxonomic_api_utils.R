@@ -372,10 +372,17 @@ query_fishbase <- function(species_name, geographic_region = NULL, progress_call
           for (i in 1:nrow(common_result)) {
             species_to_check <- common_result$Species[i]
 
-            # Query distribution data
+            # Query distribution data. warning() so a silent fallback to
+            # "no region match" can be diagnosed; pre-PR6 the geographic
+            # filter was bypassed invisibly when rfishbase failed.
             dist_data <- tryCatch({
               rfishbase::distribution(species_to_check)
-            }, error = function(e) NULL)
+            }, error = function(e) {
+              warning(sprintf(
+                "[taxonomic_api_utils] rfishbase::distribution failed for '%s': %s",
+                species_to_check, conditionMessage(e)), call. = FALSE)
+              NULL
+            })
 
             if (!is.null(dist_data) && nrow(dist_data) > 0) {
               # Check if species found in the specified region
@@ -576,10 +583,18 @@ query_fishbase <- function(species_name, geographic_region = NULL, progress_call
       if ("CommonLength" %in% names(species_info)) {
         common_length <- species_info$CommonLength[1]
         if (!is.na(common_length) && common_length > 0) {
-          # Get length-weight parameters if available
+          # Get length-weight parameters if available. warning() so the
+          # fallback to a generic 0.01·L^3 estimate can be diagnosed -
+          # pre-PR6 a length_weight outage silently produced suspect
+          # body-mass numbers downstream.
           lw_params <- tryCatch({
             rfishbase::length_weight(valid_name)
-          }, error = function(e) NULL)
+          }, error = function(e) {
+            warning(sprintf(
+              "[taxonomic_api_utils] rfishbase::length_weight failed for '%s': %s",
+              valid_name, conditionMessage(e)), call. = FALSE)
+            NULL
+          })
 
           if (!is.null(lw_params) && nrow(lw_params) > 0) {
             # Use first available length-weight relationship

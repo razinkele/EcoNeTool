@@ -86,13 +86,28 @@ lookup_worms_traits_api <- function(species_name = NULL, aphia_id = NULL, timeou
     # call (see worms_records_by_name_http() in database_lookups.R).
     url  <- paste0("https://www.marinespecies.org/rest/AphiaAttributesByAphiaID/",
                    utils::URLencode(as.character(aphia_id), reserved = TRUE))
-    resp <- tryCatch(httr::GET(url, httr::timeout(timeout)), error = function(e) NULL)
+    # warning() instead of silent NULL — pre-PR6 these errors disappeared
+    # entirely; in production with preserve_logs=FALSE message() would be
+    # invisible too. Warnings reach the Shiny error reporter and are
+    # captured by R's condition system in tests.
+    resp <- tryCatch(httr::GET(url, httr::timeout(timeout)),
+                     error = function(e) {
+                       warning(sprintf(
+                         "[lookup_worms_traits_api] httr::GET failed for AphiaID %s: %s",
+                         aphia_id, conditionMessage(e)), call. = FALSE)
+                       NULL
+                     })
     if (is.null(resp) || httr::status_code(resp) != 200) return(result)
 
     body <- tryCatch(
       jsonlite::fromJSON(httr::content(resp, as = "text", encoding = "UTF-8"),
                          simplifyVector = FALSE),
-      error = function(e) NULL)
+      error = function(e) {
+        warning(sprintf(
+          "[lookup_worms_traits_api] JSON parse failed for AphiaID %s: %s",
+          aphia_id, conditionMessage(e)), call. = FALSE)
+        NULL
+      })
     if (is.null(body) || length(body) == 0) return(result)
 
     attrs <- worms_attrs_flatten(body)

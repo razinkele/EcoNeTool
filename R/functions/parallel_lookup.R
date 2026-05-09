@@ -194,6 +194,21 @@ lookup_species_parallel <- function(species_name,
   # Create lookup functions for each database
   lookup_functions <- list()
 
+  # Helper: wrap a lookup function with a logged tryCatch. Preserves the
+  # NULL-on-error contract (api_call_with_retry returns NULL too, so
+  # callers can use is.null(result) uniformly across both code paths) but
+  # surfaces the WHY via warning() — visible in console, tests, Shiny
+  # error reporter, and the nightly live-test logs. Pre-PR6 the
+  # non-rate-limited branches swallowed errors silently.
+  .logged_lookup <- function(api_name, fn) {
+    tryCatch(fn(), error = function(e) {
+      warning(sprintf("[parallel_lookup/%s] '%s' lookup failed: %s",
+                      api_name, species_name, conditionMessage(e)),
+              call. = FALSE)
+      NULL
+    })
+  }
+
   if ("worms" %in% databases) {
     lookup_functions$worms <- function() {
       if (use_rate_limiting && exists("get_worms_limiter")) {
@@ -204,10 +219,8 @@ lookup_species_parallel <- function(species_name,
           api_name = "WoRMS"
         ))
       } else {
-        return(tryCatch(
-          lookup_worms_traits(species_name),
-          error = function(e) NULL
-        ))
+        return(.logged_lookup("WoRMS",
+          function() lookup_worms_traits(species_name)))
       }
     }
   }
@@ -222,10 +235,8 @@ lookup_species_parallel <- function(species_name,
           api_name = "FishBase"
         ))
       } else {
-        return(tryCatch(
-          lookup_fishbase_traits(species_name),
-          error = function(e) NULL
-        ))
+        return(.logged_lookup("FishBase",
+          function() lookup_fishbase_traits(species_name)))
       }
     }
   }
@@ -240,10 +251,8 @@ lookup_species_parallel <- function(species_name,
           api_name = "SeaLifeBase"
         ))
       } else {
-        return(tryCatch(
-          lookup_sealifebase_traits(species_name),
-          error = function(e) NULL
-        ))
+        return(.logged_lookup("SeaLifeBase",
+          function() lookup_sealifebase_traits(species_name)))
       }
     }
   }
