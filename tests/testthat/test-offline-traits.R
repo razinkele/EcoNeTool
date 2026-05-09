@@ -138,6 +138,26 @@ test_that("lookup_offline_traits returns data for known species when DB exists",
   expect_true("primary_source" %in% names(result))
 })
 
+test_that("offline DB schema includes RS/TT/ST extended modality columns (PR8b)", {
+  # Stage A of the RS/TT/ST implementation: schema accommodates the
+  # extended modalities even though data writers haven't been wired yet
+  # (deferred to a stakeholder-driven follow-up). Without these columns
+  # the live-API path's RS/TT/ST values had no place to land in cache;
+  # subsequent lookups silently re-paid the API cost.
+  db_path <- file.path(app_root, "cache/offline_traits.db")
+  skip_if_not(file.exists(db_path), "Offline DB not built yet")
+  skip_if_not_installed("RSQLite")
+
+  con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+  on.exit(DBI::dbDisconnect(con))
+  cols <- DBI::dbListFields(con, "species_traits")
+  for (extended in c("RS", "TT", "ST",
+                     "RS_confidence", "TT_confidence", "ST_confidence")) {
+    expect_true(extended %in% cols,
+                info = paste("species_traits is missing column:", extended))
+  }
+})
+
 test_that("offline DB has ontology rows (build script must not silently drop Source 1)", {
   # Regression for the column-name drift that produced 0 ontology rows
   # for months. The fix changed the build script to read taxon_name /

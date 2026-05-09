@@ -158,11 +158,24 @@ dbExecute(con, "
     MB              TEXT,
     EP              TEXT,
     PR              TEXT,
+    -- PR8b: extended modalities. Reproductive Strategy / Temperature
+    -- Tolerance / Salinity Tolerance — orchestrator already populates
+    -- them from BlackSea/ArcticTraits/Cefas/CoralTraits/WoRMS_Traits/
+    -- PolyTraits during a live lookup, but until this PR they had no
+    -- column to land in. Default NULL so existing source-block INSERTs
+    -- (ontology/biotic/maredat/ptdb/bvol/species_enriched) work unchanged
+    -- while a future stakeholder-driven follow-up wires writers per source.
+    RS              TEXT,
+    TT              TEXT,
+    ST              TEXT,
     MS_confidence   REAL DEFAULT 0.0,
     FS_confidence   REAL DEFAULT 0.0,
     MB_confidence   REAL DEFAULT 0.0,
     EP_confidence   REAL DEFAULT 0.0,
     PR_confidence   REAL DEFAULT 0.0,
+    RS_confidence   REAL DEFAULT 0.0,
+    TT_confidence   REAL DEFAULT 0.0,
+    ST_confidence   REAL DEFAULT 0.0,
     primary_source  TEXT,
     region          TEXT,
     notes           TEXT

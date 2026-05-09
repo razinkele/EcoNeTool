@@ -71,18 +71,23 @@ lookup_offline_traits <- function(species_name, db_path = "cache/offline_traits.
       }
     }
 
-    # Select only columns that build_offline_trait_db.R actually writes
-    # to species_traits. Downstream code that reads RS/TT/ST/trophic_level/
-    # depth_*/longevity/etc via `$` will get NULL (treated as NA), which the
-    # ML fallback handles. The previous wider SELECT errored at runtime
-    # ("no such column: RS") and silently fell through to API lookups.
-    result <- DBI::dbGetQuery(con,
-      "SELECT species, aphia_id, functional_group,
-              MS, FS, MB, EP, PR,
-              MS_confidence, FS_confidence, MB_confidence,
-              EP_confidence, PR_confidence,
-              primary_source, region, notes
-       FROM species_traits WHERE species = ?",
+    # Defensive SELECT: build the column list from what the DB actually
+    # has, so old offline_traits.db files (pre-PR8b schema, no RS/TT/ST
+    # columns) and new ones (with the extended modality columns) both
+    # work. Pre-PR8b a wider SELECT errored at runtime ("no such column:
+    # RS") and silently fell through to API lookups.
+    core_cols <- c("species", "aphia_id", "functional_group",
+                   "MS", "FS", "MB", "EP", "PR",
+                   "MS_confidence", "FS_confidence", "MB_confidence",
+                   "EP_confidence", "PR_confidence",
+                   "primary_source", "region", "notes")
+    extended_cols <- c("RS", "TT", "ST",
+                       "RS_confidence", "TT_confidence", "ST_confidence")
+    db_cols <- DBI::dbListFields(con, "species_traits")
+    sel_cols <- c(core_cols, intersect(extended_cols, db_cols))
+    result <- DBI::dbGetQuery(con, paste0(
+      "SELECT ", paste(sel_cols, collapse = ", "),
+      " FROM species_traits WHERE species = ?"),
       params = list(species_name))
 
     if (nrow(result) == 0) return(NULL)
