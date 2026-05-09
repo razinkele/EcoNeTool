@@ -63,8 +63,11 @@ tryCatch({
   metadata_403 <- get_ecobase_model_metadata(403)
   save_fix(metadata_403, "ecobase_model_403_metadata")
 
-  # Full conversion
-  converted_403 <- convert_ecobase_to_econetool(403)
+  # Full conversion: use the hybrid path so the network has both balanced
+  # parameters (from OUTPUT) and a non-empty diet matrix (from INPUT). The
+  # basic converter with use_output=TRUE pulls only computed scalars from the
+  # OUTPUT endpoint, leaving the network with zero edges.
+  converted_403 <- convert_ecobase_to_econetool_hybrid(403)
   save_fix(converted_403, "ecobase_model_403_converted")
 
   cat("  EcoBase fixtures captured successfully\n")
