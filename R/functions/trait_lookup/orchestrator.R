@@ -1289,15 +1289,11 @@ lookup_species_traits <- function(species_name,
     message("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d")
     message("\n\U0001f916 Attempting ML prediction for: ", paste(missing_traits, collapse = ", "))
 
-    # Source ML prediction functions if not already loaded
-    # Note: Using local = FALSE (default) so that %||% operator from validation_utils.R is available
+    # apply_ml_fallback is sourced at app.R startup. If we somehow reach
+    # here without it, warn loudly \u2014 lazy-sourcing inside the reactive
+    # path raced under concurrent sessions.
     if (!exists("apply_ml_fallback")) {
-      ml_file <- "R/functions/ml_trait_prediction.R"
-      if (file.exists(ml_file)) {
-        source(ml_file)
-      } else {
-        message("  \u26a0\ufe0f  ML prediction functions not found at: ", ml_file)
-      }
+      warning("apply_ml_fallback() not available - is R/functions/ml_trait_prediction.R sourced at startup? ML imputation skipped.", call. = FALSE)
     }
 
     # Apply ML predictions if function is available
@@ -1519,14 +1515,10 @@ lookup_species_traits <- function(species_name,
   }
 
   if (length(missing_after_ml) > 0 && !is.null(raw_traits$worms) && !is.null(cache_dir)) {
-    # Source phylogenetic imputation functions
-    # Note: Using local = FALSE (default) so that %||% operator from validation_utils.R is available
+    # apply_phylogenetic_imputation is sourced at app.R startup; warn if
+    # missing rather than racing on lazy-source as the previous code did.
     if (!exists("apply_phylogenetic_imputation")) {
-      tryCatch({
-        source("R/functions/phylogenetic_imputation.R")
-      }, error = function(e) {
-        message("  \u26a0\ufe0f  Phylogenetic imputation not available: ", e$message)
-      })
+      warning("apply_phylogenetic_imputation() not available - is R/functions/phylogenetic_imputation.R sourced at startup? Phylo imputation skipped.", call. = FALSE)
     }
 
     # Apply phylogenetic imputation

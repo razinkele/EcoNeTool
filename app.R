@@ -109,6 +109,13 @@ source("R/functions/emodnet_habitat_utils.R")  # EMODnet habitat integration
 source("R/functions/euseamap_regional_config.R")  # Regional optimization for EUSeaMap
 source("R/functions/trait_foodweb.R")  # Trait-based food web construction
 source("R/functions/trait_lookup/load_all.R")  # Automated trait lookup from databases
+# ML + phylogenetic imputation tiers — sourced at startup so the orchestrator's
+# lookup pipeline never has to lazy-source them mid-request. The previous
+# `if (!exists(...)) source(...)` pattern in orchestrator.R races under
+# concurrent Shiny sessions because the first request from each new session
+# would re-source the file.
+source("R/functions/ml_trait_prediction.R")          # apply_ml_fallback()
+source("R/functions/phylogenetic_imputation.R")      # apply_phylogenetic_imputation()
 
 # Rphylopars imputation (optional — requires Rphylopars package)
 if (file.exists("R/functions/rphylopars_imputation.R")) {
