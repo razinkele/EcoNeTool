@@ -54,14 +54,6 @@ test_that("impute_with_rphylopars returns NULL without package", {
   }
 })
 
-test_that("impute_with_bhpmf returns NULL without package", {
-  source(file.path(app_root, "R/functions/bhpmf_imputation.R"))
-  if (!requireNamespace("BHPMF", quietly = TRUE)) {
-    result <- impute_with_bhpmf(matrix(), matrix())
-    expect_null(result)
-  }
-})
-
 test_that("orchestrator ML block checks expanded traits and sets imputation_method", {
   orch_text <- readLines(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"))
   orch_joined <- paste(orch_text, collapse = "\n")

@@ -115,11 +115,6 @@ if (file.exists("R/functions/rphylopars_imputation.R")) {
   source("R/functions/rphylopars_imputation.R")
 }
 
-# BHPMF batch gap-filling (optional — requires BHPMF package)
-if (file.exists("R/functions/bhpmf_imputation.R")) {
-  source("R/functions/bhpmf_imputation.R")
-}
-
 # ECOPATH import (cross-platform compatible)
 source("R/functions/ecopath/load_all.R")
 
