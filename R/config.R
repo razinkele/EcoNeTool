@@ -183,7 +183,10 @@ validate_metaweb_paths()
 # and fill in their own API keys
 
 # Default API keys (public/demo keys where available)
-API_KEYS <- list(
+# Stored in an environment (not a list) so plugin_server.R can mutate keys
+# in place from inside an observer without resorting to <<-, which raced
+# across concurrent Shiny sessions sharing the same R process.
+API_KEYS <- list2env(list(
   # AlgaeBase credentials (requires registration at algaebase.org)
   algaebase_username = "",
   algaebase_password = "",
@@ -197,7 +200,7 @@ API_KEYS <- list(
   # Future database keys can be added here
   traitbank_key = "",
   worms_key = ""  # WoRMS usually doesn't require key, but rate limits apply
-)
+), parent = emptyenv())
 
 # File path for user's custom API keys
 API_KEYS_FILE <- "config/api_keys.R"

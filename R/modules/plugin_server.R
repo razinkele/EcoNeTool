@@ -192,11 +192,13 @@ plugin_server <- function(input, output, session, plugin_states) {
       message("Removed legacy config/api_keys.R (replaced by config/api_keys.json)")
     }
 
-    # Update in-memory API_KEYS if it exists
-    if (exists("API_KEYS", envir = .GlobalEnv)) {
-      API_KEYS$algaebase_username <<- input$api_key_algaebase_user
-      API_KEYS$algaebase_password <<- input$api_key_algaebase_pass
-      API_KEYS$freshwaterecology_key <<- input$api_key_freshwater
+    # Update in-memory API_KEYS. The env is a process-wide reference type,
+    # so direct $<- mutates in place; <<- was unsafe because it could touch
+    # whichever frame happened to bind the symbol first.
+    if (exists("API_KEYS", envir = .GlobalEnv) && is.environment(API_KEYS)) {
+      API_KEYS$algaebase_username    <- input$api_key_algaebase_user
+      API_KEYS$algaebase_password    <- input$api_key_algaebase_pass
+      API_KEYS$freshwaterecology_key <- input$api_key_freshwater
     }
 
     removeModal()
