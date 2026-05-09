@@ -23,9 +23,11 @@ source("R/functions/validation_utils.R")
 source("R/config/harmonization_config.R")
 source("R/functions/ecobase_connection.R")
 source("R/functions/taxonomic_api_utils.R")
-source("R/functions/trait_lookup/database_lookups.R")
-source("R/functions/trait_lookup/harmonization.R")
-source("R/functions/trait_lookup/orchestrator.R")
+# Load all trait_lookup files via the canonical loader so the orchestrator's
+# CSV pipeline (lookup_pelagic_traits, lookup_blacksea_traits, etc.) and
+# API pipeline (lookup_polytraits, etc.) resolve. The loader sources the
+# 5 files in the required order.
+suppressMessages(source("R/functions/trait_lookup/load_all.R"))
 source("R/functions/local_trait_databases.R")
 source("R/functions/api_rate_limiter.R")
 
