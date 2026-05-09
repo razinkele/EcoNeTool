@@ -102,36 +102,47 @@ for (sp in test_species_worms) {
 # =========================================================================
 # 3. FishBase Fixtures
 # =========================================================================
+# rfishbase calls duckdbfs::open_dataset against remote parquet files. When
+# the FishBase CDN is slow, with_timeout() inside lookup_fishbase_traits
+# catches the deadline, but a deferred connection-close finalizer can fire
+# during Sys.sleep() between iterations, when no tryCatch is in scope, and
+# halt the entire script. Defenses: longer timeout (less timeout-firing in
+# the first place), per-iteration try() (catches anything), gc() between
+# iterations to flush finalizers under our tryCatch rather than the loop
+# boundary.
 cat("\n[3/5] Capturing FishBase fixtures...\n")
 
 test_species_fishbase <- c("Gadus morhua", "Clupea harengus")
+fishbase_timeout <- 90  # seconds; FishBase CDN is occasionally slow
 
 for (sp in test_species_fishbase) {
-  tryCatch({
-    result <- lookup_fishbase_traits(sp)
+  try({
+    result <- lookup_fishbase_traits(sp, timeout = fishbase_timeout)
     save_fix(result, paste0("fishbase_", gsub(" ", "_", tolower(sp))))
     cat("  ", sp, "-> success:", result$success, "\n")
-  }, error = function(e) {
-    cat("  ", sp, "-> FAILED:", e$message, "\n")
-  })
+  }, silent = FALSE)
+  try(gc(verbose = FALSE), silent = TRUE)
   Sys.sleep(1)
 }
 
 # =========================================================================
 # 4. SeaLifeBase Fixtures
 # =========================================================================
+# Same defensive pattern as FishBase: SeaLifeBase shares the rfishbase
+# duckdbfs path (server = "sealifebase") and has the same deferred-finalizer
+# halt risk.
 cat("\n[4/5] Capturing SeaLifeBase fixtures...\n")
 
 test_species_slb <- c("Mytilus edulis", "Carcinus maenas")
+sealifebase_timeout <- 90
 
 for (sp in test_species_slb) {
-  tryCatch({
-    result <- lookup_sealifebase_traits(sp)
+  try({
+    result <- lookup_sealifebase_traits(sp, timeout = sealifebase_timeout)
     save_fix(result, paste0("sealifebase_", gsub(" ", "_", tolower(sp))))
     cat("  ", sp, "-> success:", result$success, "\n")
-  }, error = function(e) {
-    cat("  ", sp, "-> FAILED:", e$message, "\n")
-  })
+  }, silent = FALSE)
+  try(gc(verbose = FALSE), silent = TRUE)
   Sys.sleep(1)
 }
 
