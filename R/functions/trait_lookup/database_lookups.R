@@ -991,18 +991,34 @@ lookup_worms_traits <- function(species_name, timeout = 10) {
           # Take maximum body size
           traits$max_length_mm <- max(sizes)
 
-          # Determine units from qualitative body size if available
-          qual_size <- attributes$measurementValue[grepl("body size \\(qualitative\\)", attributes$measurementType, ignore.case = TRUE)]
-          if (length(qual_size) > 0 && grepl("mm", qual_size[1])) {
-            traits$max_length_cm <- traits$max_length_mm / 10
-          } else {
-            # Assume mm for invertebrates, cm for fish
-            if (!is.null(traits$class) && tolower(traits$class) %in% c("actinopterygii", "actinopteri", "elasmobranchii")) {
-              traits$max_length_cm <- traits$max_length_mm  # Already in cm for fish
-            } else {
-              traits$max_length_cm <- traits$max_length_mm / 10  # Convert mm to cm for invertebrates
-            }
+          # Detect length unit from the qualitative body-size string; WoRMS
+          # embeds the unit in the value text, not as a separate field.
+          qual_size <- attributes$measurementValue[grepl("body size \\(qualitative\\)",
+                                                         attributes$measurementType,
+                                                         ignore.case = TRUE)]
+          unit <- NA_character_
+          if (length(qual_size) > 0) {
+            q <- tolower(qual_size[1])
+            if      (grepl("\\bcm\\b", q)) unit <- "cm"
+            else if (grepl("\\bmm\\b", q)) unit <- "mm"
+            else if (grepl("\\bm\\b",  q)) unit <- "m"
           }
+
+          if (is.na(unit)) {
+            # WoRMS class for fish spans Actinopterygii / Actinopteri /
+            # Teleostei depending on the taxon's classification level; list
+            # all observed names plus the cartilaginous-fish classes.
+            fish_classes <- c("actinopterygii", "actinopteri", "teleostei",
+                              "elasmobranchii", "holocephali", "chondrichthyes",
+                              "sarcopterygii", "myxini", "petromyzonti")
+            unit <- if (!is.null(traits$class) &&
+                        tolower(traits$class) %in% fish_classes) "cm" else "mm"
+          }
+
+          traits$max_length_cm <- switch(unit,
+                                         cm = traits$max_length_mm,
+                                         mm = traits$max_length_mm / 10,
+                                         m  = traits$max_length_mm * 100)
         }
       }
 
