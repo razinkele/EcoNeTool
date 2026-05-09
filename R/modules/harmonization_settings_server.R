@@ -1,16 +1,24 @@
 # Harmonization Settings Server Module
 
 harmonization_settings_server <- function(input, output, session) {
-  
+
   rv <- reactiveValues(
     config = HARMONIZATION_CONFIG,
     unsaved_changes = FALSE
   )
-  
+
+  # Seed the per-session harm config from the global default so the
+  # harmonize_* helpers have something to read from session$userData
+  # right from page load. Pre-PR9α the helpers read globalenv directly,
+  # so the slider's writeback contaminated other sessions; now the read
+  # path goes through get_harm_config() which prefers session$userData.
+  session$userData$harm_config <- HARMONIZATION_CONFIG
+
   # INITIALIZE
   observe({
     if (file.exists("config/harmonization_custom.json")) {
       rv$config <- load_harmonization_config("config/harmonization_custom.json")
+      session$userData$harm_config <- rv$config
     }
     updateSliderInput(session, "harm_thresh_MS1_MS2", value = rv$config$size_thresholds$MS1_MS2)
     updateSliderInput(session, "harm_thresh_MS2_MS3", value = rv$config$size_thresholds$MS2_MS3)
@@ -20,21 +28,31 @@ harmonization_settings_server <- function(input, output, session) {
     updateSliderInput(session, "harm_thresh_MS6_MS7", value = rv$config$size_thresholds$MS6_MS7)
   })
   
-  # UPDATE CONFIG
+  # UPDATE CONFIG. Mirror writes into session$userData so the helpers
+  # see the user's customised thresholds for THIS session immediately;
+  # cross-session persistence still routes through the JSON save below.
   observe({
+    req(input$harm_thresh_MS1_MS2, input$harm_thresh_MS2_MS3,
+        input$harm_thresh_MS3_MS4, input$harm_thresh_MS4_MS5,
+        input$harm_thresh_MS5_MS6, input$harm_thresh_MS6_MS7)
     rv$config$size_thresholds$MS1_MS2 <- input$harm_thresh_MS1_MS2
     rv$config$size_thresholds$MS2_MS3 <- input$harm_thresh_MS2_MS3
     rv$config$size_thresholds$MS3_MS4 <- input$harm_thresh_MS3_MS4
     rv$config$size_thresholds$MS4_MS5 <- input$harm_thresh_MS4_MS5
     rv$config$size_thresholds$MS5_MS6 <- input$harm_thresh_MS5_MS6
     rv$config$size_thresholds$MS6_MS7 <- input$harm_thresh_MS6_MS7
+    session$userData$harm_config <- rv$config
     rv$unsaved_changes <- TRUE
   })
-  
-  # SAVE CONFIGURATION
+
+  # SAVE CONFIGURATION. Pre-PR9α also did
+  #   assign("HARMONIZATION_CONFIG", rv$config, envir = globalenv())
+  # which contaminated every concurrent Shiny session. Removed; the
+  # per-session view is already mutated in the observer above, and
+  # cross-session persistence is via the JSON file.
   observeEvent(input$harm_save_config, {
     tryCatch({
-      assign("HARMONIZATION_CONFIG", rv$config, envir = globalenv())
+      session$userData$harm_config <- rv$config
       save_harmonization_config(rv$config, "config/harmonization_custom.json")
       rv$unsaved_changes <- FALSE
       
@@ -49,10 +67,13 @@ harmonization_settings_server <- function(input, output, session) {
     })
   })
   
-  # RESET TO DEFAULTS
+  # RESET TO DEFAULTS. Pre-PR9α this re-sourced harmonization_config.R
+  # with local=FALSE, mutating globalenv across sessions. After PR9α the
+  # global default is treated as immutable; reset just rolls the
+  # per-session config back to its pristine startup snapshot.
   observeEvent(input$harm_reset_defaults, {
-    source("R/config/harmonization_config.R", local = FALSE)
     rv$config <- HARMONIZATION_CONFIG
+    session$userData$harm_config <- HARMONIZATION_CONFIG
     updateSliderInput(session, "harm_thresh_MS1_MS2", value = 0.1)
     updateSliderInput(session, "harm_thresh_MS2_MS3", value = 1.0)
     updateSliderInput(session, "harm_thresh_MS3_MS4", value = 5.0)

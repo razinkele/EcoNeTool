@@ -535,20 +535,20 @@ trait_research_ui <- function() {
                         tags$th("Examples")
                       )
                     ),
-                    # Generated from HARMONIZATION_CONFIG$protection_labels
-                    # (R/config/harmonization_config.R) so this table can no
-                    # longer drift from harmonize_protection() — fixed under
-                    # PR1b after critic flagged inconsistent labels for
-                    # PR2/3/4/7 in the previous hard-coded version.
-                    do.call(tags$tbody, lapply(
-                      names(HARMONIZATION_CONFIG$protection_labels),
-                      function(code) {
-                        info <- HARMONIZATION_CONFIG$protection_labels[[code]]
+                    # Generated from get_harm_config()$protection_labels
+                    # (R/config/harmonization_config.R + session overrides)
+                    # so this table can no longer drift from
+                    # harmonize_protection() AND respects per-session config
+                    # overrides under PR9α.
+                    {
+                      .pr_labels <- (get_harm_config() %||% HARMONIZATION_CONFIG)$protection_labels
+                      do.call(tags$tbody, lapply(names(.pr_labels), function(code) {
+                        info <- .pr_labels[[code]]
                         tags$tr(tags$td(code),
                                 tags$td(info$label),
                                 tags$td(info$examples))
-                      }
-                    ))
+                      }))
+                    }
                   )
                 )
               )

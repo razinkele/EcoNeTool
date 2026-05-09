@@ -2,8 +2,34 @@
 # TRAIT LOOKUP - Harmonization Rules
 # =============================================================================
 # Functions for converting raw traits to standardized trait codes (MS, FS, MB, EP, PR).
-# Part of the trait_lookup module (split from trait_lookup.R)
 # =============================================================================
+
+#' Get the active harmonization config, preferring per-session overrides
+#'
+#' Inside a Shiny session, returns the session-local config (set by
+#' harmonization_settings_server when the user adjusts size-threshold
+#' sliders). Outside Shiny — build scripts, regression tests, console
+#' use — falls back to the unmutated process-wide HARMONIZATION_CONFIG.
+#'
+#' Pre-PR9α the harmonize_* helpers read HARMONIZATION_CONFIG directly
+#' from globalenv, so the slider's writeback (assign envir=globalenv) at
+#' harmonization_settings_server.R:37 contaminated every concurrent
+#' Shiny session. The accessor reroutes the read path to session$userData
+#' and the writeback gets deleted.
+#'
+#' @return The harmonization config list, or NULL if no config is loaded
+#'   anywhere (callers should treat NULL as "use sensible defaults").
+get_harm_config <- function() {
+  session <- if (requireNamespace("shiny", quietly = TRUE)) {
+    shiny::getDefaultReactiveDomain()
+  } else NULL
+  if (!is.null(session) && !is.null(session$userData$harm_config)) {
+    return(session$userData$harm_config)
+  }
+  if (!exists("HARMONIZATION_CONFIG", envir = .GlobalEnv)) return(NULL)
+  get("HARMONIZATION_CONFIG", envir = .GlobalEnv)
+}
+
 
 #' Extract Primary Feeding Mode from Ontology Traits
 #'
@@ -358,11 +384,12 @@ harmonize_fuzzy_habitat <- function(ontology_traits) {
 #' @param rule_name String name of rule (e.g., "fish_obligate_swimmers")
 #' @return Boolean TRUE/FALSE
 is_rule_enabled <- function(rule_name) {
-  # HARMONIZATION_CONFIG loaded at file init or by app.R
-  if (!exists("HARMONIZATION_CONFIG")) {
-    stop("HARMONIZATION_CONFIG not loaded - source trait_lookup.R from app root", call. = FALSE)
+  cfg <- get_harm_config()
+  if (is.null(cfg)) {
+    stop("HARMONIZATION_CONFIG not loaded - source R/config/harmonization_config.R first",
+         call. = FALSE)
   }
-  rule <- HARMONIZATION_CONFIG$taxonomic_rules[[rule_name]]
+  rule <- cfg$taxonomic_rules[[rule_name]]
   return(isTRUE(rule))
 }
 
@@ -372,20 +399,16 @@ is_rule_enabled <- function(rule_name) {
 #' @param size_cm Raw size in cm
 #' @return Adjusted size in cm based on active ecosystem profile
 apply_size_adjustment <- function(size_cm) {
-  # HARMONIZATION_CONFIG loaded at file init or by app.R
-  if (!exists("HARMONIZATION_CONFIG")) {
-    return(size_cm)  # No adjustment if config missing
-  }
+  cfg <- get_harm_config()
+  if (is.null(cfg)) return(size_cm)  # No adjustment if config missing
 
-  active_profile_name <- HARMONIZATION_CONFIG$active_profile %||% "temperate"
-
+  active_profile_name <- cfg$active_profile %||% "temperate"
   if (active_profile_name == "temperate") {
     return(size_cm)  # No adjustment for temperate (baseline)
   }
 
-  profile <- HARMONIZATION_CONFIG$profiles[[active_profile_name]]
+  profile <- cfg$profiles[[active_profile_name]]
   multiplier <- profile$size_multiplier %||% 1.0
-
   return(size_cm * multiplier)
 }
 
@@ -396,20 +419,17 @@ apply_size_adjustment <- function(size_cm) {
 #' @param pattern_type Type: "mobility", "foraging", "environmental", "protection"
 #' @return Regular expression pattern string, or NULL if not found
 get_config_pattern <- function(pattern_name, pattern_type = "mobility") {
-  # HARMONIZATION_CONFIG loaded at file init or by app.R
-  if (!exists("HARMONIZATION_CONFIG")) {
-    return(NULL)
-  }
+  cfg <- get_harm_config()
+  if (is.null(cfg)) return(NULL)
 
   pattern_list <- switch(pattern_type,
-    "mobility" = HARMONIZATION_CONFIG$mobility_patterns,
-    "foraging" = HARMONIZATION_CONFIG$foraging_patterns,
-    "environmental" = HARMONIZATION_CONFIG$environmental_patterns,
-    "protection" = HARMONIZATION_CONFIG$protection_patterns,
+    "mobility" = cfg$mobility_patterns,
+    "foraging" = cfg$foraging_patterns,
+    "environmental" = cfg$environmental_patterns,
+    "protection" = cfg$protection_patterns,
     NULL
   )
-
-  pattern_list[[pattern_name]]  # Returns NULL if not found
+  pattern_list[[pattern_name]]
 }
 
 
@@ -428,8 +448,11 @@ harmonize_size_class <- function(size_cm) {
     return(NA)
   }
 
-  # Get thresholds from configuration
-  thresh <- HARMONIZATION_CONFIG$size_thresholds
+  # Get thresholds from session-aware config (per-session if user has
+  # adjusted sliders this session; otherwise the global default).
+  cfg <- get_harm_config()
+  if (is.null(cfg) || is.null(cfg$size_thresholds)) return(NA)
+  thresh <- cfg$size_thresholds
 
   # Apply ecosystem profile adjustment
   size_adjusted <- apply_size_adjustment(size_cm)
@@ -488,7 +511,8 @@ harmonize_foraging_strategy <- function(feeding_info = NULL, trophic_level = NUL
   feeding_lower <- tolower(paste(feeding_info, collapse = " "))
 
   # Get patterns from configuration
-  patterns <- HARMONIZATION_CONFIG$foraging_patterns
+  patterns <- (get_harm_config() %||% list())$foraging_patterns
+  if (is.null(patterns)) return(NA_character_)
 
   # Pattern matching (using configurable patterns)
   if (grepl(patterns$FS0_primary_producer, feeding_lower, ignore.case = TRUE)) {
@@ -884,7 +908,8 @@ harmonize_reproductive_strategy <- function(reproduction_text) {
     return(NA_character_)
   }
   text <- tolower(reproduction_text)
-  patterns <- HARMONIZATION_CONFIG$reproductive_patterns
+  patterns <- (get_harm_config() %||% list())$reproductive_patterns
+  if (is.null(patterns)) return(NA_character_)
   for (i in seq_along(patterns)) {
     if (grepl(patterns[[i]], text)) {
       return(paste0("RS", i))
@@ -901,7 +926,8 @@ harmonize_temperature_tolerance <- function(temperature_text) {
     return(NA_character_)
   }
   text <- tolower(temperature_text)
-  patterns <- HARMONIZATION_CONFIG$temperature_patterns
+  patterns <- (get_harm_config() %||% list())$temperature_patterns
+  if (is.null(patterns)) return(NA_character_)
   for (i in seq_along(patterns)) {
     if (grepl(patterns[[i]], text)) {
       return(paste0("TT", i))
@@ -918,7 +944,8 @@ harmonize_salinity_tolerance <- function(salinity_text) {
     return(NA_character_)
   }
   text <- tolower(salinity_text)
-  patterns <- HARMONIZATION_CONFIG$salinity_patterns
+  patterns <- (get_harm_config() %||% list())$salinity_patterns
+  if (is.null(patterns)) return(NA_character_)
   for (i in seq_along(patterns)) {
     if (grepl(patterns[[i]], text)) {
       return(paste0("ST", i))

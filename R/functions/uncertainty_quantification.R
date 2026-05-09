@@ -100,9 +100,12 @@ calculate_threshold_distance <- function(size_cm, size_class) {
     return(1.0)  # No penalty if missing
   }
 
-  # Load harmonization config if available
-  if (exists("HARMONIZATION_CONFIG")) {
-    thresholds <- HARMONIZATION_CONFIG$size_thresholds
+  # Load harmonization config if available. get_harm_config() returns
+  # the per-session config when called inside a Shiny session and falls
+  # back to the global default otherwise (e.g., from a build script).
+  cfg <- if (exists("get_harm_config", mode = "function")) get_harm_config() else NULL
+  if (!is.null(cfg) && !is.null(cfg$size_thresholds)) {
+    thresholds <- cfg$size_thresholds
   } else {
     # Default thresholds
     thresholds <- list(
