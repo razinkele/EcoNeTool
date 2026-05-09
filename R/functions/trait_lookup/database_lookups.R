@@ -8,7 +8,7 @@
 #' Lookup FishBase traits for a species
 #'
 #' @param species_name Scientific name (character, non-empty)
-#' @param timeout Timeout in seconds (default: 5s, must be > 0)
+#' @param timeout Timeout in seconds (default: 20s, must be > 0)
 #' @return List with raw trait data
 #' @export
 lookup_fishbase_traits <- function(species_name, timeout = 20) {
@@ -131,7 +131,7 @@ lookup_fishbase_traits <- function(species_name, timeout = 20) {
 #' Lookup SeaLifeBase database traits
 #'
 #' @param species_name Scientific name
-#' @param timeout Timeout in seconds (default: 10s)
+#' @param timeout Timeout in seconds (default: 20s)
 #' @return List with raw trait data
 #' @export
 lookup_sealifebase_traits <- function(species_name, timeout = 20) {

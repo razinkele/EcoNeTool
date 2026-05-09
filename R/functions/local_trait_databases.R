@@ -167,7 +167,7 @@ load_species_enriched_database <- function(force_reload = FALSE) {
 #' @return List with trait data or NULL if not found
 #'
 #' @examples
-#' traits <- lookup_bvol_traits(aphia_id = 160140)  # Skeletonema costatum
+#' traits <- lookup_bvol_traits(aphia_id = 149074)  # Skeletonema costatum
 #'
 lookup_bvol_traits <- function(aphia_id = NULL, species_name = NULL) {
 

@@ -181,7 +181,7 @@ lookup_species_traits <- function(species_name,
   total_start <- Sys.time()
 
   # 1. WoRMS (taxonomy + basic habitat)
-  message("\n[1/10] \U0001f30a WoRMS - Taxonomic classification...")
+  message("\n[1/12] \U0001f30a WoRMS - Taxonomic classification...")
   db_start <- Sys.time()
   worms_data <- lookup_worms_traits(species_name)
   db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
@@ -205,7 +205,7 @@ lookup_species_traits <- function(species_name,
   }
 
   # 2. Ontology Traits (fuzzy-scored semantic traits)
-  message("\n[2/10] \U0001f3f7\ufe0f  Ontology - Fuzzy trait profiles...")
+  message("\n[2/12] \U0001f3f7\ufe0f  Ontology - Fuzzy trait profiles...")
   db_start <- Sys.time()
 
   # Try to lookup by AphiaID if available, otherwise by name
@@ -466,7 +466,7 @@ lookup_species_traits <- function(species_name,
 
   # 2. FishBase (for fish) - ONLY IF TAXONOMICALLY APPROPRIATE
   if (query_fishbase) {
-    message("\n[3/10] \U0001f41f FishBase - Fish morphology & ecology...")
+    message("\n[3/12] \U0001f41f FishBase - Fish morphology & ecology...")
     db_start <- Sys.time()
     fishbase_data <- lookup_fishbase_traits(species_name)
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
@@ -502,7 +502,7 @@ lookup_species_traits <- function(species_name,
       message("  \u2717 FAILED (", db_time, "s) - Not found in FishBase")
     }
   } else {
-    message("\n[3/10] \U0001f41f FishBase - SKIPPED (not a fish based on taxonomy)")
+    message("\n[3/12] \U0001f41f FishBase - SKIPPED (not a fish based on taxonomy)")
   }
 
   # Check if we already have everything we need
@@ -515,7 +515,7 @@ lookup_species_traits <- function(species_name,
 
   # 3. SeaLifeBase (for marine invertebrates)
   if (query_sealifebase) {
-    message("\n[4/10] \U0001f41a SeaLifeBase - Marine invertebrate traits...")
+    message("\n[4/12] \U0001f41a SeaLifeBase - Marine invertebrate traits...")
     db_start <- Sys.time()
     sealifebase_data <- lookup_sealifebase_traits(species_name)
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
@@ -538,12 +538,12 @@ lookup_species_traits <- function(species_name,
       message("  \u2717 FAILED (", db_time, "s) - Not found in SeaLifeBase")
     }
   } else {
-    message("\n[4/10] \U0001f41a SeaLifeBase - SKIPPED (not a marine invertebrate based on taxonomy)")
+    message("\n[4/12] \U0001f41a SeaLifeBase - SKIPPED (not a marine invertebrate based on taxonomy)")
   }
 
   # 4. BIOTIC (for invertebrates)
   if (query_biotic) {
-    message("\n[5/10] \U0001f980 BIOTIC - Benthic invertebrate biological traits...")
+    message("\n[5/12] \U0001f980 BIOTIC - Benthic invertebrate biological traits...")
     db_start <- Sys.time()
     biotic_data <- lookup_biotic_traits(species_name, biotic_file)
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
@@ -570,12 +570,12 @@ lookup_species_traits <- function(species_name,
       message("  \u2717 FAILED (", db_time, "s) - Not in local BIOTIC database")
     }
   } else {
-    message("\n[5/10] \U0001f980 BIOTIC - SKIPPED (not applicable based on taxonomy)")
+    message("\n[5/12] \U0001f980 BIOTIC - SKIPPED (not applicable based on taxonomy)")
   }
 
   # 5. BVOL (for phytoplankton)
   if (query_bvol) {
-    message("\n[6/10] \U0001f33f BVOL - Phytoplankton biovolume traits...")
+    message("\n[6/12] \U0001f33f BVOL - Phytoplankton biovolume traits...")
     db_start <- Sys.time()
 
     # Source local databases if not already loaded
@@ -616,12 +616,12 @@ lookup_species_traits <- function(species_name,
       message("  \u2717 FAILED (", db_time, "s) - Not in local BVOL database")
     }
   } else {
-    message("\n[6/10] \U0001f33f BVOL - SKIPPED (not phytoplankton based on taxonomy)")
+    message("\n[6/12] \U0001f33f BVOL - SKIPPED (not phytoplankton based on taxonomy)")
   }
 
   # 6. SpeciesEnriched (for marine invertebrates)
   if (query_species_enriched) {
-    message("\n[7/10] \U0001f991 SpeciesEnriched - Marine invertebrate traits...")
+    message("\n[7/12] \U0001f991 SpeciesEnriched - Marine invertebrate traits...")
     db_start <- Sys.time()
 
     # Source local databases if not already loaded
@@ -667,7 +667,7 @@ lookup_species_traits <- function(species_name,
       message("  \u2717 FAILED (", db_time, "s) - Not in local SpeciesEnriched database")
     }
   } else {
-    message("\n[7/10] \U0001f991 SpeciesEnriched - SKIPPED (not marine invertebrate based on taxonomy)")
+    message("\n[7/12] \U0001f991 SpeciesEnriched - SKIPPED (not marine invertebrate based on taxonomy)")
   }
 
   # 7. freshwaterecology.info (for freshwater species)

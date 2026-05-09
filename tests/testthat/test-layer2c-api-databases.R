@@ -55,11 +55,11 @@ test_that("lookup_worms_traits_api returns FALSE for non-numeric aphia_id", {
   expect_false(res$success)
 })
 
-test_that("lookup_worms_traits_api live lookup for AphiaID 126436 (Nereis diversicolor)", {
+test_that("lookup_worms_traits_api live lookup for AphiaID 126436 (Gadus morhua)", {
   skip_if_offline()
   skip_if_not_installed("worrms")
   res <- lookup_worms_traits_api(
-    species_name = "Nereis diversicolor",
+    species_name = "Gadus morhua",
     aphia_id     = 126436,
     timeout      = 20
   )
