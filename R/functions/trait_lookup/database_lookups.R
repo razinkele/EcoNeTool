@@ -119,7 +119,9 @@ lookup_fishbase_traits <- function(species_name, timeout = 20) {
     result$success <- length(traits) > 0
 
   }, error = function(e) {
-    result$error <- conditionMessage(e)
+    # <<- so the error surfaces on the returned result; `<-` would only
+    # mutate the closure-local copy and silently drop the failure.
+    result$error <<- conditionMessage(e)
   })
 
   return(result)
@@ -270,7 +272,9 @@ lookup_algaebase_traits <- function(species_name) {
     }
 
   }, error = function(e) {
-    result$error <- conditionMessage(e)
+    # <<- so the error surfaces on the returned result; `<-` would only
+    # mutate the closure-local copy and silently drop the failure.
+    result$error <<- conditionMessage(e)
   })
 
   return(result)
@@ -340,7 +344,9 @@ lookup_shark_traits <- function(species_name) {
     result$success <- length(traits) > 0
 
   }, error = function(e) {
-    result$error <- conditionMessage(e)
+    # <<- so the error surfaces on the returned result; `<-` would only
+    # mutate the closure-local copy and silently drop the failure.
+    result$error <<- conditionMessage(e)
   })
 
   return(result)
@@ -417,7 +423,9 @@ lookup_freshwaterecology_traits <- function(species_name) {
     result$success <- length(traits) > 0
 
   }, error = function(e) {
-    result$error <- conditionMessage(e)
+    # <<- so the error surfaces on the returned result; `<-` would only
+    # mutate the closure-local copy and silently drop the failure.
+    result$error <<- conditionMessage(e)
   })
 
   return(result)
@@ -513,7 +521,9 @@ lookup_biotic_traits <- function(species_name, biotic_file = NULL) {
     result$success <- length(traits) > 0
 
   }, error = function(e) {
-    result$error <- conditionMessage(e)
+    # <<- so the error surfaces on the returned result; `<-` would only
+    # mutate the closure-local copy and silently drop the failure.
+    result$error <<- conditionMessage(e)
   })
 
   return(result)
@@ -589,7 +599,9 @@ lookup_maredat_traits <- function(species_name, maredat_file = NULL) {
     result$success <- length(traits) > 0
 
   }, error = function(e) {
-    result$error <- conditionMessage(e)
+    # <<- so the error surfaces on the returned result; `<-` would only
+    # mutate the closure-local copy and silently drop the failure.
+    result$error <<- conditionMessage(e)
   })
 
   return(result)
@@ -747,7 +759,9 @@ lookup_ptdb_traits <- function(species_name, ptdb_file = NULL) {
     result$success <- length(traits) > 0
 
   }, error = function(e) {
-    result$error <- conditionMessage(e)
+    # <<- so the error surfaces on the returned result; `<-` would only
+    # mutate the closure-local copy and silently drop the failure.
+    result$error <<- conditionMessage(e)
   })
 
   return(result)
@@ -1044,7 +1058,9 @@ lookup_worms_traits <- function(species_name, timeout = 10) {
 
   }, error = function(e) {
     message("      \u2192 WoRMS: Error processing species '", species_name, "': ", conditionMessage(e))
-    result$error <- conditionMessage(e)
+    # <<- so the error surfaces on the returned result; `<-` would only
+    # mutate the closure-local copy.
+    result$error <<- conditionMessage(e)
   })
 
   return(result)
@@ -1146,7 +1162,9 @@ lookup_ontology_traits <- function(species_name = NULL, aphia_id = NULL,
     }
 
   }, error = function(e) {
-    result$error <- paste("Error reading ontology traits:", conditionMessage(e))
+    # <<- so the error surfaces on the returned result; `<-` would only
+    # mutate the closure-local copy.
+    result$error <<- paste("Error reading ontology traits:", conditionMessage(e))
   })
 
   return(result)
