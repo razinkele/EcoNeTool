@@ -1,7 +1,7 @@
 #' EcoBase Connection Module
 #'
 #' Functions for connecting to EcoBase web service and retrieving Ecopath models
-#' EcoBase: http://sirs.agrocampus-ouest.fr/EcoBase/
+#' EcoBase: https://sirs.agrocampus-ouest.fr/EcoBase/
 #'
 #' @description
 #' This module provides functions to:
@@ -21,6 +21,17 @@ require_ecobase_packages <- function() {
       "Please install: ", paste(missing, collapse = ", "), "\n\n",
       "Install with: install.packages(c('", paste(missing, collapse = "', '"), "'))"
     )
+  }
+
+  # Attach packages: callers below use unqualified basicTextGatherer(),
+  # curlPerform(), xmlTreeParse(), ldply(), filter(), %>%, etc., so the
+  # packages must be on the search path, not merely installed.
+  # suppressWarnings absorbs "package was built under R version X" notices
+  # from require(); the test suite asserts this helper runs silently.
+  for (pkg in packages) {
+    suppressWarnings(suppressPackageStartupMessages(
+      require(pkg, character.only = TRUE, quietly = TRUE)
+    ))
   }
 
   invisible(TRUE)
@@ -52,7 +63,7 @@ get_ecobase_models <- function() {
     # Fetch model list from EcoBase
     h <- basicTextGatherer()
     curlPerform(
-      url = 'http://sirs.agrocampus-ouest.fr/EcoBase/php/webser/soap-client_3.php',
+      url = 'https://sirs.agrocampus-ouest.fr/EcoBase/php/webser/soap-client_3.php',
       writefunction = h$update,
       .opts = list(timeout = 30, connecttimeout = 10)
     )
@@ -100,7 +111,7 @@ get_ecobase_model_input <- function(model_id) {
     # Fetch model input
     h <- basicTextGatherer()
     curlPerform(
-      url = paste0('http://sirs.agrocampus-ouest.fr/EcoBase/php/webser/soap-client.php?no_model=', model_id),
+      url = paste0('https://sirs.agrocampus-ouest.fr/EcoBase/php/webser/soap-client.php?no_model=', model_id),
       writefunction = h$update,
       verbose = FALSE,
       .opts = list(timeout = 30, connecttimeout = 10)
@@ -148,7 +159,7 @@ get_ecobase_model_output <- function(model_id) {
     # Fetch model output
     h <- basicTextGatherer()
     curlPerform(
-      url = paste0('http://sirs.agrocampus-ouest.fr/EcoBase/php/webser/soap-client_output.php?no_model=', model_id),
+      url = paste0('https://sirs.agrocampus-ouest.fr/EcoBase/php/webser/soap-client_output.php?no_model=', model_id),
       writefunction = h$update,
       verbose = FALSE,
       .opts = list(timeout = 30, connecttimeout = 10)
@@ -196,7 +207,7 @@ get_ecobase_model_metadata <- function(model_id) {
     # Fetch model data (use INPUT endpoint as it has model_descr)
     h <- basicTextGatherer()
     curlPerform(
-      url = paste0('http://sirs.agrocampus-ouest.fr/EcoBase/php/webser/soap-client.php?no_model=', model_id),
+      url = paste0('https://sirs.agrocampus-ouest.fr/EcoBase/php/webser/soap-client.php?no_model=', model_id),
       writefunction = h$update,
       verbose = FALSE,
       .opts = list(timeout = 30, connecttimeout = 10)
