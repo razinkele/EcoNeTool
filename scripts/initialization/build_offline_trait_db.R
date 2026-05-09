@@ -30,10 +30,14 @@ cat("Project root:", project_root, "\n")
 # ---------------------------------------------------------------------------
 source(file.path(project_root, "R", "config", "harmonization_config.R"))
 source(file.path(project_root, "R", "functions", "validation_utils.R"))
+# harmonize_fuzzy_foraging / _mobility / _habitat for the ontology source —
+# they aggregate the multiple fuzzy modalities WoRMS Traits Portal supplies
+# per species per trait, which the per-row helpers below can't do.
+source(file.path(project_root, "R", "functions", "trait_lookup", "harmonization.R"))
 
 # Verify %||% is available
 stopifnot("operator %||% not available" = exists("%||%", mode = "function"))
-cat("Sourced harmonization_config.R and validation_utils.R\n")
+cat("Sourced harmonization_config.R, validation_utils.R, harmonization.R\n")
 
 # ---------------------------------------------------------------------------
 # 2. Load required packages
@@ -210,88 +214,101 @@ source_counts <- list()
 # ===========================================================================
 # SOURCE 1: Ontology (highest priority -- INSERT OR REPLACE)
 # ===========================================================================
+# The CSV ships fuzzy ontology vocabularies (60+ free-text trait_modality
+# strings like "predator", "calcified_shell", scored 0-3 per species per
+# trait_name). Per-species aggregation across multiple modalities is the
+# job of harmonize_fuzzy_*() in R/functions/trait_lookup/harmonization.R;
+# this block defers to those helpers for FS/MB/EP. Protection has no
+# fuzzy aggregator (yet), so pick the best-scored row and pass through
+# protection_to_pr() defined above. Morphology max_length encodes the
+# size as numeric-as-string in trait_modality, NOT as a fuzzy modality —
+# handle that path separately.
+.conf_to_num <- c(none = 0.0, low = 0.33, medium = 0.66, high = 1.0)
+
 cat("--- Source 1/6: Ontology ---\n")
 ontology_path <- file.path(project_root, "data", "ontology_traits.csv")
-if (file.exists(ontology_path)) {
-  ont <- tryCatch(read.csv(ontology_path, stringsAsFactors = FALSE),
-                  error = function(e) { warning("Failed to read ontology: ", e$message); NULL })
-  if (!is.null(ont) && nrow(ont) > 0) {
-    required_cols <- c("species", "trait_type", "trait_value")
-    if (all(required_cols %in% tolower(names(ont)))) {
-      names(ont) <- tolower(names(ont))
-      score_col <- safe_grep_col("score|confidence", names(ont))
-      species_list <- unique(ont$species)
-      n_inserted <- 0
-      for (sp in species_list) {
-        sp_data <- ont[ont$species == sp, , drop = FALSE]
-        if (nrow(sp_data) == 0) next
-
-        # Extract traits by type
-        get_best <- function(type_pattern) {
-          rows <- sp_data[grepl(type_pattern, sp_data$trait_type, ignore.case = TRUE), , drop = FALSE]
-          if (nrow(rows) == 0) return(list(value = NA_character_, score = 0.0))
-          if (!is.null(score_col) && score_col %in% names(rows)) {
-            scores <- suppressWarnings(as.numeric(rows[[score_col]]))
-            best_score <- safe_max_trait(scores)
-            if (!is.na(best_score)) {
-              best_row <- rows[which.max(scores), , drop = FALSE]
-              return(list(value = best_row$trait_value[1], score = best_score))
-            }
-          }
-          return(list(value = rows$trait_value[1], score = 0.5))
-        }
-
-        feeding  <- get_best("feed|forag|trophic")
-        mobility <- get_best("mobil|locomot|movement")
-        zone     <- get_best("zone|position|habitat|environment")
-        armor    <- get_best("protect|armor|shell|skeleton")
-        size_rec <- get_best("size|length|morpholog")
-
-        ms_val <- NA_character_; ms_conf <- 0.0
-        if (!is.na(size_rec$value)) {
-          size_num <- suppressWarnings(as.numeric(size_rec$value))
-          if (!is.na(size_num) && size_num > 0) {
-            ms_val  <- size_to_ms(size_num)
-            ms_conf <- size_rec$score
-          }
-        }
-
-        fs_val  <- feeding_to_fs(feeding$value %||% NA_character_)
-        mb_val  <- mobility_to_mb(mobility$value %||% NA_character_)
-        ep_val  <- if (!is.na(zone$value)) {
-          mode_lower <- tolower(trimws(zone$value))
-          for (ep_name in names(HARMONIZATION_CONFIG$environmental_patterns)) {
-            if (grepl(HARMONIZATION_CONFIG$environmental_patterns[[ep_name]], mode_lower)) {
-              break
-            }
-            ep_name <- NA_character_
-          }
-          if (!is.na(ep_name) && nchar(ep_name) > 0) sub("_.*", "", ep_name) else NA_character_
-        } else NA_character_
-        pr_val  <- protection_to_pr(armor$value %||% NA_character_)
-
-        aphia_col <- safe_grep_col("aphia", names(sp_data))
-        aphia_id  <- if (!is.null(aphia_col)) suppressWarnings(as.integer(sp_data[[aphia_col]][1])) else NA_integer_
-        fg_col    <- safe_grep_col("functional.?group|group", names(sp_data))
-        fg        <- if (!is.null(fg_col)) sp_data[[fg_col]][1] else NA_character_
-
-        params <- list(sp, aphia_id, fg,
-                       ms_val, fs_val, mb_val, ep_val, pr_val,
-                       ms_conf, feeding$score, mobility$score, zone$score, armor$score,
-                       "ontology", NA_character_, NA_character_)
-        safe_insert(con, REPLACE_SQL, params)
-        n_inserted <- n_inserted + 1
-      }
-      source_counts[["ontology"]] <- n_inserted
-      cat("  Inserted:", n_inserted, "species\n")
-    } else {
-      cat("  Skipped: missing required columns (need: species, trait_type, trait_value)\n")
-    }
-  } else {
-    cat("  Skipped: empty or unreadable file\n")
-  }
+n_inserted <- 0L
+if (!file.exists(ontology_path)) {
+  cat("  Skipped: file not found at ", ontology_path, "\n", sep = "")
 } else {
-  cat("  Skipped: file not found\n")
+  ont <- tryCatch(read.csv(ontology_path, stringsAsFactors = FALSE),
+                  error = function(e) {
+                    warning("Failed to read ontology: ", e$message); NULL
+                  })
+  if (is.null(ont) || nrow(ont) == 0) {
+    cat("  Skipped: empty or unreadable file\n")
+  } else {
+    names(ont) <- tolower(names(ont))
+
+    # Loud-fail on schema drift. The previous code silently emitted
+    # "Skipped: missing required columns" and called `next`, which hid
+    # the column-rename bug that produced 0 ontology inserts for months.
+    required <- c("taxon_name", "trait_category", "trait_name",
+                  "trait_modality", "trait_score")
+    missing_cols <- setdiff(required, names(ont))
+    if (length(missing_cols) > 0) {
+      stop("Ontology CSV missing required columns: ",
+           paste(missing_cols, collapse = ", "),
+           "\n  Found columns: ", paste(names(ont), collapse = ", "),
+           call. = FALSE)
+    }
+
+    ont$trait_score <- suppressWarnings(as.numeric(ont$trait_score))
+    # Drop rows the harmonize_fuzzy_*() helpers can't aggregate -
+    # max() on an all-NA filter returns -Inf and trips the helper.
+    ont <- ont[!is.na(ont$trait_score) & !is.na(ont$trait_modality), ,
+               drop = FALSE]
+
+    species_list <- unique(ont$taxon_name)
+    for (sp in species_list) {
+      sp_data <- ont[ont$taxon_name == sp, , drop = FALSE]
+      if (nrow(sp_data) == 0) next
+
+      fs <- harmonize_fuzzy_foraging(sp_data)
+      mb <- harmonize_fuzzy_mobility(sp_data)
+      ep <- harmonize_fuzzy_habitat(sp_data)
+
+      # PR: best-scored protection / body_protection row
+      pr_val <- NA_character_; pr_conf <- 0.0
+      pr_rows <- sp_data[sp_data$trait_name %in%
+                         c("protection", "body_protection"), ]
+      if (nrow(pr_rows) > 0) {
+        best <- pr_rows[which.max(pr_rows$trait_score), ]
+        pr_val  <- protection_to_pr(best$trait_modality)
+        pr_conf <- best$trait_score / 3
+      }
+
+      # MS: morphology / max_length carries a numeric-as-string
+      ms_val <- NA_character_; ms_conf <- 0.0
+      size_rows <- sp_data[sp_data$trait_category == "morphology" &
+                           sp_data$trait_name == "max_length", ]
+      if (nrow(size_rows) > 0) {
+        best <- size_rows[which.max(size_rows$trait_score), ]
+        size_num <- suppressWarnings(as.numeric(best$trait_modality))
+        if (!is.na(size_num) && size_num > 0) {
+          ms_val  <- size_to_ms(size_num)
+          ms_conf <- best$trait_score / 3
+        }
+      }
+
+      aphia_id <- suppressWarnings(as.integer(sp_data$aphia_id[1]))
+
+      params <- list(
+        sp, aphia_id, NA_character_,
+        ms_val, fs$class, mb$class, ep$class, pr_val,
+        ms_conf,
+        unname(.conf_to_num[fs$confidence] %||% 0.0),
+        unname(.conf_to_num[mb$confidence] %||% 0.0),
+        unname(.conf_to_num[ep$confidence] %||% 0.0),
+        pr_conf,
+        "ontology", NA_character_, NA_character_
+      )
+      safe_insert(con, REPLACE_SQL, params)
+      n_inserted <- n_inserted + 1L
+    }
+    source_counts[["ontology"]] <- n_inserted
+    cat("  Inserted:", n_inserted, "species\n")
+  }
 }
 
 # ===========================================================================

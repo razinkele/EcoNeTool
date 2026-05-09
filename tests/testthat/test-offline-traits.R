@@ -112,6 +112,24 @@ test_that("lookup_offline_traits returns data for known species when DB exists",
   expect_true("primary_source" %in% names(result))
 })
 
+test_that("offline DB has ontology rows (build script must not silently drop Source 1)", {
+  # Regression for the column-name drift that produced 0 ontology rows
+  # for months. The fix changed the build script to read taxon_name /
+  # trait_category / trait_name / trait_modality / trait_score (the
+  # actual CSV schema) and stop() loudly on any future drift.
+  db_path <- file.path(app_root, "cache/offline_traits.db")
+  skip_if_not(file.exists(db_path), "Offline DB not built yet")
+  skip_if_not_installed("RSQLite")
+
+  con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+  on.exit(DBI::dbDisconnect(con))
+  n_ontology <- DBI::dbGetQuery(
+    con, "SELECT COUNT(*) AS n FROM species_traits WHERE primary_source = 'ontology'"
+  )$n
+  expect_gt(n_ontology, 0,
+            label = "ontology source rows in offline DB (was 0 pre-fix)")
+})
+
 test_that("lookup_offline_traits returns NULL for unknown species", {
   skip_if_not(file.exists(file.path(app_root, "cache/offline_traits.db")), "Offline DB not built yet")
   source(file.path(app_root, "R/functions/validation_utils.R"), local = FALSE)
