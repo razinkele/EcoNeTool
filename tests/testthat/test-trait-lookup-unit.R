@@ -150,15 +150,17 @@ test_that("lookup_sealifebase_traits returns correct structure", {
 test_that("SeaLifeBase returns traits for blue mussel", {
   result <- load_fixture("sealifebase_mytilus_edulis")
 
-  if (result$success) {
-    traits <- result$traits
+  # Skip with a clear reason rather than silently passing as an "empty test"
+  # if the captured fixture has success=FALSE (e.g., transient SeaLifeBase
+  # outage at capture time). Refreshing fixtures should make this run.
+  skip_if(!isTRUE(result$success),
+          "SeaLifeBase fixture has success=FALSE; re-run capture_fixtures.R")
+  skip_if(is.null(result$traits$max_length_cm),
+          "SeaLifeBase fixture has no max_length_cm")
 
-    # Blue mussel max length is typically 10-20 cm
-    if (!is.null(traits$max_length_cm)) {
-      expect_gt(traits$max_length_cm, 3)
-      expect_lt(traits$max_length_cm, 30)
-    }
-  }
+  # Blue mussel max length is typically 10-20 cm
+  expect_gt(result$traits$max_length_cm, 3)
+  expect_lt(result$traits$max_length_cm, 30)
 })
 
 test_that("SeaLifeBase returns traits for shore crab", {

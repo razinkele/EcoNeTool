@@ -89,14 +89,18 @@ test_that("lookup_offline_traits returns data for known species when DB exists",
 
   # Try a species that should be in the ontology
   result <- env$lookup_offline_traits("Gadus morhua")
-  if (!is.null(result)) {
-    expect_true("MS" %in% names(result))
-    expect_true("FS" %in% names(result))
-    expect_true("MB" %in% names(result))
-    expect_true("EP" %in% names(result))
-    expect_true("PR" %in% names(result))
-    expect_true("primary_source" %in% names(result))
-  }
+  # Skip explicitly if the offline DB doesn't have Gadus morhua, rather than
+  # silently registering an empty test. A NULL result here means the DB was
+  # built without ontology data for this species — informative, not a bug.
+  skip_if(is.null(result),
+          "Offline DB has no entry for Gadus morhua; rebuild with build_offline_trait_db.R")
+
+  expect_true("MS" %in% names(result))
+  expect_true("FS" %in% names(result))
+  expect_true("MB" %in% names(result))
+  expect_true("EP" %in% names(result))
+  expect_true("PR" %in% names(result))
+  expect_true("primary_source" %in% names(result))
 })
 
 test_that("lookup_offline_traits returns NULL for unknown species", {
