@@ -238,7 +238,7 @@ source_counts <- list()
 # handle that path separately.
 .conf_to_num <- c(none = 0.0, low = 0.33, medium = 0.66, high = 1.0)
 
-cat("--- Source 1/6: Ontology ---\n")
+cat("--- Source 1/10: Ontology ---\n")
 ontology_path <- file.path(project_root, "data", "ontology_traits.csv")
 n_inserted <- 0L
 if (!file.exists(ontology_path)) {
@@ -327,7 +327,7 @@ if (!file.exists(ontology_path)) {
 # ===========================================================================
 # SOURCE 2: BIOTIC
 # ===========================================================================
-cat("--- Source 2/6: BIOTIC ---\n")
+cat("--- Source 2/10: BIOTIC ---\n")
 biotic_path <- file.path(project_root, "data", "biotic_traits.csv")
 if (file.exists(biotic_path)) {
   biotic <- tryCatch(read.csv(biotic_path, stringsAsFactors = FALSE),
@@ -390,7 +390,7 @@ if (file.exists(biotic_path)) {
 # ===========================================================================
 # SOURCE 3: MAREDAT
 # ===========================================================================
-cat("--- Source 3/6: MAREDAT ---\n")
+cat("--- Source 3/10: MAREDAT ---\n")
 maredat_path <- file.path(project_root, "data", "maredat_zooplankton.csv")
 if (file.exists(maredat_path)) {
   maredat <- tryCatch(read.csv(maredat_path, stringsAsFactors = FALSE),
@@ -453,7 +453,7 @@ if (file.exists(maredat_path)) {
 # ===========================================================================
 # SOURCE 4: PTDB (phytoplankton)
 # ===========================================================================
-cat("--- Source 4/6: PTDB ---\n")
+cat("--- Source 4/10: PTDB ---\n")
 ptdb_path <- file.path(project_root, "data", "ptdb_phytoplankton.csv")
 if (file.exists(ptdb_path)) {
   ptdb <- tryCatch(read.csv(ptdb_path, stringsAsFactors = FALSE),
@@ -530,7 +530,7 @@ if (file.exists(ptdb_path)) {
 # ===========================================================================
 # SOURCE 5: BVOL (Excel)
 # ===========================================================================
-cat("--- Source 5/6: BVOL ---\n")
+cat("--- Source 5/10: BVOL ---\n")
 bvol_path <- file.path(project_root, "data", "bvol_nomp_version_2024.xlsx")
 if (file.exists(bvol_path) && has_readxl) {
   bvol <- tryCatch(
@@ -603,7 +603,7 @@ if (file.exists(bvol_path) && has_readxl) {
 # ===========================================================================
 # SOURCE 6: SpeciesEnriched (Excel)
 # ===========================================================================
-cat("--- Source 6/6: SpeciesEnriched ---\n")
+cat("--- Source 6/10: SpeciesEnriched ---\n")
 enriched_path <- file.path(project_root, "data", "species_enriched.xlsx")
 if (file.exists(enriched_path) && has_readxl) {
   enriched <- tryCatch(
@@ -684,6 +684,128 @@ if (file.exists(enriched_path) && has_readxl) {
 } else {
   cat("  Skipped: readxl not installed\n")
 }
+
+# ===========================================================================
+# Sources 7-10: External regional/specialized CSVs (RS / TT / ST writers)
+# ===========================================================================
+# These four CSVs in data/external_traits/ already have lookup helpers
+# (R/functions/trait_lookup/csv_trait_databases.R) and are wired into the
+# orchestrator's live-API path (lines 844-913, 991), but pre-PR8b had no
+# offline-DB writer — so RS/TT/ST values from them disappeared on every
+# restart. Phase B writes them through. INSERT OR IGNORE so specialized
+# sources don't override the broader BIOTIC/MAREDAT/PTDB/BVOL coverage
+# established in Sources 2-5.
+#
+# Today (PR8b ship date) the CSVs are header-only stubs - the team
+# expects users to populate them per data/external_traits/README.md.
+# Each block produces "Inserted: 0 species" gracefully until the
+# corresponding CSV gets data. When that happens, RS/TT/ST flow
+# automatically without further code changes.
+
+# Helper: process one external CSV, harmonize the available trait
+# columns, INSERT a partial-row per species. col_map names which CSV
+# column to feed into each harmonize_* helper; columns absent from the
+# CSV stay NA in the offline DB.
+process_external_csv <- function(csv_path, source_label, conf, col_map) {
+  if (!file.exists(csv_path)) {
+    cat("  Skipped: file not found\n"); return(0L)
+  }
+  df <- tryCatch(read.csv(csv_path, stringsAsFactors = FALSE),
+                 error = function(e) {
+                   warning("Failed to read ", csv_path, ": ", e$message)
+                   NULL
+                 })
+  if (is.null(df) || nrow(df) == 0) {
+    cat("  Skipped: empty (header-only stub or unreadable)\n"); return(0L)
+  }
+  if (!"species" %in% tolower(names(df))) {
+    warning(source_label, " CSV missing 'species' column"); return(0L)
+  }
+  names(df) <- tolower(names(df))
+
+  inserted <- 0L
+  for (i in seq_len(nrow(df))) {
+    sp <- df$species[i]
+    if (is.na(sp) || nchar(trimws(sp)) == 0) next
+
+    rs_val <- if (!is.null(col_map$rs) && col_map$rs %in% names(df)) {
+      harmonize_reproductive_strategy(df[[col_map$rs]][i])
+    } else NA_character_
+    tt_val <- if (!is.null(col_map$tt) && col_map$tt %in% names(df)) {
+      harmonize_temperature_tolerance(df[[col_map$tt]][i])
+    } else NA_character_
+    st_val <- if (!is.null(col_map$st) && col_map$st %in% names(df)) {
+      harmonize_salinity_tolerance(df[[col_map$st]][i])
+    } else NA_character_
+
+    # Only INSERT if at least one extended modality came back non-NA -
+    # otherwise the row would be a no-op stealing the species slot
+    # from a future richer source.
+    if (is.na(rs_val) && is.na(tt_val) && is.na(st_val)) next
+
+    rs_conf <- if (!is.na(rs_val)) conf else 0.0
+    tt_conf <- if (!is.na(tt_val)) conf else 0.0
+    st_conf <- if (!is.na(st_val)) conf else 0.0
+
+    # Ad-hoc INSERT covering only the extended-modality columns; falls
+    # back to NULL for the core MS/FS/MB/EP/PR slots so we don't shadow
+    # those when a downstream source has them.
+    safe_insert(con,
+      "INSERT OR IGNORE INTO species_traits
+         (species, primary_source,
+          RS, TT, ST, RS_confidence, TT_confidence, ST_confidence)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      list(sp, source_label, rs_val, tt_val, st_val, rs_conf, tt_conf, st_conf))
+    inserted <- inserted + 1L
+  }
+  cat("  Inserted:", inserted, "species\n")
+  inserted
+}
+
+# Source 7/10 - BlackSea (RS/TT/ST)
+cat("--- Source 7/10: BlackSea ---\n")
+n <- process_external_csv(
+  csv_path     = file.path(project_root, "data", "external_traits", "blacksea_traits.csv"),
+  source_label = "blacksea",
+  conf         = 0.6,
+  col_map      = list(rs = "reproductive_mode",
+                      tt = "temperature_affinity",
+                      st = "salinity_affinity")
+)
+source_counts[["blacksea"]] <- n
+
+# Source 8/10 - Arctic (RS/TT)
+cat("--- Source 8/10: Arctic ---\n")
+n <- process_external_csv(
+  csv_path     = file.path(project_root, "data", "external_traits", "arctic_traits.csv"),
+  source_label = "arctic",
+  conf         = 0.6,
+  col_map      = list(rs = "reproductive_mode",
+                      tt = "temperature_preference")
+)
+source_counts[["arctic"]] <- n
+
+# Source 9/10 - Cefas (RS only)
+cat("--- Source 9/10: Cefas ---\n")
+n <- process_external_csv(
+  csv_path     = file.path(project_root, "data", "external_traits", "cefas_benthic_traits.csv"),
+  source_label = "cefas",
+  conf         = 0.7,
+  col_map      = list(rs = "reproductive_mode")
+)
+source_counts[["cefas"]] <- n
+
+# Source 10/10 - CoralTraits (RS only - thermal_tolerance_max is numeric and
+# requires the CoralTraits-specific TT2/TT3/TT4 banding logic in the
+# orchestrator; defer the TT writer to a follow-up).
+cat("--- Source 10/10: CoralTraits ---\n")
+n <- process_external_csv(
+  csv_path     = file.path(project_root, "data", "external_traits", "coral_traits.csv"),
+  source_label = "coral",
+  conf         = 0.6,
+  col_map      = list(rs = "reproductive_mode")
+)
+source_counts[["coral"]] <- n
 
 # ===========================================================================
 # Summary

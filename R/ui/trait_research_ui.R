@@ -550,6 +550,61 @@ trait_research_ui <- function() {
                       }))
                     }
                   )
+                ),
+
+                # PR8b Phase B: extended-modality legends. Same data-driven
+                # rendering pattern as the PR table above so labels can never
+                # drift from harmonize_reproductive_strategy / temperature_
+                # tolerance / salinity_tolerance helpers.
+                wellPanel(
+                  h4(icon("dna"), " RS - Reproductive Strategy"),
+                  tags$table(
+                    class = "table table-striped table-sm",
+                    tags$thead(tags$tr(
+                      tags$th("Code"), tags$th("Strategy"), tags$th("Examples")
+                    )),
+                    {
+                      .rs_labels <- (get_harm_config() %||% HARMONIZATION_CONFIG)$reproductive_labels
+                      do.call(tags$tbody, lapply(names(.rs_labels), function(code) {
+                        info <- .rs_labels[[code]]
+                        tags$tr(tags$td(code), tags$td(info$label), tags$td(info$examples))
+                      }))
+                    }
+                  )
+                ),
+
+                wellPanel(
+                  h4(icon("temperature-half"), " TT - Temperature Tolerance"),
+                  tags$table(
+                    class = "table table-striped table-sm",
+                    tags$thead(tags$tr(
+                      tags$th("Code"), tags$th("Tolerance"), tags$th("Examples")
+                    )),
+                    {
+                      .tt_labels <- (get_harm_config() %||% HARMONIZATION_CONFIG)$temperature_labels
+                      do.call(tags$tbody, lapply(names(.tt_labels), function(code) {
+                        info <- .tt_labels[[code]]
+                        tags$tr(tags$td(code), tags$td(info$label), tags$td(info$examples))
+                      }))
+                    }
+                  )
+                ),
+
+                wellPanel(
+                  h4(icon("droplet"), " ST - Salinity Tolerance"),
+                  tags$table(
+                    class = "table table-striped table-sm",
+                    tags$thead(tags$tr(
+                      tags$th("Code"), tags$th("Tolerance"), tags$th("Examples")
+                    )),
+                    {
+                      .st_labels <- (get_harm_config() %||% HARMONIZATION_CONFIG)$salinity_labels
+                      do.call(tags$tbody, lapply(names(.st_labels), function(code) {
+                        info <- .st_labels[[code]]
+                        tags$tr(tags$td(code), tags$td(info$label), tags$td(info$examples))
+                      }))
+                    }
+                  )
                 )
               )
             ),

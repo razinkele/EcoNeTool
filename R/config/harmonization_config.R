@@ -86,12 +86,38 @@ HARMONIZATION_CONFIG <- list(
     RS4_mixed = "mixed|both|alternating|sequential"
   ),
 
+  # PR8b Phase B: human-readable labels for the extended modalities.
+  # Same data-driven UI pattern as protection_labels (PR1b) so the
+  # legend tables in trait_research_ui.R can never drift from the
+  # harmonize_*_strategy / _tolerance helpers.
+  reproductive_labels = list(
+    RS1 = list(label = "Broadcast spawner",
+               examples = "Most pelagic fish, sea urchins, mussels"),
+    RS2 = list(label = "Brooder / direct developer",
+               examples = "Sharks, gobies, peracarid crustaceans"),
+    RS3 = list(label = "Asexual / budding / fission",
+               examples = "Many cnidarians, some annelids"),
+    RS4 = list(label = "Mixed / sequential strategy",
+               examples = "Hermaphroditic fish, alternating-generation cnidarians")
+  ),
+
   # TEMPERATURE TOLERANCE PATTERNS
   temperature_patterns = list(
     TT1_cold_steno = "arctic|polar|cold.stenothermal|psychrophil",
     TT2_cold_eury = "boreal|cold.temperate|cold.eurythermal|subarctic",
     TT3_warm_eury = "warm.temperate|eurythermal|cosmopolitan|temperate",
     TT4_warm_steno = "tropical|warm.stenothermal|thermophil|subtropical"
+  ),
+
+  temperature_labels = list(
+    TT1 = list(label = "Cold-stenothermal",
+               examples = "Arctic / polar specialists"),
+    TT2 = list(label = "Cold-eurythermal",
+               examples = "Boreal, subarctic species"),
+    TT3 = list(label = "Warm-eurythermal",
+               examples = "Temperate cosmopolitans"),
+    TT4 = list(label = "Warm-stenothermal",
+               examples = "Tropical / subtropical specialists")
   ),
 
   # SALINITY TOLERANCE PATTERNS
@@ -101,6 +127,14 @@ HARMONIZATION_CONFIG <- list(
     ST3_meso = "mesohaline|brackish",
     ST4_poly = "polyhaline|marine.brackish",
     ST5_eu = "euhaline|marine|full.saline"
+  ),
+
+  salinity_labels = list(
+    ST1 = list(label = "Freshwater",      examples = "Limnetic species"),
+    ST2 = list(label = "Oligohaline",     examples = "Brackish, low salinity (0.5-5 PSU)"),
+    ST3 = list(label = "Mesohaline",      examples = "Brackish, intermediate (5-18 PSU)"),
+    ST4 = list(label = "Polyhaline",      examples = "Marine-brackish (18-30 PSU)"),
+    ST5 = list(label = "Euhaline",        examples = "Full marine salinity (>30 PSU)")
   ),
 
   # TAXONOMIC INFERENCE RULES

@@ -138,6 +138,43 @@ test_that("lookup_offline_traits returns data for known species when DB exists",
   expect_true("primary_source" %in% names(result))
 })
 
+test_that("config has labels for all extended modality codes (PR8b Phase B)", {
+  source(file.path(app_root, "R/config/harmonization_config.R"), local = TRUE)
+
+  # Each *_labels list must cover every key in the matching *_patterns
+  # list — same data-driven contract as PR1b's protection_labels.
+  for (kind in c("reproductive", "temperature", "salinity")) {
+    pattern_codes <- sub("_.*", "", names(HARMONIZATION_CONFIG[[paste0(kind, "_patterns")]]))
+    label_codes   <- names(HARMONIZATION_CONFIG[[paste0(kind, "_labels")]])
+    # expect_setequal doesn't take `info`; use a dedicated true/false
+    # expectation as the diagnostic when the sets diverge.
+    drift_msg <- paste(kind, "_patterns vs _labels code-set drift:",
+                       "patterns=", paste(pattern_codes, collapse = ","),
+                       "labels=",   paste(label_codes,   collapse = ","))
+    expect_true(setequal(pattern_codes, label_codes), info = drift_msg)
+    for (code in label_codes) {
+      info <- HARMONIZATION_CONFIG[[paste0(kind, "_labels")]][[code]]
+      expect_true(nchar(info$label %||% "") > 0,
+                  info = paste(kind, code, "label is empty"))
+      expect_true(nchar(info$examples %||% "") > 0,
+                  info = paste(kind, code, "examples is empty"))
+    }
+  }
+})
+
+test_that("external trait CSVs are present (visibility for empty-stub state)", {
+  # All four are header-only stubs in the repo; users populate via the
+  # URLs in data/external_traits/README.md. Test asserts the FILES exist
+  # so a future delete is loud; doesn't assert NROW > 0 because that
+  # would currently fail by design.
+  for (csv in c("blacksea_traits.csv", "arctic_traits.csv",
+                "cefas_benthic_traits.csv", "coral_traits.csv")) {
+    p <- file.path(app_root, "data", "external_traits", csv)
+    expect_true(file.exists(p),
+                info = paste("missing external trait CSV stub:", csv))
+  }
+})
+
 test_that("offline DB schema includes RS/TT/ST extended modality columns (PR8b)", {
   # Stage A of the RS/TT/ST implementation: schema accommodates the
   # extended modalities even though data writers haven't been wired yet
