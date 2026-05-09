@@ -137,14 +137,12 @@ source("R/ui/metaweb_ui.R")
 source("R/ui/spatial_ui.R")
 source("R/ui/ecobase_ui.R")
 source("R/ui/shark_ui.R")
-source("R/ui/traitfoodweb_ui.R")  # Trait-based food web UI (legacy - kept for reference)
-source("R/ui/trait_research_ui.R")  # Trait Research UI (NEW)
-source("R/ui/foodweb_construction_ui.R")  # Food Web Construction UI (NEW)
+source("R/ui/trait_research_ui.R")  # Trait Research UI
+source("R/ui/foodweb_construction_ui.R")  # Food Web Construction UI
 source("R/ui/harmonization_settings_ui.R")  # Harmonization settings UI
 
 # Server modules
-source("R/modules/traitfoodweb_server.R")  # Trait-based food web server logic (legacy)
-source("R/modules/trait_research_server.R")  # Trait Research server logic (NEW)
+source("R/modules/trait_research_server.R")  # Trait Research server logic
 source("R/modules/foodweb_construction_server.R")  # Food Web Construction server logic (NEW)
 source("R/modules/harmonization_settings_server.R")  # Harmonization settings server logic
 source("R/modules/plugin_server.R")  # Plugin management server logic

@@ -8,10 +8,6 @@
 # Models trained: MS, FS, MB, EP, PR (5 total)
 # Features: phylum, class, order, family, genus (taxonomic hierarchy)
 # Algorithm: Random Forest (handles categorical data well)
-#
-# Date: 2025-12-25
-# Version: 1.0
-#
 # =============================================================================
 
 # Cache environment for lazy loading (avoids <<-)

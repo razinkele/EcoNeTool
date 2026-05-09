@@ -11,9 +11,6 @@
 # - Session tracking
 # - Error analysis and reporting
 # - Optional console debugging
-#
-# Version: 1.4.0 (Phase 6)
-# Date: 2025-12-25
 # =============================================================================
 
 # Global session ID (initialized on module load)

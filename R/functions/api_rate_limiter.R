@@ -10,9 +10,6 @@
 # - Per-API rate limit configuration
 # - Automatic retry with exponential backoff
 # - Request tracking and statistics
-#
-# Version: 1.4.0 (Phase 6)
-# Date: 2025-12-25
 # =============================================================================
 
 # Load R6 for OOP

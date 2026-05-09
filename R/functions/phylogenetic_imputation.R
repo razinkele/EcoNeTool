@@ -10,9 +10,6 @@
 # - Find closest relatives with complete trait data
 # - Weighted majority vote based on phylogenetic proximity
 # - Conservative approach: only impute when consensus is strong
-#
-# Date: 2025-12-25
-# Version: 1.0
 # =============================================================================
 
 # =============================================================================

@@ -11,9 +11,6 @@
 # - Threshold distance-based confidence adjustment
 # - Confidence interval calculation
 # - Uncertainty propagation through networks
-#
-# Date: 2025-12-25
-# Version: 1.0
 # =============================================================================
 
 # =============================================================================

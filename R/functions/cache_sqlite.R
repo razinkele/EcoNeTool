@@ -16,9 +16,6 @@
 # - Backward compatible with .rds cache
 # - Automatic migration from old cache
 # - Transaction support for batch operations
-#
-# Version: 1.4.0 (Phase 6)
-# Date: 2025-12-25
 # =============================================================================
 
 # Check RSQLite and DBI

@@ -13,9 +13,6 @@
 # - Automatic fallback to serial if parallel fails
 # - Progress tracking for batch operations
 # - Configurable number of workers
-#
-# Version: 1.4.0 (Phase 6)
-# Date: 2025-12-25
 # =============================================================================
 
 # Check dependencies
