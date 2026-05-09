@@ -71,15 +71,17 @@ lookup_offline_traits <- function(species_name, db_path = "cache/offline_traits.
       }
     }
 
+    # Select only columns that build_offline_trait_db.R actually writes
+    # to species_traits. Downstream code that reads RS/TT/ST/trophic_level/
+    # depth_*/longevity/etc via `$` will get NULL (treated as NA), which the
+    # ML fallback handles. The previous wider SELECT errored at runtime
+    # ("no such column: RS") and silently fell through to API lookups.
     result <- DBI::dbGetQuery(con,
-      "SELECT species, MS, FS, MB, EP, PR, RS, TT, ST,
-              trophic_level, depth_min, depth_max, is_hab,
-              longevity_years, growth_rate, body_shape,
-              phyto_motility, phyto_growth_form,
+      "SELECT species, aphia_id, functional_group,
+              MS, FS, MB, EP, PR,
               MS_confidence, FS_confidence, MB_confidence,
               EP_confidence, PR_confidence,
-              RS_confidence, TT_confidence, ST_confidence,
-              primary_source, imputation_method
+              primary_source, region, notes
        FROM species_traits WHERE species = ?",
       params = list(species_name))
 

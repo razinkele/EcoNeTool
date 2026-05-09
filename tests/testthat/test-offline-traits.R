@@ -87,13 +87,22 @@ test_that("lookup_offline_traits returns data for known species when DB exists",
   env <- new.env(parent = globalenv())
   sys.source(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"), envir = env)
 
-  # Try a species that should be in the ontology
-  result <- env$lookup_offline_traits("Gadus morhua")
-  # Skip explicitly if the offline DB doesn't have Gadus morhua, rather than
-  # silently registering an empty test. A NULL result here means the DB was
-  # built without ontology data for this species — informative, not a bug.
+  # Hediste diversicolor (a polychaete) is in BIOTIC, the first source
+  # build_offline_trait_db.R ingests, so it's reliably present whenever the
+  # build completes. Earlier versions of this test used Gadus morhua, which
+  # the build's data sources (BIOTIC/MAREDAT/PTDB/BVOL/SpeciesEnriched —
+  # all benthic invertebrates / plankton) never cover.
+  #
+  # Pass an absolute db_path. The function defaults to a relative path
+  # ("cache/offline_traits.db") that's resolved against the caller's cwd.
+  # testthat sets cwd to tests/testthat/, so the default would miss the DB
+  # even when the gate above confirms the file exists at app_root.
+  result <- env$lookup_offline_traits(
+    "Hediste diversicolor",
+    db_path = file.path(app_root, "cache/offline_traits.db")
+  )
   skip_if(is.null(result),
-          "Offline DB has no entry for Gadus morhua; rebuild with build_offline_trait_db.R")
+          "Offline DB has no entry for Hediste diversicolor; rebuild with build_offline_trait_db.R")
 
   expect_true("MS" %in% names(result))
   expect_true("FS" %in% names(result))
