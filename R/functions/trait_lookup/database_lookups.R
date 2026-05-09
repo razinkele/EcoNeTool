@@ -170,52 +170,40 @@ lookup_sealifebase_traits <- function(species_name, timeout = 20) {
 
     traits <- list()
 
-    # Maximum length (cm) - check column exists
-    if (!is.null(species_data) && "Length" %in% names(species_data)) {
-      if (!is.na(species_data$Length)) {
-        traits$max_length_cm <- species_data$Length
-      }
+    # Helper: extract a scalar trait if the column exists and has a non-NA
+    # length-1 value. Empty tibbles (nrow == 0) yield length-0 column vectors;
+    # `is.na(length0)` returns logical(0), and `if (logical(0))` errors with
+    # "argument is of length zero" — which previously aborted the whole tryCatch
+    # and discarded any traits already collected.
+    pick_scalar <- function(df, col) {
+      if (is.null(df) || !(col %in% names(df))) return(NULL)
+      v <- df[[col]]
+      if (length(v) != 1 || is.na(v)) return(NULL)
+      v
     }
 
-    # Weight (g) - check column exists
-    if (!is.null(species_data) && "Weight" %in% names(species_data)) {
-      if (!is.na(species_data$Weight)) {
-        traits$weight_g <- species_data$Weight
-      }
-    }
+    if (!is.null(v <- pick_scalar(species_data, "Length")))      traits$max_length_cm <- v
+    if (!is.null(v <- pick_scalar(species_data, "Weight")))      traits$weight_g      <- v
+    if (!is.null(v <- pick_scalar(species_data, "FoodTroph")))   traits$trophic_level <- v
+    if (!is.null(v <- pick_scalar(species_data, "DemersPelag"))) traits$habitat       <- v
 
-    # Trophic level - check column exists
-    if (!is.null(species_data) && "FoodTroph" %in% names(species_data)) {
-      if (!is.na(species_data$FoodTroph)) {
-        traits$trophic_level <- species_data$FoodTroph
-      }
-    }
-
-    # Habitat (demersal, pelagic, benthic, etc.) - check column exists
-    if (!is.null(species_data) && "DemersPelag" %in% names(species_data)) {
-      if (!is.na(species_data$DemersPelag)) {
-        traits$habitat <- species_data$DemersPelag
-      }
-    }
-
-    # Try to get morphology data (optional - don't fail if unavailable)
+    # Try to get morphology data (optional - don't fail if unavailable).
+    # rfishbase returns an empty tibble (nrow == 0) when no morphology row
+    # exists for the species (e.g., Mytilus edulis on SeaLifeBase).
     morph_data <- tryCatch(
       with_timeout(rfishbase::morphology(species_name, server = "sealifebase"),
                    timeout = timeout, on_timeout = NULL),
       error = function(e) NULL)
 
-    # Body shape (for mobility inference) - check column exists
-    if (!is.null(morph_data) && "BodyShapeI" %in% names(morph_data)) {
-      if (!is.na(morph_data$BodyShapeI)) {
-        traits$body_shape <- morph_data$BodyShapeI
-      }
-    }
+    if (!is.null(v <- pick_scalar(morph_data, "BodyShapeI"))) traits$body_shape <- v
 
     result$traits <- traits
     result$success <- length(traits) > 0
 
   }, error = function(e) {
-    result$error <- conditionMessage(e)
+    # <<- so the error actually surfaces on the returned result; previous
+    # `<-` only mutated the local copy in the closure and was silently lost.
+    result$error <<- conditionMessage(e)
   })
 
   return(result)
