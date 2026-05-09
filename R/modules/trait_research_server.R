@@ -864,47 +864,56 @@ trait_research_server <- function(input, output, session, shared_data) {
   # Reactive trigger to refresh offline DB value boxes after rebuild
   offline_db_trigger <- reactiveVal(0)
 
-  output$offline_db_species_count <- renderValueBox({
-    offline_db_trigger()  # Re-render when trigger changes
+  # Single reactive that opens the DB once per trigger invalidation and
+  # returns the metadata all three value boxes need. Previously each
+  # value box opened/closed its own DBI connection (3x dbConnect per
+  # refresh) — same data, three round-trips.
+  offline_db_summary <- reactive({
+    offline_db_trigger()  # invalidate on rebuild
     db_path <- "cache/offline_traits.db"
-    count <- 0
-    if (file.exists(db_path) && requireNamespace("RSQLite", quietly = TRUE)) {
-      tryCatch({
-        con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
-        on.exit(DBI::dbDisconnect(con))
-        count <- DBI::dbGetQuery(con, "SELECT COUNT(*) as n FROM species_traits")$n
-      }, error = function(e) {})
+    default <- list(
+      count = 0,
+      age_text = "Not built", age_color = "danger",
+      status = "Not Found",   status_color = "danger"
+    )
+    if (!file.exists(db_path) || !requireNamespace("RSQLite", quietly = TRUE)) {
+      return(default)
     }
-    valueBox(count, "Species", icon = icon("fish"), color = "primary")
+    tryCatch({
+      con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+      on.exit(DBI::dbDisconnect(con))
+      count <- DBI::dbGetQuery(con, "SELECT COUNT(*) AS n FROM species_traits")$n
+      meta <- DBI::dbGetQuery(con,
+        "SELECT value FROM metadata WHERE key = 'build_timestamp'")
+      age_text <- "Unknown"; age_color <- "warning"
+      if (nrow(meta) > 0) {
+        build_time <- as.POSIXct(meta$value[1])
+        age_days <- as.numeric(difftime(Sys.time(), build_time, units = "days"))
+        age_text  <- paste0(round(age_days), " days")
+        age_color <- if (age_days < 30) "success"
+                     else if (age_days < 90) "warning" else "danger"
+      }
+      list(
+        count = count,
+        age_text = age_text, age_color = age_color,
+        status = "Available", status_color = "success"
+      )
+    }, error = function(e) default)
+  })
+
+  output$offline_db_species_count <- renderValueBox({
+    s <- offline_db_summary()
+    valueBox(s$count, "Species", icon = icon("fish"), color = "primary")
   })
 
   output$offline_db_age <- renderValueBox({
-    offline_db_trigger()
-    db_path <- "cache/offline_traits.db"
-    age_text <- "Not built"
-    color <- "danger"
-    if (file.exists(db_path) && requireNamespace("RSQLite", quietly = TRUE)) {
-      tryCatch({
-        con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
-        on.exit(DBI::dbDisconnect(con))
-        meta <- DBI::dbGetQuery(con, "SELECT value FROM metadata WHERE key = 'build_timestamp'")
-        if (nrow(meta) > 0) {
-          build_time <- as.POSIXct(meta$value[1])
-          age_days <- as.numeric(difftime(Sys.time(), build_time, units = "days"))
-          age_text <- paste0(round(age_days), " days")
-          color <- if (age_days < 30) "success" else if (age_days < 90) "warning" else "danger"
-        }
-      }, error = function(e) {})
-    }
-    valueBox(age_text, "Database Age", icon = icon("clock"), color = color)
+    s <- offline_db_summary()
+    valueBox(s$age_text, "Database Age", icon = icon("clock"), color = s$age_color)
   })
 
   output$offline_db_status <- renderValueBox({
-    offline_db_trigger()
-    db_path <- "cache/offline_traits.db"
-    status <- if (file.exists(db_path)) "Available" else "Not Found"
-    color <- if (file.exists(db_path)) "success" else "danger"
-    valueBox(status, "Status", icon = icon("check-circle"), color = color)
+    s <- offline_db_summary()
+    valueBox(s$status, "Status", icon = icon("check-circle"), color = s$status_color)
   })
 
   # Background process handle for async rebuild

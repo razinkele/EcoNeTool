@@ -21,11 +21,35 @@ test_that("EP returns EP1 for pelagic species (phytoplankton)", {
   expect_equal(result, "EP1")
 })
 
-test_that("EP returns EP1 for fish", {
+test_that("EP returns EP2 (benthopelagic) for fish without order info", {
+  # Defaulting all fish to EP1 (pelagic) mislabels every benthic / demersal
+  # fish; the trait-validator critic flagged this as the wrong fallback.
+  # Without order info, EP2 (benthopelagic) is the safer middle ground.
   result <- harmonize_environmental_position(
     habitat_info = NULL, depth_min = NULL, depth_max = NULL,
     taxonomic_info = list(phylum = "Chordata", class = "Actinopteri"))
-  expect_equal(result, "EP1")
+  expect_equal(result, "EP2")
+})
+
+test_that("EP routes fish by order (Clupeiformes -> EP1, Pleuronectiformes -> EP3, Gadiformes -> EP2)", {
+  expect_equal(
+    harmonize_environmental_position(
+      taxonomic_info = list(phylum = "Chordata", class = "Teleostei",
+                            order = "Clupeiformes")),
+    "EP1"
+  )
+  expect_equal(
+    harmonize_environmental_position(
+      taxonomic_info = list(phylum = "Chordata", class = "Teleostei",
+                            order = "Pleuronectiformes")),
+    "EP3"
+  )
+  expect_equal(
+    harmonize_environmental_position(
+      taxonomic_info = list(phylum = "Chordata", class = "Teleostei",
+                            order = "Gadiformes")),
+    "EP2"
+  )
 })
 
 test_that("EP returns EP4 for infaunal bivalves", {

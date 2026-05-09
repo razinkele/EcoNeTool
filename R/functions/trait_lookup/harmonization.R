@@ -115,8 +115,13 @@ harmonize_fuzzy_foraging <- function(ontology_traits) {
 
   fs_class <- NA_character_
 
+  # FS3: Omnivore (explicit modality). MUST come before predator/grazer
+  # branches so "omnivore" doesn't accidentally match a partial keyword.
+  if (grepl("omnivor|mixed.diet|generalist", modality)) {
+    fs_class <- "FS3"
+
   # FS0: Primary producer (photosynthesis, autotroph)
-  if (grepl("photosyn|autotroph|producer|primary.producer", modality)) {
+  } else if (grepl("photosyn|autotroph|producer|primary.producer", modality)) {
     fs_class <- "FS0"
 
   # FS1: Predator (active predation)
@@ -142,6 +147,22 @@ harmonize_fuzzy_foraging <- function(ontology_traits) {
   # FS6: Filter/Suspension feeder
   } else if (grepl("filter|suspension|planktivore|strain", modality)) {
     fs_class <- "FS6"
+  }
+
+  # Multi-mode aggregation: if a species has high-scored evidence for both
+  # carnivory and herbivory/filter-feeding (without an explicit "omnivore"
+  # modality), promote to FS3. Catches the common case where ontologies
+  # express omnivory as multiple feeding modes rather than one label.
+  if (!is.na(fs_class) && fs_class != "FS3") {
+    high_scoring <- feeding[feeding$trait_score >= 2, , drop = FALSE]
+    if (nrow(high_scoring) >= 2) {
+      mods <- tolower(high_scoring$trait_modality)
+      has_carn <- any(grepl("predator|carnivore|piscivore|hunter|scavenger", mods))
+      has_herb <- any(grepl("graz|herbivore|scraper|browser|filter|suspension|planktivore|deposit", mods))
+      if (has_carn && has_herb) {
+        fs_class <- "FS3"
+      }
+    }
   }
 
   if (!is.na(fs_class)) {
@@ -694,9 +715,31 @@ harmonize_environmental_position <- function(depth_min = NULL, depth_max = NULL,
       }
     }
 
-    # Fish - depends on species but default pelagic
+    # Fish - dispatch by order/family. Defaulting all fish to EP1 (pelagic)
+    # mislabels every flatfish, goby, eel, and sandeel; trait-validator
+    # critic flagged this as the wrong default. Order-level lookup covers
+    # the most common European marine taxa; unknown orders fall back to
+    # benthopelagic (EP2), the safer middle ground.
     if (!is.null(class) && grepl("Actinopteri|Teleostei", class)) {
-      return("EP1")  # Default pelagic for fish
+      order <- taxonomic_info$order
+      if (!is.null(order) && nzchar(order)) {
+        # Predominantly bottom-dwelling
+        if (grepl("Pleuronectiformes|Gobiiformes|Anguilliformes|Scorpaeniformes|Lophiiformes|Ophidiiformes",
+                  order, ignore.case = TRUE)) {
+          return("EP3")
+        }
+        # Predominantly pelagic
+        if (grepl("Clupeiformes|Scombriformes|Beloniformes|Carangiformes|Atheriniformes",
+                  order, ignore.case = TRUE)) {
+          return("EP1")
+        }
+        # Demersal / benthopelagic (mobile but bottom-associated)
+        if (grepl("Gadiformes|Perciformes|Aulopiformes|Stomiiformes|Myctophiformes",
+                  order, ignore.case = TRUE)) {
+          return("EP2")
+        }
+      }
+      return("EP2")  # Unknown fish order: benthopelagic, not pelagic
     }
   }
 
