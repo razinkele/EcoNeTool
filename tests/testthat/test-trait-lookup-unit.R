@@ -68,6 +68,20 @@ test_that("WoRMS lookup uses multiple strategies", {
   }
 })
 
+test_that("WoRMS body-size unit fallback handles marine mammals", {
+  # Regression for the cm/mm misclassification that would record a 186 cm
+  # harbour seal as 18.6 cm. WoRMS returns class = Mammalia, which the
+  # cm-reporting-classes list must cover.
+  result <- load_fixture("worms_phoca_vitulina")
+
+  expect_true(isTRUE(result$success))
+  expect_equal(tolower(result$traits$class), "mammalia")
+  expect_gt(result$traits$max_length_cm, 100,
+            label = "harbour seal max_length_cm should be > 100 cm")
+  expect_lt(result$traits$max_length_cm, 300,
+            label = "harbour seal max_length_cm should be < 300 cm")
+})
+
 # ============================================================================
 # FishBase Lookup
 # ============================================================================

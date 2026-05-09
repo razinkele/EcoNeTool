@@ -1007,14 +1007,21 @@ lookup_worms_traits <- function(species_name, timeout = 10) {
           }
 
           if (is.na(unit)) {
-            # WoRMS class for fish spans Actinopterygii / Actinopteri /
-            # Teleostei depending on the taxon's classification level; list
-            # all observed names plus the cartilaginous-fish classes.
-            fish_classes <- c("actinopterygii", "actinopteri", "teleostei",
-                              "elasmobranchii", "holocephali", "chondrichthyes",
-                              "sarcopterygii", "myxini", "petromyzonti")
+            # Vertebrate classes whose WoRMS body-size measurements are
+            # conventionally reported in cm. Bony fish span Actinopterygii /
+            # Actinopteri / Teleostei depending on classification level; the
+            # cartilaginous & jawless fish classes round out the fish list;
+            # mammals (incl. cetaceans/pinnipeds, returned at class level as
+            # Mammalia), reptiles, and birds also report cm — without them
+            # a 200 cm seal silently records as 20 cm.
+            cm_reporting_classes <- c(
+              "actinopterygii", "actinopteri", "teleostei",
+              "elasmobranchii", "holocephali", "chondrichthyes",
+              "sarcopterygii", "myxini", "petromyzonti",
+              "mammalia", "reptilia", "aves"
+            )
             unit <- if (!is.null(traits$class) &&
-                        tolower(traits$class) %in% fish_classes) "cm" else "mm"
+                        tolower(traits$class) %in% cm_reporting_classes) "cm" else "mm"
           }
 
           traits$max_length_cm <- switch(unit,
