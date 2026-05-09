@@ -45,10 +45,13 @@ HARMONIZATION_CONFIG <- list(
     EP4_endobenthic = "endobenthic|infauna|burrowing|within sediment|interstitial"
   ),
 
-  # PROTECTION MECHANISM PATTERNS
-  # PROTECTION MECHANISM PATTERNS (8-level, matching harmonize_protection())
+  # PROTECTION MECHANISM PATTERNS (9-level PR0-PR8, matching harmonize_protection)
+  # PR1 (mucus/cuticle) was missing pre-PR1b — UI listed it but config and
+  # harmonize_protection had no branch, so any "mucus"-flagged species got
+  # NA. Added between PR0_none and PR2_tube to fill the gap.
   protection_patterns = list(
     PR0_none = "soft.?body|naked|unprotected|no shell|no armor|jellyfish|cephalopod",
+    PR1_mucus = "mucus|slime|cuticle|cuticular|hagfish",
     PR2_tube = "tube|tube.?dwell|calcareous tube|parchment tube",
     PR3_burrow = "deep burrow|permanent burrow|burrow refuge",
     PR4_exoskeleton = "exoskeleton|chitinous|thin carapace|small arthropod",
@@ -56,6 +59,23 @@ HARMONIZATION_CONFIG <- list(
     PR6_hard_shell = "shell|calcified|calcareous|bivalve shell|gastropod shell|hard carapace|test|barnacle",
     PR7_spines = "spine|spiny|spicule|prickle|thorn|ossicle|urchin",
     PR8_armoured = "armoured|armored|heavy carapace|thick carapace|lobster|crab carapace"
+  ),
+
+  # Human-readable PR labels. Single source of truth — the UI renders this
+  # via R/ui/trait_research_ui.R, so the on-screen legend can no longer
+  # drift from the harmonization rules. Pre-PR1b the UI hard-coded a table
+  # that disagreed with config for PR2/3/4/7 (e.g., UI PR2 = "Soft tissue"
+  # vs config PR2 = "Tube"; UI PR7 = "Scales" vs config PR7 = "Spines").
+  protection_labels = list(
+    PR0 = list(label = "None / Soft body",  examples = "Jellyfish, naked sea slugs, cephalopods"),
+    PR1 = list(label = "Mucus / Cuticle",   examples = "Hagfish, some larvae"),
+    PR2 = list(label = "Tube",              examples = "Tube worms (Polychaeta), serpulids"),
+    PR3 = list(label = "Burrow refuge",     examples = "Permanent-burrow dwellers"),
+    PR4 = list(label = "Thin exoskeleton",  examples = "Copepods, small arthropods"),
+    PR5 = list(label = "Soft shell",        examples = "Molting crabs, juvenile bivalves"),
+    PR6 = list(label = "Hard shell",        examples = "Mussels, snails, barnacles"),
+    PR7 = list(label = "Spines",            examples = "Sea urchins, spiny fish"),
+    PR8 = list(label = "Armoured",          examples = "Lobsters, sturgeon, heavy carapace")
   ),
 
   # REPRODUCTIVE STRATEGY PATTERNS

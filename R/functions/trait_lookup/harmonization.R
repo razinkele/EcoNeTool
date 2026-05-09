@@ -752,12 +752,20 @@ harmonize_environmental_position <- function(depth_min = NULL, depth_max = NULL,
 #'
 #' @param skeleton_info Skeleton/protection information
 #' @param taxonomic_info Taxonomic classification
-#' @return PR code (PR0, PR2, PR3, PR5-PR8)
+#' @return PR code (PR0-PR8). Pre-PR1b PR1 and PR4 had no branches and
+#'   any matching input silently produced NA; both gaps now closed and
+#'   the labels are sourced from HARMONIZATION_CONFIG$protection_labels.
 #' @export
 harmonize_protection <- function(skeleton_info = NULL, taxonomic_info = NULL) {
 
   if (!is.null(skeleton_info)) {
     skeleton_lower <- tolower(paste(skeleton_info, collapse = " "))
+
+    # PR1 must precede PR0's "soft" check so "soft mucus" doesn't fall
+    # through to PR0; mucus implies actual protective coating.
+    if (grepl("mucus|slime|cuticle|cuticular|hagfish", skeleton_lower)) {
+      return("PR1")  # Mucus / cuticle
+    }
 
     if (grepl("none|soft|naked", skeleton_lower)) {
       return("PR0")  # No protection
@@ -769,6 +777,12 @@ harmonize_protection <- function(skeleton_info = NULL, taxonomic_info = NULL) {
 
     if (grepl("burrow", skeleton_lower)) {
       return("PR3")  # Burrow
+    }
+
+    # PR4 — chitinous / thin exoskeleton, must precede PR8's broader
+    # "exoskeleton" match. Pre-PR1b this branch was missing entirely.
+    if (grepl("chitinous|thin.*exoskeleton|small arthropod|thin.*carapace", skeleton_lower)) {
+      return("PR4")  # Thin exoskeleton
     }
 
     if (grepl("thin.*shell|soft.*shell|weak.*shell", skeleton_lower)) {
@@ -784,7 +798,7 @@ harmonize_protection <- function(skeleton_info = NULL, taxonomic_info = NULL) {
     }
 
     if (grepl("armou?r|exoskeleton|carapace|heavily", skeleton_lower)) {
-      return("PR8")  # Armoured
+      return("PR8")  # Armoured (heavy)
     }
   }
 

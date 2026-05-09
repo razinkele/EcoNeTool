@@ -51,14 +51,40 @@ test_that("PTDB volume to cm conversion is correct", {
   expect_equal(round((1e9^(1/3)) / 10000, 2), 0.1)
 })
 
-test_that("PR codes in harmonization config match 8-level system", {
+test_that("PR codes in harmonization config form a complete 9-level (PR0-PR8) system", {
   source(file.path(app_root, "R/config/harmonization_config.R"), local = TRUE)
-  pr_names <- names(HARMONIZATION_CONFIG$protection_patterns)
-  expect_true(any(grepl("PR0", pr_names)))
-  expect_true(any(grepl("PR6", pr_names)))
-  expect_true(any(grepl("PR8", pr_names)))
-  # Old system should NOT be present
-  expect_false(any(grepl("PR1", pr_names)))
+
+  # Patterns and labels must agree on the same set of PR codes; the UI
+  # legend now reads from labels (data-driven), so any drift between them
+  # would silently mislabel the on-screen table.
+  pattern_codes <- sub("_.*", "", names(HARMONIZATION_CONFIG$protection_patterns))
+  label_codes   <- names(HARMONIZATION_CONFIG$protection_labels)
+  expect_setequal(pattern_codes, paste0("PR", 0:8))
+  expect_setequal(label_codes,   paste0("PR", 0:8))
+
+  # Each label must be non-empty - prevents shipping a UI table row with
+  # blank protection or examples columns.
+  for (code in label_codes) {
+    info <- HARMONIZATION_CONFIG$protection_labels[[code]]
+    expect_true(nchar(info$label %||% "") > 0,
+                info = paste(code, "label is empty"))
+    expect_true(nchar(info$examples %||% "") > 0,
+                info = paste(code, "examples is empty"))
+  }
+})
+
+test_that("harmonize_protection covers PR1 (mucus) and PR4 (thin exoskeleton)", {
+  source(file.path(app_root, "R/config/harmonization_config.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/trait_lookup/harmonization.R"),
+         local = TRUE)
+
+  # PR1 was orphan pre-PR1b: UI listed "Mucus/slime" but no branch in
+  # harmonize_protection() and no pattern in config produced it.
+  expect_equal(harmonize_protection(skeleton_info = "mucus"),    "PR1")
+  expect_equal(harmonize_protection(skeleton_info = "slime coat"), "PR1")
+  # PR4 was outright missing from the harmonize_protection branches.
+  expect_equal(harmonize_protection(skeleton_info = "chitinous"),    "PR4")
+  expect_equal(harmonize_protection(skeleton_info = "small arthropod"), "PR4")
 })
 
 test_that("New ecosystem profiles are accessible", {

@@ -535,17 +535,20 @@ trait_research_ui <- function() {
                         tags$th("Examples")
                       )
                     ),
-                    tags$tbody(
-                      tags$tr(tags$td("PR0"), tags$td("None"), tags$td("Jellyfish, soft worms")),
-                      tags$tr(tags$td("PR1"), tags$td("Mucus/slime"), tags$td("Hagfish, some fish")),
-                      tags$tr(tags$td("PR2"), tags$td("Soft tissue"), tags$td("Sea slugs")),
-                      tags$tr(tags$td("PR3"), tags$td("Spines"), tags$td("Sea urchins, some fish")),
-                      tags$tr(tags$td("PR4"), tags$td("Tube"), tags$td("Tube worms")),
-                      tags$tr(tags$td("PR5"), tags$td("Soft shell"), tags$td("Crabs (molting)")),
-                      tags$tr(tags$td("PR6"), tags$td("Hard shell"), tags$td("Mussels, snails")),
-                      tags$tr(tags$td("PR7"), tags$td("Scales"), tags$td("Most fish")),
-                      tags$tr(tags$td("PR8"), tags$td("Armoured"), tags$td("Lobsters, sturgeon"))
-                    )
+                    # Generated from HARMONIZATION_CONFIG$protection_labels
+                    # (R/config/harmonization_config.R) so this table can no
+                    # longer drift from harmonize_protection() — fixed under
+                    # PR1b after critic flagged inconsistent labels for
+                    # PR2/3/4/7 in the previous hard-coded version.
+                    do.call(tags$tbody, lapply(
+                      names(HARMONIZATION_CONFIG$protection_labels),
+                      function(code) {
+                        info <- HARMONIZATION_CONFIG$protection_labels[[code]]
+                        tags$tr(tags$td(code),
+                                tags$td(info$label),
+                                tags$td(info$examples))
+                      }
+                    ))
                   )
                 )
               )
