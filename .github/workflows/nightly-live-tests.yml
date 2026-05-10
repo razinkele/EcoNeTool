@@ -74,6 +74,8 @@ jobs:
             any::XML
             any::plyr
             any::ape
+            any::icesVocab
+            any::icesDatras
             any::randomForest
             any::DBI
             any::RSQLite

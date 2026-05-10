@@ -103,6 +103,7 @@ source("R/functions/metaweb_core.R")
 source("R/functions/metaweb_io.R")
 source("R/functions/spatial_analysis.R")
 source("R/functions/ecobase_connection.R")
+source("R/functions/ices_lookups.R")           # ICES vocab + DATRAS abundance helpers (PR10-S)
 source("R/functions/taxonomic_api_utils.R")  # Taxonomic database integration
 source("R/functions/shark_api_utils.R")  # SHARK4R integration (Swedish ocean archives)
 source("R/functions/emodnet_habitat_utils.R")  # EMODnet habitat integration

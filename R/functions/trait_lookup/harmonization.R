@@ -4,6 +4,50 @@
 # Functions for converting raw traits to standardized trait codes (MS, FS, MB, EP, PR).
 # =============================================================================
 
+#' Convert categorical confidence label to numeric [0, 1]
+#'
+#' Single source of truth for the categorical-to-numeric mapping that
+#' shows up in three places (build script per-source literals,
+#' harmonize_fuzzy_*() return values, ML _confidence outputs). The
+#' inline `.conf_to_num` map in the build script's ontology block uses
+#' the same values; that copy can collapse onto this helper.
+#'
+#' @param label "none" / "low" / "medium" / "high" (case-insensitive)
+#' @return Numeric in [0, 1]; NA for unrecognized labels.
+#' @export
+confidence_to_num <- function(label) {
+  if (is.null(label) || length(label) == 0) return(NA_real_)
+  label <- tolower(as.character(label))
+  conf_map <- c(none = 0.0, low = 0.33, medium = 0.66, high = 1.0)
+  out <- unname(conf_map[label])
+  out[is.na(out)] <- NA_real_
+  out
+}
+
+#' Convert numeric confidence to categorical label
+#'
+#' Inverse of confidence_to_num(). Useful for UI display and CSV exports
+#' where readers expect a label. Bands chosen to round-trip with
+#' confidence_to_num: `confidence_to_label(confidence_to_num("high"))`
+#' returns "high".
+#'
+#' @param x Numeric in [0, 1].
+#' @return One of "none" / "low" / "medium" / "high" / NA.
+#' @export
+confidence_to_label <- function(x) {
+  if (is.null(x) || length(x) == 0) return(NA_character_)
+  x <- suppressWarnings(as.numeric(x))
+  out <- vapply(x, function(v) {
+    if (is.na(v))        return(NA_character_)
+    if (v <= 0)          return("none")
+    if (v <  0.34)       return("low")
+    if (v <  0.67)       return("medium")
+    "high"
+  }, character(1))
+  out
+}
+
+
 #' Get the active harmonization config, preferring per-session overrides
 #'
 #' Inside a Shiny session, returns the session-local config (set by
