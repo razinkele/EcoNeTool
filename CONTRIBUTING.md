@@ -52,6 +52,59 @@ Rscript tests/run_all_tests.R
 - **No trailing whitespace**
 - **Linting:** enforced by [lintr](https://github.com/r-lib/lintr) (see `.lintr`)
 
+## Trait-pipeline & concurrency patterns
+
+These are non-obvious conventions established by recent silent-failure
+fixes. Follow them or risk re-introducing bugs we already paid to find.
+
+- **Read `HARMONIZATION_CONFIG` via `get_harm_config()`**, not from
+  `globalenv()` directly. The accessor (defined in
+  `R/functions/trait_lookup/harmonization.R`) prefers the per-session
+  override stored in `session$userData$harm_config`. Pre-PR9α the
+  slider's writeback to `globalenv()` contaminated every concurrent
+  Shiny session. The same fallback pattern works outside Shiny (build
+  scripts, console).
+
+- **Confidence values are numeric `[0, 1]`.** Use the helpers
+  `confidence_to_num("high")` -> `1.0` and `confidence_to_label(0.7)`
+  -> `"high"` (defined in `harmonization.R`). The mapping is
+  `none = 0.0 / low = 0.33 / medium = 0.66 / high = 1.0`. Don't
+  re-define a local mapping inline.
+
+- **`warning()`, not `message()`, for swallowed errors.** Production
+  `shiny-server.conf` has `preserve_logs` commented out, so
+  `message()` output is invisible. Warnings reach the Shiny error
+  reporter, console, tests, and the nightly live-test workflow.
+
+- **`<<-` (not `<-`) inside `error = function(e)` closures.** When
+  the handler needs to mutate an outer-scope variable like
+  `result$error <<- conditionMessage(e)`. Plain `<-` only mutates the
+  closure-local copy and the change is silently lost.
+
+- **Tests: never gate `expect_*` behind `if (precondition)`.** Use
+  `skip_if(!precondition, "actionable reason")` instead. The
+  if-guarded pattern lets a failing fixture / dependency silently
+  hide its impact (testthat reports "empty test" with a tiny footnote
+  nobody reads).
+
+- **Live-API tests gate behind `RUN_LIVE_TESTS=true`** and run on the
+  nightly workflow (`.github/workflows/nightly-live-tests.yml`).
+  Inside the gate use `with_timeout()` (in `R/functions/validation_utils.R`)
+  so a slow upstream day doesn't hang the whole run.
+
+- **`data/external_traits/*.csv` are intentional header-only stubs.**
+  The build script's Sources 7-10 read them and gracefully insert 0
+  rows when empty. Per `data/external_traits/README.md`, users
+  populate them per the per-source download URL. Don't "fix" the
+  empty CSVs.
+
+- **Schema additions in `scripts/initialization/build_offline_trait_db.R`
+  must be backward-compatible.** Add new columns as nullable
+  (`TEXT` / `REAL DEFAULT 0.0`) so existing INSERT statements keep
+  working unchanged. The lookup in
+  `R/functions/trait_lookup/orchestrator.R` uses defensive
+  `DBI::dbListFields()` to handle old + new schemas.
+
 ## Commit Messages
 
 We use [Conventional Commits](https://www.conventionalcommits.org/). This drives our automatic versioning and changelog generation.
