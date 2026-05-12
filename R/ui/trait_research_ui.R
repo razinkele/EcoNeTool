@@ -461,18 +461,24 @@ trait_research_ui <- function() {
                       tags$tr(
                         tags$th("Code"),
                         tags$th("Strategy"),
-                        tags$th("Description")
+                        tags$th("Examples")
                       )
                     ),
-                    tags$tbody(
-                      tags$tr(tags$td("FS0"), tags$td("Producer"), tags$td("Photosynthetic organisms")),
-                      tags$tr(tags$td("FS1"), tags$td("Herbivore"), tags$td("Feeds on plants/algae")),
-                      tags$tr(tags$td("FS2"), tags$td("Omnivore"), tags$td("Mixed diet")),
-                      tags$tr(tags$td("FS3"), tags$td("Predator"), tags$td("Active hunting")),
-                      tags$tr(tags$td("FS4"), tags$td("Scavenger"), tags$td("Feeds on dead matter")),
-                      tags$tr(tags$td("FS5"), tags$td("Deposit feeder"), tags$td("Feeds on sediment")),
-                      tags$tr(tags$td("FS6"), tags$td("Filter feeder"), tags$td("Filters particles from water"))
-                    )
+                    # Generated from get_harm_config()$foraging_labels
+                    # (R/config/harmonization_config.R + session overrides).
+                    # Single source of truth — same data-driven pattern as
+                    # protection_labels (PR1b) and RS/TT/ST labels (PR8b
+                    # Phase B). Pre-P4 the UI hard-coded a table with the
+                    # wrong ordering (FS1=Herbivore vs config FS1=predator).
+                    {
+                      .fs_labels <- (get_harm_config() %||% HARMONIZATION_CONFIG)$foraging_labels
+                      do.call(tags$tbody, lapply(names(.fs_labels), function(code) {
+                        info <- .fs_labels[[code]]
+                        tags$tr(tags$td(code),
+                                tags$td(info$label),
+                                tags$td(info$examples))
+                      }))
+                    }
                   )
                 )
               ),

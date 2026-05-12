@@ -28,6 +28,31 @@ HARMONIZATION_CONFIG <- list(
     FS7_xylophagous = "xylophag|wood.bor|wood.eat|lignivor"
   ),
 
+  # Human-readable FS labels. Single source of truth — same data-driven
+  # UI pattern as protection_labels (PR1b) and reproductive/temperature/salinity
+  # labels (PR8b Phase B). Pre-P4 the UI hard-coded a table with the wrong
+  # ordering (FS1=Herbivore, FS2=Omnivore, FS3=Predator, FS4=Scavenger),
+  # mismatching foraging_patterns (FS1=predator, FS2=scavenger, FS3=omnivore,
+  # FS4=grazer/herbivore) and silently producing wrong harmonized codes.
+  foraging_labels = list(
+    FS0 = list(label = "Primary producer",
+               examples = "Phytoplankton, diatoms, macroalgae"),
+    FS1 = list(label = "Predator / Carnivore",
+               examples = "Active hunters: piscivorous fish, cephalopods"),
+    FS2 = list(label = "Scavenger / Detritivore",
+               examples = "Carrion feeders, detritus feeders"),
+    FS3 = list(label = "Omnivore",
+               examples = "Mixed-diet generalists"),
+    FS4 = list(label = "Grazer / Herbivore",
+               examples = "Algae scrapers, browsers, herbivorous fish"),
+    FS5 = list(label = "Deposit feeder",
+               examples = "Sediment-ingesting infauna, lugworms"),
+    FS6 = list(label = "Filter / Suspension feeder",
+               examples = "Bivalves, planktivorous fish, sponges"),
+    FS7 = list(label = "Xylophagous",
+               examples = "Wood-borers: shipworms (Teredinidae), gribbles")
+  ),
+
   # MOBILITY PATTERNS
   mobility_patterns = list(
     MB1_sessile = "sessile|attached|fixed|cemented|anchored|immobile",
