@@ -980,6 +980,29 @@ harmonize_temperature_tolerance <- function(temperature_text) {
   return(NA_character_)
 }
 
+#' Band a numeric coral thermal-tolerance maximum into a TT code
+#'
+#' CoralTraits supplies thermal tolerance as a numeric maximum (degrees C),
+#' not a biogeographic text description, so harmonize_temperature_tolerance()
+#' (regex over text) cannot consume it. This is the single source of truth for
+#' the `> 30 -> TT4 / > 25 -> TT3 / else TT2` banding, shared by the live
+#' orchestrator path and the offline-DB build writer. NA-safe: NULL / NA /
+#' non-numeric input returns NA (the former inline orchestrator banding
+#' crashed on NA via `if (NA > 30)`).
+#'
+#' @param thermal_max Numeric (or numeric-coercible) max thermal tolerance, degrees C.
+#' @return Character, TT code (TT2-TT4) or NA_character_.
+#' @export
+coral_thermal_to_tt <- function(thermal_max) {
+  v <- suppressWarnings(as.numeric(thermal_max))
+  if (length(v) == 0 || is.na(v)) {
+    return(NA_character_)
+  }
+  if (v > 30) return("TT4")
+  if (v > 25) return("TT3")
+  "TT2"
+}
+
 #' Harmonize Salinity Tolerance
 #' @param salinity_text Character, raw salinity/habitat description
 #' @return Character, ST code (ST1-ST5) or NA

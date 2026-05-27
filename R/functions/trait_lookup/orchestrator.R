@@ -917,14 +917,9 @@ lookup_species_traits <- function(species_name,
         result$RS <- harmonize_reproductive_strategy(coral_data$traits$reproductive_mode)
         result$RS_source <- "CoralTraits"
       }
-      if (!is.null(coral_data$traits$thermal_tolerance)) {
-        if (coral_data$traits$thermal_tolerance > 30) {
-          result$TT <- "TT4"
-        } else if (coral_data$traits$thermal_tolerance > 25) {
-          result$TT <- "TT3"
-        } else {
-          result$TT <- "TT2"
-        }
+      tt_code <- coral_thermal_to_tt(coral_data$traits$thermal_tolerance)
+      if (!is.na(tt_code)) {
+        result$TT <- tt_code
         result$TT_source <- "CoralTraits"
       }
       if (!is.null(coral_data$traits$depth_min)) result$depth_min <- coral_data$traits$depth_min

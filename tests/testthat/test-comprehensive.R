@@ -88,6 +88,21 @@ test_that("harmonize_salinity_tolerance handles edge cases", {
   expect_equal(harmonize_salinity_tolerance("polyhaline"), "ST4")
 })
 
+test_that("coral_thermal_to_tt bands numeric thermal tolerance into TT codes", {
+  # Banding mirrors the orchestrator's CoralTraits logic: >30 / >25 are strict.
+  expect_equal(coral_thermal_to_tt(31),   "TT4")
+  expect_equal(coral_thermal_to_tt(30),   "TT3")   # boundary: not > 30
+  expect_equal(coral_thermal_to_tt(26),   "TT3")
+  expect_equal(coral_thermal_to_tt(25),   "TT2")   # boundary: not > 25
+  expect_equal(coral_thermal_to_tt(18),   "TT2")
+  # Numeric-coercible strings (read.csv may yield character) band the same.
+  expect_equal(coral_thermal_to_tt("28"), "TT3")
+  # NA-safe: the former inline orchestrator banding crashed on `if (NA > 30)`.
+  expect_equal(coral_thermal_to_tt(NA),     NA_character_)
+  expect_equal(coral_thermal_to_tt(NULL),   NA_character_)
+  expect_equal(coral_thermal_to_tt("warm"), NA_character_)
+})
+
 # =============================================================================
 # 6. CSV .extract helpers edge cases
 # =============================================================================

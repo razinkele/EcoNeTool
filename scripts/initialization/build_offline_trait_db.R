@@ -236,7 +236,14 @@ source_counts <- list()
 # protection_to_pr() defined above. Morphology max_length encodes the
 # size as numeric-as-string in trait_modality, NOT as a fuzzy modality —
 # handle that path separately.
-.conf_to_num <- c(none = 0.0, low = 0.33, medium = 0.66, high = 1.0)
+# Numeric confidence via the canonical confidence_to_num() helper
+# (R/functions/trait_lookup/harmonization.R), keeping the build's
+# "unknown / missing -> 0.0" default. Folds the former inline
+# `.conf_to_num` literal map onto the single source of truth (PR2 tidy-up).
+.conf_num <- function(label) {
+  v <- confidence_to_num(label)
+  if (length(v) == 0 || is.na(v)) 0.0 else v
+}
 
 cat("--- Source 1/10: Ontology ---\n")
 ontology_path <- file.path(project_root, "data", "ontology_traits.csv")
@@ -310,9 +317,9 @@ if (!file.exists(ontology_path)) {
         sp, aphia_id, NA_character_,
         ms_val, fs$class, mb$class, ep$class, pr_val,
         ms_conf,
-        unname(.conf_to_num[fs$confidence] %||% 0.0),
-        unname(.conf_to_num[mb$confidence] %||% 0.0),
-        unname(.conf_to_num[ep$confidence] %||% 0.0),
+        .conf_num(fs$confidence),
+        .conf_num(mb$confidence),
+        .conf_num(ep$confidence),
         pr_conf,
         "ontology", NA_character_, NA_character_
       )
@@ -733,6 +740,9 @@ process_external_csv <- function(csv_path, source_label, conf, col_map) {
     } else NA_character_
     tt_val <- if (!is.null(col_map$tt) && col_map$tt %in% names(df)) {
       harmonize_temperature_tolerance(df[[col_map$tt]][i])
+    } else if (!is.null(col_map$tt_numeric) && col_map$tt_numeric %in% names(df)) {
+      # CoralTraits-style numeric thermal maximum (degrees C), not text.
+      coral_thermal_to_tt(df[[col_map$tt_numeric]][i])
     } else NA_character_
     st_val <- if (!is.null(col_map$st) && col_map$st %in% names(df)) {
       harmonize_salinity_tolerance(df[[col_map$st]][i])
@@ -795,15 +805,16 @@ n <- process_external_csv(
 )
 source_counts[["cefas"]] <- n
 
-# Source 10/10 - CoralTraits (RS only - thermal_tolerance_max is numeric and
-# requires the CoralTraits-specific TT2/TT3/TT4 banding logic in the
-# orchestrator; defer the TT writer to a follow-up).
+# Source 10/10 - CoralTraits (RS + TT). thermal_tolerance_max is numeric, so it
+# routes through coral_thermal_to_tt() (the shared >30/>25 banding helper) via
+# the col_map$tt_numeric path rather than the text harmonize_temperature_tolerance.
 cat("--- Source 10/10: CoralTraits ---\n")
 n <- process_external_csv(
   csv_path     = file.path(project_root, "data", "external_traits", "coral_traits.csv"),
   source_label = "coral",
   conf         = 0.6,
-  col_map      = list(rs = "reproductive_mode")
+  col_map      = list(rs = "reproductive_mode",
+                      tt_numeric = "thermal_tolerance_max")
 )
 source_counts[["coral"]] <- n
 
