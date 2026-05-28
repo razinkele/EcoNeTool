@@ -84,3 +84,41 @@ test_that("lookup_ices_subdivision rejects invalid coordinates", {
     expect_match(res$error, "lon/lat invalid", fixed = TRUE, info = label)
   }
 })
+
+# Square polygon helper for ICES area fixtures (used by Tasks 2-4 tests).
+.sq <- function(xmin, xmax, ymin, ymax) {
+  sf::st_polygon(list(rbind(
+    c(xmin, ymin), c(xmax, ymin), c(xmax, ymax), c(xmin, ymax), c(xmin, ymin)
+  )))
+}
+
+test_that("lookup_ices_subdivision maps a point to its ICES area (fixture)", {
+  skip_if_not_installed("sf")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  fixture <- sf::st_sf(
+    Area_Full  = c("27.3.d.27", "27.3.d.28.2"),
+    Major_FA   = c("27", "27"),
+    SubArea    = c("3", "3"),
+    Division   = c("d", "d"),
+    SubDivisio = c("27", "28"),
+    Unit       = c(" ", "2"),                 # live data uses " " for empty
+    geometry   = sf::st_sfc(.sq(18, 19, 56, 57), .sq(19, 20, 56, 57), crs = 4326)
+  )
+  .ices_cache$areas_sf <- fixture
+  on.exit(
+    if (!is.null(.ices_cache$areas_sf)) rm("areas_sf", envir = .ices_cache),
+    add = TRUE
+  )
+
+  a <- lookup_ices_subdivision(18.5, 56.5)
+  expect_true(a$success)
+  expect_equal(a$data$area_full, "27.3.d.27")
+  expect_equal(a$data$subdivision, "27")
+  expect_equal(a$data$unit, "")               # " " trimmed to ""
+
+  b <- lookup_ices_subdivision(19.5, 56.5)
+  expect_equal(b$data$area_full, "27.3.d.28.2")
+  expect_equal(b$data$unit, "2")
+})
