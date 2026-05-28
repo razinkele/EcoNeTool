@@ -21,6 +21,17 @@
 # already-wrapped result lists; callers don't see this directly.
 .ices_cache <- new.env(parent = emptyenv())
 
+# Official ICES Areas layer (gis.ices.dk GeoServer WFS, GeoJSON output).
+# outputFormat=application/json is REQUIRED: that output is lon/lat with a
+# null CRS (-> WGS84); the GML output is lat/lon (axis-swapped). Never add an
+# srsName parameter. (Verified live; see the design spec.)
+.ICES_AREAS_WFS_URL <- paste0(
+  "https://gis.ices.dk/geoserver/ows?service=WFS&version=2.0.0",
+  "&request=GetFeature&typeNames=ices_eg:ICES_AREAS_VISA_SIMPLE_5KM",
+  "&outputFormat=application/json"
+)
+.ICES_AREAS_CACHE_FILE <- file.path("cache", "spatial", "ices_areas.gpkg")
+
 
 #' List available ICES area codes
 #'
@@ -218,4 +229,93 @@ lookup_datras_indices <- function(aphia_id,
   result$success <- TRUE
   .ices_cache[[cache_key]] <- result
   result
+}
+
+
+#' Look up the ICES Statistical Area code for a (lon, lat) point
+#'
+#' Point-in-polygon against the ICES Areas layer. Returns the MOST SPECIFIC
+#' code the layer carries for the point (a Division, Subdivision, or Unit;
+#' see the design spec) - despite the name, not always a Subdivision.
+#'
+#' @param lon,lat Numeric scalars, WGS84 degrees.
+#' @param layer_path Optional local .gpkg/.geojson override; NULL = cache/download.
+#' @param timeout Network budget (s) for the one-time layer fetch.
+#' @return list(success, source = "ICES_GIS_WFS", data, error). On success,
+#'   `data` is a 1-row data.frame: area_full, major_fa, subarea, division,
+#'   subdivision, unit (component columns may be "").
+#' @export
+lookup_ices_subdivision <- function(lon, lat, layer_path = NULL, timeout = 60) {
+  result <- list(success = FALSE, source = "ICES_GIS_WFS",
+                 data = NULL, error = NA_character_)
+
+  if (!is.numeric(lon) || !is.numeric(lat) ||
+      length(lon) != 1 || length(lat) != 1 ||
+      !is.finite(lon) || !is.finite(lat) ||
+      lon < -180 || lon > 180 || lat < -90 || lat > 90) {
+    result$error <- "lon/lat invalid (need finite scalars in [-180,180]/[-90,90])"
+    return(result)
+  }
+
+  if (!requireNamespace("sf", quietly = TRUE)) {
+    result$error <- "sf package not installed"
+    return(result)
+  }
+
+  areas <- tryCatch(
+    .load_ices_areas(layer_path = layer_path, timeout = timeout),
+    error = function(e) {
+      warning("[lookup_ices_subdivision] layer load failed: ",
+              conditionMessage(e), call. = FALSE)
+      result$error <<- conditionMessage(e)   # <<- mutates the OUTER result
+      NULL
+    }
+  )
+  if (is.null(areas)) return(result)
+
+  # Point-in-polygon. The 5km-simplified polygons are S2-invalid, so run
+  # planar (S2 off) and restore on exit (mirrors emodnet_habitat_utils.R).
+  old_s2 <- sf::sf_use_s2(); sf::sf_use_s2(FALSE)
+  on.exit(sf::sf_use_s2(old_s2), add = TRUE)
+
+  point <- sf::st_sfc(sf::st_point(c(lon, lat)), crs = 4326)
+  point <- sf::st_transform(point, sf::st_crs(areas))
+  hits  <- sf::st_filter(areas, point, .predicate = sf::st_intersects)
+
+  if (nrow(hits) == 0) {
+    result$error <- "no ICES area at this point (on land or outside ICES Area 27)"
+    return(result)
+  }
+  if (nrow(hits) > 1) {
+    # Deterministic tie-break: longest Area_Full first (most specific), then
+    # lexicographic as a stable secondary key so equal-nchar ties don't depend
+    # on WFS feature order. Warn so non-determinism is visible.
+    af <- as.character(hits$Area_Full)
+    hits <- hits[order(nchar(af), af, decreasing = TRUE), ][1, ]
+    warning("[lookup_ices_subdivision] point on a shared boundary; returning ",
+            "most specific area ", hits$Area_Full[1], call. = FALSE)
+  }
+
+  .clean <- function(x) {
+    v <- trimws(as.character(x))
+    ifelse(is.na(v), "", v)
+  }
+  result$data <- data.frame(
+    area_full   = .clean(hits$Area_Full[1]),
+    major_fa    = .clean(hits$Major_FA[1]),
+    subarea     = .clean(hits$SubArea[1]),
+    division    = .clean(hits$Division[1]),
+    subdivision = .clean(hits$SubDivisio[1]),
+    unit        = .clean(hits$Unit[1]),
+    stringsAsFactors = FALSE
+  )
+  result$success <- TRUE
+  result
+}
+
+
+# TEMPORARY stub - full version (download + cache) lands in Task 4.
+.load_ices_areas <- function(layer_path = NULL, timeout = 60) {
+  if (!is.null(.ices_cache$areas_sf)) return(.ices_cache$areas_sf)
+  stop("ICES areas layer not loaded (stub)")
 }

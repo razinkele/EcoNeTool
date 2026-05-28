@@ -70,3 +70,17 @@ test_that("lookup_datras_indices returns structured data for cod (live)", {
     expect_true(nzchar(res$error))
   }
 })
+
+test_that("lookup_ices_subdivision rejects invalid coordinates", {
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  for (bad in list(c(NA_real_, 57), c(Inf, 57), c(200, 57),
+                   c(19, 200), c(19, -91))) {
+    label <- paste(bad, collapse = ",")
+    res <- lookup_ices_subdivision(bad[1], bad[2])
+    expect_false(res$success, info = label)
+    expect_equal(res$source, "ICES_GIS_WFS", info = label)
+    expect_match(res$error, "lon/lat invalid", fixed = TRUE, info = label)
+  }
+})
