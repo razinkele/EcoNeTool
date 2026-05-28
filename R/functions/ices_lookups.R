@@ -314,8 +314,39 @@ lookup_ices_subdivision <- function(lon, lat, layer_path = NULL, timeout = 60) {
 }
 
 
-# TEMPORARY stub - full version (download + cache) lands in Task 4.
+#' Load (and cache) the ICES Areas sf layer. Source precedence:
+#' in-session cache -> layer_path -> on-disk gpkg cache -> WFS download.
 .load_ices_areas <- function(layer_path = NULL, timeout = 60) {
   if (!is.null(.ices_cache$areas_sf)) return(.ices_cache$areas_sf)
-  stop("ICES areas layer not loaded (stub)")
+
+  src <- NULL
+  write_cache <- FALSE
+  if (!is.null(layer_path) && file.exists(layer_path)) {
+    src <- layer_path
+  } else if (file.exists(.ICES_AREAS_CACHE_FILE)) {
+    src <- .ICES_AREAS_CACHE_FILE
+  } else {
+    # Two-step download: options(timeout) bounds libcurl C-level I/O (a real
+    # network timeout); with_timeout()/setTimeLimit would NOT bound GDAL/curl.
+    tmp <- tempfile(fileext = ".geojson")
+    old_to <- options(timeout = timeout)
+    on.exit(options(old_to), add = TRUE)
+    utils::download.file(.ICES_AREAS_WFS_URL, tmp,
+                         mode = "wb", method = "libcurl", quiet = TRUE)
+    src <- tmp
+    write_cache <- TRUE
+  }
+
+  areas <- sf::st_read(src, quiet = TRUE)
+  if (is.na(sf::st_crs(areas))) sf::st_crs(areas) <- 4326   # GeoJSON crs:null
+  areas <- sf::st_make_valid(areas)                         # 5km polys S2-invalid
+
+  if (isTRUE(write_cache)) {
+    dir.create(dirname(.ICES_AREAS_CACHE_FILE),
+               recursive = TRUE, showWarnings = FALSE)
+    sf::st_write(areas, .ICES_AREAS_CACHE_FILE, quiet = TRUE, delete_dsn = TRUE)
+  }
+
+  .ices_cache$areas_sf <- areas
+  areas
 }

@@ -169,3 +169,66 @@ test_that("lookup_ices_subdivision picks the most specific area on overlap + war
   expect_true(res$success)
   expect_equal(res$data$area_full, "27.3.d.28.2")   # longest Area_Full wins
 })
+
+test_that("lookup_ices_subdivision loads from a layer_path file when cache empty", {
+  skip_if_not_installed("sf")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  if (!is.null(.ices_cache$areas_sf)) rm("areas_sf", envir = .ices_cache)
+  on.exit(
+    if (!is.null(.ices_cache$areas_sf)) rm("areas_sf", envir = .ices_cache),
+    add = TRUE
+  )
+
+  fixture <- sf::st_sf(
+    Area_Full = "27.3.d.27", Major_FA = "27", SubArea = "3",
+    Division = "d", SubDivisio = "27", Unit = " ",
+    geometry = sf::st_sfc(.sq(18, 19, 56, 57), crs = 4326)
+  )
+  tmp <- tempfile(fileext = ".gpkg")
+  on.exit(unlink(tmp), add = TRUE)
+  sf::st_write(fixture, tmp, quiet = TRUE)
+
+  res <- lookup_ices_subdivision(18.5, 56.5, layer_path = tmp)
+  expect_true(res$success)
+  expect_equal(res$data$area_full, "27.3.d.27")
+})
+
+test_that("lookup_ices_subdivision surfaces download failures as structured failure + warning", {
+  skip_if_not_installed("sf")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  # Force the download branch: empty in-session cache, point on-disk cache
+  # at a non-existent path, point the URL at an unresolvable host.
+  if (!is.null(.ices_cache$areas_sf)) rm("areas_sf", envir = .ices_cache)
+  .ICES_AREAS_CACHE_FILE <- tempfile(fileext = ".gpkg")            # nonexistent
+  .ICES_AREAS_WFS_URL    <- "http://invalid.example.invalid/nope"  # unresolvable
+
+  expect_warning(
+    res <- lookup_ices_subdivision(19, 57, timeout = 2),
+    "layer load failed"
+  )
+  expect_false(res$success)
+  expect_true(nzchar(res$error) && !is.na(res$error))
+})
+
+test_that("lookup_ices_subdivision resolves a real Baltic point (live)", {
+  skip_if_not(identical(Sys.getenv("RUN_LIVE_TESTS"), "true"),
+              "Live ICES WFS test; set RUN_LIVE_TESTS=true to enable")
+  skip_if_not_installed("sf")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  # Force a real network fetch: clear BOTH the in-session env entry and the
+  # on-disk gpkg cache. Otherwise a prior session's cache would silently
+  # short-circuit the download path, defeating the live test. The function
+  # will re-create cache/spatial/ices_areas.gpkg on success.
+  if (!is.null(.ices_cache$areas_sf)) rm("areas_sf", envir = .ices_cache)
+  if (file.exists(.ICES_AREAS_CACHE_FILE)) unlink(.ICES_AREAS_CACHE_FILE)
+
+  res <- lookup_ices_subdivision(19.0, 57.0)
+  expect_true(res$success)
+  expect_match(res$data$area_full, "^27\\.3\\.")
+})
