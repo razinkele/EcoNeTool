@@ -122,3 +122,50 @@ test_that("lookup_ices_subdivision maps a point to its ICES area (fixture)", {
   expect_equal(b$data$area_full, "27.3.d.28.2")
   expect_equal(b$data$unit, "2")
 })
+
+test_that("lookup_ices_subdivision fails cleanly for a point in no area", {
+  skip_if_not_installed("sf")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  .ices_cache$areas_sf <- sf::st_sf(
+    Area_Full = "27.3.d.27", Major_FA = "27", SubArea = "3",
+    Division = "d", SubDivisio = "27", Unit = " ",
+    geometry = sf::st_sfc(.sq(18, 19, 56, 57), crs = 4326)
+  )
+  on.exit(
+    if (!is.null(.ices_cache$areas_sf)) rm("areas_sf", envir = .ices_cache),
+    add = TRUE
+  )
+
+  res <- lookup_ices_subdivision(25, 56.5)   # east of the only polygon
+  expect_false(res$success)
+  expect_match(res$error, "no ICES area")
+})
+
+test_that("lookup_ices_subdivision picks the most specific area on overlap + warns", {
+  skip_if_not_installed("sf")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  .ices_cache$areas_sf <- sf::st_sf(
+    Area_Full  = c("27.3", "27.3.d.28.2"),     # coarse + specific, overlapping
+    Major_FA   = c("27", "27"),
+    SubArea    = c("3", "3"),
+    Division   = c("", "d"),
+    SubDivisio = c("", "28"),
+    Unit       = c("", "2"),
+    geometry   = sf::st_sfc(.sq(18, 21, 56, 58), .sq(19, 20, 56.5, 57.5), crs = 4326)
+  )
+  on.exit(
+    if (!is.null(.ices_cache$areas_sf)) rm("areas_sf", envir = .ices_cache),
+    add = TRUE
+  )
+
+  expect_warning(
+    res <- lookup_ices_subdivision(19.5, 57),  # inside BOTH polygons
+    "boundary|specific"
+  )
+  expect_true(res$success)
+  expect_equal(res$data$area_full, "27.3.d.28.2")   # longest Area_Full wins
+})
