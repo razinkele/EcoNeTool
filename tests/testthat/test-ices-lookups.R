@@ -35,6 +35,151 @@ test_that("ICES helpers return structured results (offline contract)", {
   expect_true(nzchar(bad2$error))
 })
 
+test_that(".datras_reshape_indices yields one abundance row per IndexArea", {
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  # A getIndices()-shaped frame: ICES returns one row per IndexArea
+  # (e.g. BITS splits Baltic cod into East/West stocks) and the abundance
+  # lives in Age_0..Age_N columns — there is NO single "Index" column.
+  # The reshape must (a) keep both areas as separate rows and (b) sum the
+  # age columns into a numeric abundance_index (NA treated as 0).
+  idx <- data.frame(
+    Survey    = c("BITS", "BITS"),
+    Year      = c(2023, 2023),
+    Quarter   = c(1L, 1L),
+    AphiaID   = c(126436, 126436),
+    Species   = c("Gadus morhua", "Gadus morhua"),
+    IndexArea = c("BS_CodEast", "BS_CodWest"),
+    Age_0     = c(10, 5),
+    Age_1     = c(20, 5),
+    Age_2     = c(0, NA_real_),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+
+  out <- .datras_reshape_indices(idx, "BITS", 2023)
+
+  expect_s3_class(out, "data.frame")
+  expect_equal(nrow(out), 2)                                  # one row per IndexArea
+  expect_true(all(c("survey", "year", "quarter",
+                    "index_area", "abundance_index") %in% names(out)))
+  expect_equal(out$index_area, c("BS_CodEast", "BS_CodWest"))
+  expect_equal(out$abundance_index, c(30, 10))                # rowSums of Age_*, na.rm
+  expect_false("biomass_index" %in% names(out))               # corrected naming
+})
+
+test_that("lookup_datras_indices passes species + real quarters and returns abundance rows", {
+  skip_if_not_installed("icesDatras")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  captured <- new.env()
+  captured$species  <- NULL
+  captured$quarters <- integer(0)
+
+  # Mock the three icesDatras calls so the function's call-construction
+  # logic is exercised without network: it must resolve REAL quarters
+  # (BITS -> 1, 4), never quarter = -1, and pass species = aphia_id.
+  testthat::local_mocked_bindings(
+    getSurveyYearList = function(survey) 2023L,
+    getSurveyYearQuarterList = function(survey, year) c(1L, 4L),
+    getIndices = function(survey, year, quarter, species) {
+      captured$species  <- species
+      captured$quarters <- c(captured$quarters, quarter)
+      data.frame(
+        Survey    = "BITS", Year = 2023L, Quarter = quarter,
+        AphiaID   = 126436, Species = "Gadus morhua",
+        IndexArea = c("BS_CodEast", "BS_CodWest"),   # two stocks per call
+        Age_0     = c(1, 2), Age_1 = c(3, 4),
+        stringsAsFactors = FALSE, check.names = FALSE
+      )
+    },
+    .package = "icesDatras"
+  )
+
+  res <- lookup_datras_indices(126436, surveys = "BITS", timeout = 5)
+
+  expect_true(res$success)
+  expect_equal(captured$species, 126436)              # species threaded through
+  expect_false(-1 %in% captured$quarters)             # NOT the rejected quarter=-1
+  expect_true(all(captured$quarters %in% c(1L, 4L)))  # real quarters used
+  expect_true(all(c("survey", "year", "quarter", "index_area",
+                    "abundance_index") %in% names(res$data)))
+  expect_false("biomass_index" %in% names(res$data))  # corrected naming
+  expect_equal(nrow(res$data), 4L)                    # 2 IndexAreas x 2 quarters
+})
+
+test_that("lookup_datras_indices steps back to the most recent year WITH indices", {
+  skip_if_not_installed("icesDatras")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  # The year list advertises years (e.g. 2026) before their indices are
+  # computed (~6-18 months later). max(year list) is therefore often empty;
+  # the function must step back to the most recent year that returns rows.
+  testthat::local_mocked_bindings(
+    getSurveyYearList = function(survey) c(2024L, 2025L, 2026L),
+    getSurveyYearQuarterList = function(survey, year) 1L,
+    getIndices = function(survey, year, quarter, species) {
+      if (year == 2025L) {
+        data.frame(
+          Survey = "BITS", Year = 2025L, Quarter = quarter,
+          IndexArea = "BS_CodEast", Age_0 = 7, Age_1 = 3,
+          stringsAsFactors = FALSE, check.names = FALSE
+        )
+      } else {
+        # 2026 (and 2024) have no computed indices yet / anymore
+        data.frame()
+      }
+    },
+    .package = "icesDatras"
+  )
+
+  res <- lookup_datras_indices(126436, surveys = "BITS", timeout = 5)
+
+  expect_true(res$success)
+  expect_equal(unique(res$data$year), 2025L)   # stepped back from empty 2026
+  expect_equal(res$data$abundance_index, 10)   # 7 + 3
+})
+
+test_that("lookup_datras_indices returns ALL explicitly-requested years (no step-back)", {
+  skip_if_not_installed("icesDatras")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  # The newest-first step-back only applies when `years` is NULL. When a
+  # caller names specific years, every requested year that has data must be
+  # returned, not just the most recent one.
+  testthat::local_mocked_bindings(
+    getSurveyYearQuarterList = function(survey, year) 1L,
+    getIndices = function(survey, year, quarter, species) {
+      data.frame(
+        Survey = "BITS", Year = year, Quarter = quarter,
+        IndexArea = "BS_CodEast", Age_0 = 1,
+        stringsAsFactors = FALSE, check.names = FALSE
+      )
+    },
+    .package = "icesDatras"
+  )
+
+  res <- lookup_datras_indices(126436, surveys = "BITS",
+                               years = c(2024L, 2025L), timeout = 5)
+
+  expect_true(res$success)
+  expect_setequal(unique(res$data$year), c(2024L, 2025L))
+})
+
+test_that("lookup_datras_indices defaults exclude BIAS (not a DATRAS survey)", {
+  skip_if_not_installed("icesDatras")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  default_surveys <- eval(formals(lookup_datras_indices)$surveys)
+  expect_false("BIAS" %in% default_surveys)
+  expect_setequal(default_surveys, c("BITS", "NS-IBTS", "BTS"))
+})
+
 test_that("get_ices_area_codes returns a non-empty data.frame (live)", {
   skip_if_no_live_tests()
   skip_if_not_installed("icesVocab")
@@ -60,15 +205,19 @@ test_that("lookup_datras_indices returns structured data for cod (live)", {
     surveys  = "BITS",
     timeout  = 60
   )
-  # Either we got data (success) or DATRAS legitimately had no rows
-  # for the requested year; both are valid outcomes for a live call.
-  if (res$success) {
-    expect_s3_class(res$data, "data.frame")
-    expect_true(all(c("survey", "year", "biomass_index") %in% names(res$data)))
-    expect_true(all(res$data$survey == "BITS"))
-  } else {
-    expect_true(nzchar(res$error))
-  }
+  # A live network call can legitimately fail (API down) or find no indices
+  # for the most-recent year yet. skip_if (not the if/else "empty test"
+  # anti-pattern) makes that visible as a skip with a reason, while still
+  # asserting the real contract whenever data IS returned.
+  skip_if(!isTRUE(res$success),
+          paste("DATRAS returned no cod indices for BITS:", res$error))
+  expect_s3_class(res$data, "data.frame")
+  expect_true(all(c("survey", "year", "quarter",
+                    "index_area", "abundance_index") %in% names(res$data)))
+  expect_false("biomass_index" %in% names(res$data))
+  expect_true(all(res$data$survey == "BITS"))
+  expect_true(is.numeric(res$data$abundance_index))
+  expect_gt(nrow(res$data), 0)
 })
 
 test_that("lookup_ices_subdivision rejects invalid coordinates", {

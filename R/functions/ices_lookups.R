@@ -143,6 +143,50 @@ get_ices_area_detail <- function(code, timeout = 30) {
 }
 
 
+#' Reshape a getIndices() frame into tidy abundance rows
+#'
+#' icesDatras::getIndices() returns one row per IndexArea (e.g. BITS splits
+#' Baltic cod into East/West stocks) and spreads the abundance across
+#' Age_0..Age_N columns — there is NO single "Index" column (verified live
+#' against icesDatras 1.4.1; see the R3 design spec). This collapses each
+#' row's age columns into a numeric `abundance_index` (total numbers-per-hour
+#' summed across ages, NA treated as 0) and keeps `index_area` as a row
+#' dimension so stock-area structure (East/West cod, roundfish areas) isn't
+#' silently dropped. The data is abundance, NOT biomass.
+#'
+#' Age column names from the WFS can be messy (e.g. `Age_7 xsi:nil="true"`),
+#' so they are matched by the `^Age_` prefix and coerced defensively.
+#'
+#' @param idx data.frame as returned by getIndices().
+#' @param svy,yr Survey code / year, used as fallbacks if the frame lacks
+#'   Survey/Year columns.
+#' @return data.frame: survey, year, quarter, index_area, abundance_index.
+#' @keywords internal
+.datras_reshape_indices <- function(idx, svy, yr) {
+  age_cols <- grep("^Age_", names(idx), value = TRUE)
+  if (length(age_cols) == 0) {
+    abundance_index <- rep(NA_real_, nrow(idx))
+  } else {
+    age_mat <- suppressWarnings(
+      vapply(idx[age_cols],
+             function(col) as.numeric(as.character(col)),
+             numeric(nrow(idx)))
+    )
+    if (is.null(dim(age_mat))) age_mat <- matrix(age_mat, nrow = nrow(idx))
+    abundance_index <- rowSums(age_mat, na.rm = TRUE)
+  }
+
+  data.frame(
+    survey          = if ("Survey" %in% names(idx)) as.character(idx$Survey) else svy,
+    year            = if ("Year" %in% names(idx)) as.integer(idx$Year) else as.integer(yr),
+    quarter         = if ("Quarter" %in% names(idx)) as.integer(idx$Quarter) else NA_integer_,
+    index_area      = if ("IndexArea" %in% names(idx)) as.character(idx$IndexArea) else NA_character_,
+    abundance_index = abundance_index,
+    stringsAsFactors = FALSE
+  )
+}
+
+
 #' Look up DATRAS abundance indices for a species
 #'
 #' Pulls survey indices from icesDatras for one species across one or
@@ -151,21 +195,25 @@ get_ices_area_detail <- function(code, timeout = 30) {
 #' numbers is deferred to a future scope-L follow-up (the science of
 #' reconciling CPUE with mass-balance constraints needs domain input).
 #'
-#' @param aphia_id WoRMS AphiaID for the species.
-#' @param surveys Character vector of ICES survey codes to query.
-#'   Defaults to the four MARBEFES study-region surveys.
-#' @param years Optional integer vector of years; NULL = use the
-#'   most recent year icesDatras reports for each survey.
+#' @param aphia_id WoRMS AphiaID for the species. Passed to getIndices()
+#'   as `species`, so DATRAS filters server-side.
+#' @param surveys Character vector of ICES DATRAS survey codes to query.
+#'   Defaults to the three MARBEFES study-region trawl surveys. (BIAS is
+#'   NOT a DATRAS survey - it is the Baltic acoustic survey, whose indices
+#'   live in a different ICES database - so it is excluded.)
+#' @param years Optional integer vector of years; NULL = use the most
+#'   recent year that actually has computed indices for each survey.
 #' @param timeout Per-call network budget in seconds.
 #' @return list(success, source = "DATRAS", data, error). On success
 #'   `data` is a data.frame with columns survey / year / quarter /
-#'   biomass_index (or NA when icesDatras returns nothing for that
-#'   survey-year combo). Failures populate `error` and warning() so
-#'   the failure mode is visible.
+#'   index_area / abundance_index. `abundance_index` is the sum across
+#'   the Age_0..Age_N columns getIndices() returns (total numbers-per-hour,
+#'   abundance NOT biomass); one row per (survey, year, quarter, IndexArea)
+#'   so stock-area structure (e.g. East/West Baltic cod) is preserved.
+#'   Failures populate `error` and warning() so the failure mode is visible.
 #' @export
 lookup_datras_indices <- function(aphia_id,
-                                  surveys = c("BITS", "NS-IBTS",
-                                              "BTS",  "BIAS"),
+                                  surveys = c("BITS", "NS-IBTS", "BTS"),
                                   years = NULL,
                                   timeout = 30) {
   result <- list(
@@ -190,9 +238,17 @@ lookup_datras_indices <- function(aphia_id,
                       if (is.null(years)) "" else paste0("_", paste(years, collapse = ".")))
   if (!is.null(.ices_cache[[cache_key]])) return(.ices_cache[[cache_key]])
 
+  # When `years` is NULL we search newest-first and stop at the first year
+  # that actually returns indices, but only step back a bounded number of
+  # years so a species genuinely absent from a survey doesn't trigger a long
+  # scan back through the whole time series.
+  max_year_lookback <- 3L
+
   rows <- list()
   for (svy in surveys) {
-    survey_years <- if (!is.null(years)) years else {
+    survey_years <- if (!is.null(years)) {
+      sort(as.integer(years), decreasing = TRUE)
+    } else {
       yl <- tryCatch(with_timeout(
         icesDatras::getSurveyYearList(svy),
         timeout = timeout, on_timeout = NULL
@@ -202,47 +258,55 @@ lookup_datras_indices <- function(aphia_id,
                 call. = FALSE)
         next
       }
-      max(as.integer(yl), na.rm = TRUE)  # most recent year
+      # newest years first, bounded to the lookback window
+      head(sort(as.integer(yl), decreasing = TRUE), max_year_lookback)
     }
 
+    got_rows_for_survey <- FALSE
     for (yr in survey_years) {
-      idx <- tryCatch(with_timeout(
-        icesDatras::getIndices(svy, yr, quarter = -1),
+      # Step-back stops at the most recent indexed year ONLY when `years`
+      # was NULL; explicit years are all returned.
+      if (is.null(years) && isTRUE(got_rows_for_survey)) break
+      # getIndices requires a real quarter (it rejects quarter = -1 with a
+      # bare FALSE); resolve the survey-year's actual quarters first.
+      quarters <- tryCatch(with_timeout(
+        icesDatras::getSurveyYearQuarterList(svy, yr),
         timeout = timeout, on_timeout = NULL
-      ), error = function(e) {
-        warning(sprintf("[lookup_datras_indices] %s %d failed: %s",
-                        svy, yr, conditionMessage(e)), call. = FALSE)
-        NULL
-      })
-
-      # Guard the nrow() check: icesDatras occasionally returns a non-data.frame
-      # (e.g. a list payload on certain malformed responses), and nrow(non-df)
-      # is NULL -> `if (NULL == 0)` errors with "missing value where TRUE/FALSE
-      # needed". Surface the upstream weirdness via warning() and skip the year.
-      if (is.null(idx)) next
-      if (!is.data.frame(idx)) {
-        warning(sprintf("[lookup_datras_indices] %s %d: icesDatras returned %s, not a data.frame; skipping",
-                        svy, yr, paste(class(idx), collapse = "/")),
+      ), error = function(e) NULL)
+      if (is.null(quarters) || length(quarters) == 0) {
+        warning(sprintf("[lookup_datras_indices] no quarter list for %s %d", svy, yr),
                 call. = FALSE)
         next
       }
-      if (nrow(idx) == 0) next
 
-      # icesDatras returns indices keyed on "Species" (Latin name) or
-      # "AphiaID" depending on the survey. Filter by AphiaID when
-      # available, fall back to a no-op when it isn't.
-      if ("AphiaID" %in% names(idx)) {
-        idx <- idx[as.integer(idx$AphiaID) == as.integer(aphia_id), , drop = FALSE]
+      for (q in as.integer(quarters)) {
+        # Pass species = aphia_id so DATRAS filters server-side. (getIndices
+        # returns one row per IndexArea, with abundance spread across
+        # Age_0..Age_N columns - reshaped by .datras_reshape_indices.)
+        idx <- tryCatch(with_timeout(
+          icesDatras::getIndices(svy, yr, quarter = q, species = aphia_id),
+          timeout = timeout, on_timeout = NULL
+        ), error = function(e) {
+          warning(sprintf("[lookup_datras_indices] %s %d Q%s failed: %s",
+                          svy, yr, q, conditionMessage(e)), call. = FALSE)
+          NULL
+        })
+
+        # Guard the nrow() check: getIndices returns a bare FALSE (logical)
+        # for an unavailable quarter, and nrow(FALSE) is NULL -> `if (NULL == 0)`
+        # errors. Surface the upstream shape via warning() and skip the quarter.
+        if (is.null(idx)) next
+        if (!is.data.frame(idx)) {
+          warning(sprintf("[lookup_datras_indices] %s %d Q%s: icesDatras returned %s, not a data.frame; skipping",
+                          svy, yr, q, paste(class(idx), collapse = "/")),
+                  call. = FALSE)
+          next
+        }
+        if (nrow(idx) == 0) next
+
+        rows[[length(rows) + 1L]] <- .datras_reshape_indices(idx, svy, yr)
+        got_rows_for_survey <- TRUE  # this year had indices; stop stepping back
       }
-      if (nrow(idx) == 0) next
-
-      rows[[length(rows) + 1L]] <- data.frame(
-        survey  = svy,
-        year    = yr,
-        quarter = if ("Quarter" %in% names(idx)) idx$Quarter[1] else NA_integer_,
-        biomass_index = if ("Index" %in% names(idx)) idx$Index[1] else NA_real_,
-        stringsAsFactors = FALSE
-      )
     }
   }
 
