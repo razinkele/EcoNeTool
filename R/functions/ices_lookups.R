@@ -215,7 +215,18 @@ lookup_datras_indices <- function(aphia_id,
         NULL
       })
 
-      if (is.null(idx) || nrow(idx) == 0) next
+      # Guard the nrow() check: icesDatras occasionally returns a non-data.frame
+      # (e.g. a list payload on certain malformed responses), and nrow(non-df)
+      # is NULL -> `if (NULL == 0)` errors with "missing value where TRUE/FALSE
+      # needed". Surface the upstream weirdness via warning() and skip the year.
+      if (is.null(idx)) next
+      if (!is.data.frame(idx)) {
+        warning(sprintf("[lookup_datras_indices] %s %d: icesDatras returned %s, not a data.frame; skipping",
+                        svy, yr, paste(class(idx), collapse = "/")),
+                call. = FALSE)
+        next
+      }
+      if (nrow(idx) == 0) next
 
       # icesDatras returns indices keyed on "Species" (Latin name) or
       # "AphiaID" depending on the survey. Filter by AphiaID when
