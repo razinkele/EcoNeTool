@@ -30,7 +30,23 @@
   "&request=GetFeature&typeNames=ices_eg:ICES_AREAS_VISA_SIMPLE_5KM",
   "&outputFormat=application/json"
 )
-.ICES_AREAS_CACHE_FILE <- file.path("cache", "spatial", "ices_areas.gpkg")
+# Resolved at source-time by walking up from cwd looking for app.R, so the
+# cache lands at <project-root>/cache/spatial/... regardless of whether the
+# caller is the Shiny app (cwd = project root) or a testthat block (cwd =
+# tests/testthat/). Falls back to the bare relative path if app.R isn't
+# found within 8 levels (preserves the previous behaviour).
+.ICES_AREAS_CACHE_FILE <- local({
+  d <- getwd()
+  for (i in 1:8) {
+    if (file.exists(file.path(d, "app.R"))) {
+      return(file.path(d, "cache", "spatial", "ices_areas.gpkg"))
+    }
+    parent <- dirname(d)
+    if (parent == d) break
+    d <- parent
+  }
+  file.path("cache", "spatial", "ices_areas.gpkg")
+})
 
 
 #' List available ICES area codes

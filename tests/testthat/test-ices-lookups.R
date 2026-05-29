@@ -228,6 +228,13 @@ test_that("lookup_ices_subdivision resolves a real Baltic point (live)", {
   if (!is.null(.ices_cache$areas_sf)) rm("areas_sf", envir = .ices_cache)
   if (file.exists(.ICES_AREAS_CACHE_FILE)) unlink(.ICES_AREAS_CACHE_FILE)
 
+  # Also clear AFTER, so repeated local live runs continue to exercise the
+  # WFS download path instead of silently hitting the cache we just wrote.
+  on.exit({
+    if (!is.null(.ices_cache$areas_sf)) rm("areas_sf", envir = .ices_cache)
+    if (file.exists(.ICES_AREAS_CACHE_FILE)) unlink(.ICES_AREAS_CACHE_FILE)
+  }, add = TRUE)
+
   res <- lookup_ices_subdivision(19.0, 57.0)
   expect_true(res$success)
   expect_match(res$data$area_full, "^27\\.3\\.")
