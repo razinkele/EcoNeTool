@@ -1,6 +1,27 @@
 # Server logic for Trait Research Module
 # Handles species trait lookup and results display
 
+#' Extract a usable WoRMS AphiaID for a species from a trait-results frame
+#'
+#' Column-first AphiaID resolution for the DATRAS panel. Returns the
+#' `aphia_id` for `sp` from the results data.frame when the column exists and
+#' the value is a positive numeric; otherwise NA_real_ (the caller then falls
+#' back to a live WoRMS name->id lookup). Pure / no side effects, so it is
+#' unit-testable without a Shiny session. No suppressWarnings: a coercion
+#' warning on a non-numeric aphia_id is a useful data-quality signal.
+#'
+#' @param df Trait-results data.frame (rv$trait_results), or NULL.
+#' @param sp Species name to match against df$species.
+#' @return Positive numeric AphiaID, or NA_real_.
+#' @keywords internal
+.datras_aphia_for_species <- function(df, sp) {
+  if (is.null(df) || !"aphia_id" %in% names(df)) return(NA_real_)
+  row <- df[df$species == sp, , drop = FALSE]
+  if (nrow(row) == 0) return(NA_real_)
+  aid <- as.numeric(row$aphia_id[1])
+  if (length(aid) == 1 && !is.na(aid) && aid > 0) aid else NA_real_
+}
+
 trait_research_server <- function(input, output, session, shared_data) {
 
   # ============================================================================
@@ -11,7 +32,9 @@ trait_research_server <- function(input, output, session, shared_data) {
     trait_results = NULL,       # Harmonized trait data (data.frame)
     raw_results = NULL,         # Raw lookup results (list with details)
     lookup_in_progress = FALSE,
-    last_lookup_time = NULL
+    last_lookup_time = NULL,
+    datras_result = NULL,       # Last DATRAS abundance fetch (structured list)
+    datras_fetching = FALSE     # In-flight guard for the DATRAS fetch button
   )
 
   # ============================================================================
@@ -351,6 +374,14 @@ trait_research_server <- function(input, output, session, shared_data) {
         choices = names(raw_list)
       )
 
+      # Update the DATRAS panel selector from the harmonised species column
+      # (matches the df$species == sp filter the AphiaID reactive uses).
+      updateSelectInput(
+        session,
+        "datras_species",
+        choices = results_df$species
+      )
+
       # Summary stats
       n_complete <- sum(complete.cases(results_df[, c("MS", "FS", "MB", "EP", "PR")]))
       n_partial <- nrow(results_df) - n_complete -
@@ -390,6 +421,10 @@ trait_research_server <- function(input, output, session, shared_data) {
     rv$raw_results <- NULL
     rv$last_lookup_time <- NULL
 
+    # Reset the DATRAS panel too, so a cleared session shows no stale table.
+    rv$datras_result <- NULL
+    updateSelectInput(session, "datras_species", choices = character(0))
+
     showNotification("Results cleared", type = "message")
   })
 
@@ -412,6 +447,100 @@ trait_research_server <- function(input, output, session, shared_data) {
 
     # Note: User should navigate manually to Food Web Construction
     # (Cross-module tab switching requires parent session access)
+  })
+
+  # ============================================================================
+  # DATRAS ABUNDANCE INDICES (on-demand drill-down on one species)
+  # ============================================================================
+
+  # Column-first AphiaID for the selected species (pure read). The WoRMS
+  # name->id fallback for the missing case lives in the fetch observer
+  # because it does network I/O.
+  datras_aphia_id <- reactive({
+    req(input$datras_species)
+    .datras_aphia_for_species(rv$trait_results, input$datras_species)
+  })
+
+  observeEvent(input$datras_fetch, {
+    sp <- input$datras_species
+    if (is.null(sp) || sp == "") {
+      showNotification("Select a species first (run a trait lookup).",
+                       type = "warning")
+      return()
+    }
+    if (isTRUE(rv$datras_fetching)) {
+      showNotification("DATRAS fetch already in progress...", type = "warning")
+      return()
+    }
+    rv$datras_fetching <- TRUE
+    on.exit(rv$datras_fetching <- FALSE, add = TRUE)
+    rv$datras_result <- NULL
+
+    progress <- Progress$new()
+    on.exit(progress$close(), add = TRUE)
+    progress$set(message = "Fetching DATRAS indices", detail = sp, value = 0.3)
+
+    aid <- datras_aphia_id()
+    if (is.na(aid)) {
+      # Fallback: resolve the name -> AphiaID live via WoRMS.
+      aid <- tryCatch(
+        as.numeric(worrms::wm_name2id(sp)),
+        error = function(e) {
+          warning(sprintf("[datras] wm_name2id failed for '%s': %s",
+                          sp, conditionMessage(e)), call. = FALSE)
+          NA_real_
+        }
+      )
+    }
+    if (length(aid) != 1 || is.na(aid) || aid <= 0) {
+      showNotification(sprintf("No WoRMS AphiaID available for '%s'.", sp),
+                       type = "warning")
+      return()
+    }
+
+    progress$set(detail = sprintf("AphiaID %d", as.integer(aid)), value = 0.6)
+    res <- lookup_datras_indices(aid)
+    rv$datras_result <- res
+
+    if (!isTRUE(res$success)) {
+      # Distinguish a legitimate "no data" (informational) from an API fault.
+      is_no_data <- grepl("^no DATRAS rows", as.character(res$error))
+      showNotification(
+        paste("DATRAS:", res$error),
+        type = if (is_no_data) "message" else "warning"
+      )
+    }
+  })
+
+  output$datras_status <- renderUI({
+    res <- rv$datras_result
+    if (is.null(res)) {
+      return(tags$span(class = "text-muted",
+                       icon("info-circle"), " No DATRAS data fetched yet."))
+    }
+    if (isTRUE(res$success)) {
+      n_surveys <- length(unique(res$data$survey))
+      tags$span(
+        class = "text-success",
+        icon("check-circle"),
+        sprintf(" %d row(s) across %d survey(s)", nrow(res$data), n_surveys)
+      )
+    } else {
+      tags$span(class = "text-warning",
+                icon("triangle-exclamation"), " ", as.character(res$error))
+    }
+  })
+
+  output$datras_table <- DT::renderDataTable({
+    req(rv$datras_result)
+    req(isTRUE(rv$datras_result$success))
+    DT::datatable(
+      rv$datras_result$data,
+      options = list(pageLength = 10, scrollX = TRUE),
+      rownames = FALSE,
+      class = "stripe hover compact"
+    ) %>%
+      DT::formatRound(columns = "abundance_index", digits = 2)
   })
 
   # ============================================================================

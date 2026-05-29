@@ -701,6 +701,54 @@ trait_research_ui <- function() {
       )
     ),
 
+    # DATRAS Abundance Indices Panel (on-demand drill-down on one species)
+    fluidRow(
+      column(
+        width = 12,
+        box(
+          title = "DATRAS Abundance Indices",
+          status = "primary", solidHeader = TRUE, width = 12,
+          collapsible = TRUE, collapsed = TRUE, icon = icon("water"),
+          fluidRow(
+            column(
+              width = 5,
+              selectInput(
+                "datras_species",
+                "Species (from lookup results):",
+                choices = NULL
+              )
+            ),
+            column(
+              width = 3,
+              style = "margin-top: 25px;",
+              actionButton(
+                "datras_fetch",
+                tagList(icon("water"), " Fetch DATRAS Indices"),
+                class = "btn-info btn-block"
+              )
+            ),
+            column(
+              width = 4,
+              style = "margin-top: 25px;",
+              uiOutput("datras_status")
+            )
+          ),
+          helpText(
+            "Queries the ICES DATRAS trawl surveys BITS, NS-IBTS and BTS for ",
+            "the most recent year with computed indices. Values are raw ",
+            tags$strong("abundance"), " indices (numbers-per-hour, summed across ",
+            "ages) per stock-area — not biomass, and not calibrated for ",
+            "Ecopath. Run a trait lookup first to populate the species list."
+          ),
+          br(),
+          div(
+            style = "overflow-x: auto;",
+            DT::dataTableOutput("datras_table")
+          )
+        )
+      )
+    ),
+
     # Help Modal
     bsModal(
       id = "trait_research_help_modal",
