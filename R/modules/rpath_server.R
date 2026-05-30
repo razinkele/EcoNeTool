@@ -1938,6 +1938,14 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
           ser$group <- g
           ser$is_ref_year <- ser$year == ref_year
           series_list[[length(series_list) + 1L]] <- ser
+        } else {
+          # Fetched ok but no rows after the quarter filter (e.g. data only in
+          # the other quarter). Surface the drop so coverage stays auditable.
+          warning(sprintf("[survey_trends] no rows after quarter filter for '%s'", g),
+                  call. = FALSE)
+          excluded_map[[length(excluded_map) + 1L]] <-
+            data.frame(group = g, reason = "no data for selected quarter",
+                       stringsAsFactors = FALSE)
         }
       }
 
@@ -1947,13 +1955,16 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
         data.frame(group = character(0), year = integer(0),
                    survey_value = numeric(0), is_ref_year = logical(0))
 
-      warning("[survey_trends] area selection not confirmed; summed all BITS index areas per species",
-              call. = FALSE)
-      showNotification(
-        paste0("Survey trends summed all BITS areas per species (P1). For stocks split by area",
-               " (e.g. East/West Baltic cod) interpret with care."),
-        type = "warning", duration = 8
-      )
+      # Only warn about area summing when there was actually data to sum.
+      if (length(series_list) > 0) {
+        warning("[survey_trends] area selection not confirmed; summed all BITS index areas per species",
+                call. = FALSE)
+        showNotification(
+          paste0("Survey trends summed all BITS areas per species (P1). For stocks split by area",
+                 " (e.g. East/West Baltic cod) interpret with care."),
+          type = "warning", duration = 8
+        )
+      }
 
       trends <- compute_survey_trends(series_df)
       # fold the mapping-stage exclusions into the result for the footnote
