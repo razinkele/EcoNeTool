@@ -2,250 +2,266 @@
 
 **Date:** 2026-05-30
 **Author:** A. Razinkovas-Baziukas (with Claude)
-**Status:** Revised after 3-agent spec review (architecture / convention /
-domain). Pending user review.
-**Tracks:** v2-plan item **R2** (PR10 scope-L). Re-scoped during brainstorm
-(2026-05-30) from "DATRAS biomass calibration" to **relative survey
-validation**; primary view changed from cross-group shares to **per-group
-temporal trend** after the domain review (see §1.4). See §1.1–1.3 for the
-science boundaries.
+**Status:** Revised after TWO 3/4-agent spec-review rounds
+(architecture / convention / domain, then test-design / silent-failure /
+simplification / skeptic-usability). Pending user review.
+**Tracks:** v2-plan item **R2** (PR10 scope-L).
+
+### Design history (why the shape changed twice)
+1. Re-scoped "biomass calibration" → relative **validation** (absolute needs
+   catchability `q`; deferred — §7).
+2. Round 1 (domain): bottom-trawl BITS under-samples pelagics → **demersal
+   only**; per-group **trend** chosen over cross-group shares.
+3. Round 2 (skeptic/usability + simplification): a per-group trend is honest
+   but **not actionable** (Ecopath's reference year is fixed by data, not
+   chosen), and cross-group **shares invite the wrong action**. The one
+   *actionable, confound-robust* diagnostic is a **demersal biomass-ordering /
+   rank-inversion check** → that is now the **primary** view; trend is demoted
+   to context; the shares view is **dropped**. Mapping is made usable
+   (dictionary-seeded, many-species, persisted).
 
 ---
 
 ## 1. Goal & non-goals
 
 ### Goal
-Give a modeller an honest, on-demand check of an Ecopath model's biomass
-inputs against ICES DATRAS survey data: for the model's **demersal** fish
-groups that map to a trawl-surveyed species, show (primary) the **multi-year
-survey abundance trend** per group and where the model's snapshot year sits on
-it, and (secondary) a heavily-caveated cross-group structure comparison. A
-read-only diagnostic inside the rpath module.
+Help a modeller spot **implausible relative biomass inputs** in a balanced
+Ecopath model by comparing the model's demersal-fish biomass **ordering** with
+the ICES DATRAS (BITS) survey's abundance ordering, flagging rank
+**inversions** that warrant checking an input. A read-only diagnostic in the
+rpath module. Per-group survey **trends** provide supporting context (is the
+model's snapshot year a survey outlier?).
 
-### 1.1 Why "validation", not "calibration" (rejected scope)
-Absolute calibration was deliberately rejected. Converting DATRAS abundance to
-absolute biomass (tons/km²) requires `density = catch / (swept_area × q)`, and
-trawl catchability `q` is small, uncertain, and species/size/gear-specific —
-surveys are designed as *relative* indices because their absolute scaling is
-unreliable. Seeding Ecopath `Biomass` from an assumed `q` injects false
-precision into a mass-balance model. R2 uses the survey only for relative
-signals. Absolute conversion is a gated future phase (§8).
+### 1.1 Why "validation", not "calibration"
+Absolute biomass needs `density = catch/(swept_area × q)`; trawl `q` is small,
+uncertain, gear/size/species-specific. Seeding Ecopath `Biomass` from an assumed
+`q` injects false precision. R2 uses the survey only for **relative** signals;
+absolute conversion is a gated future phase (§7).
 
 ### 1.2 Currency caveat (biomass vs numbers)
-Model biomass and survey abundance are different currencies:
-`biomass ∝ N × W` (numbers × mean weight); `survey abundance ∝ N` (numbers).
-They agree across groups only if `W` is constant across groups — it is not
-(sprat ~10 g, adult cod ~kg+). So any **cross-group** comparison of
-biomass-share vs abundance-share is confounded by body-size structure. This is
-why cross-group shares are demoted to a secondary, caveated view (§3.5) and
-carry no pass/fail verdict.
+Model `biomass ∝ N × W`; survey `abundance ∝ N`. A **share/level** comparison is
+confounded by body weight `W`. **Rank order**, however, is far more robust:
+among demersal groups of broadly similar size, the order of biomass and the
+order of abundance largely agree, so a *disagreement* is informative. The
+ordering check (§3.3) still carries a caveat that an inversion between very
+different-sized groups may be size-driven, not an error.
 
-### 1.3 Gear caveat (bottom trawl under-samples pelagics) — the decisive one
-DATRAS `getIndices` here comes from **BITS, a bottom-trawl survey.** Bottom
-trawls under-sample **pelagic** species: Baltic herring and sprat are
-semi-pelagic and are caught by BITS only opportunistically, so their BITS
-indices are **not** valid relative abundance indices — ICES assesses Baltic
-clupeids from the **BIAS acoustic** survey instead. A sprat/herring BITS
-abundance-share is therefore a *gear artifact*, larger than and independent of
-the §1.2 currency effect. Consequently R2:
-- restricts all comparisons to the **demersal assemblage** (cod, flounder,
-  plaice, dab, brill, turbot, …), where catch efficiency is at least the same
-  order of magnitude across groups;
-- **flags and excludes known pelagics by default** (a small curated pelagic
-  AphiaID set — herring 126417, sprat 126425, and a few others — user can
-  re-include with an explicit "BITS under-samples pelagics; prefer BIAS
-  acoustic" warning shown);
-- never silently pools a pelagic into a demersal denominator.
+### 1.3 Gear caveat (bottom trawl under-samples pelagics)
+BITS is a bottom-trawl survey; herring/sprat are semi-pelagic and BITS
+mis-samples them (ICES assesses Baltic clupeids from **BIAS acoustic**). Their
+BITS indices are gear artifacts. So R2 restricts comparison to the **demersal
+assemblage** (cod, flounder, plaice, dab, brill, turbot, …) and **excludes
+known pelagics by default** (curated AphiaID set incl. herring 126417, sprat
+126425; user re-include shows a "BITS under-samples pelagics; prefer BIAS"
+warning).
 
-### 1.4 Why per-group temporal trend is the primary view
-The within-group trend over time is the one relative comparison confounded by
-**neither** §1.2 nor §1.3: catchability `q` and mean weight `W` are ~constant
-for a given group across years, so they cancel in a trend. "Is cod's survey
-index rising or falling; is the model's standing-stock year representative or
-anomalous?" is defensible. Cross-group single-year shares are confounded by
-both effects, so they are secondary (§3.5).
+### 1.4 Clupeid coverage banner (MARBEFES use-case honesty)
+Baltic MARBEFES models are dominated by sprat/herring, which this panel
+**cannot** validate from BITS. The panel must **lead with a prominent banner**
+saying so: *"Cannot yet validate herring/sprat — they require BIAS acoustic
+data (planned, §7)."* Not buried in a footnote. A lightweight BIAS
+paste-in/manual-entry path is the **immediate next phase** (§7), not this spec.
 
 ### Non-goals (YAGNI)
-- **No absolute biomass.** No `q`, swept-area, or length-weight machinery.
-- **No automatic model-error verdict.** Trends and shares are interpretive aids;
-  the modeller judges. No ✓/⚠ pass/fail.
-- **No non-demersal / non-fish groups.** Aggregates, inverts, plankton, birds,
-  mammals, and pelagic fish are excluded from comparison (shown as excluded).
-- **No cross-session persistence** of the group→species mapping.
-- **No new survey-fetch logic.** Reuses `lookup_datras_indices()` (incl. its
-  explicit-`years` multi-year path) and `worrms::wm_name2id()` as-is.
+- No absolute biomass; no `q`/swept-area/length-weight machinery.
+- No automatic pass/fail verdict — inversions and trends are **prompts to
+  check**, not errors.
+- No non-demersal/non-fish/pelagic groups in the comparison (shown as excluded).
+- **No cross-group biomass-share vs abundance-share view** (dropped in round 2 —
+  confounded and invites the wrong action).
+- No new survey-fetch logic — reuses `lookup_datras_indices()` (incl. its
+  explicit-`years` multi-year path) and `worrms::wm_name2id()`.
 
 ## 2. Architecture & placement
-- **UI tab is built server-side.** `R/ui/rpath_ui.R` is only a shell
-  (`uiOutput(ns("rpath_content"))`); the actual tabs are rendered in
+- **Tabs render server-side.** `R/ui/rpath_ui.R` is a shell
+  (`uiOutput(ns("rpath_content"))`); the real tabs live in
   `R/modules/rpath_server.R` inside `output$rpath_content <- renderUI({ tabBox(
-  tabPanel(...), ... ) })` (~line 85), conditional on Rpath being installed. The
-  new **"Survey Validation"** `tabPanel` is added inside **that `tabBox` call in
-  `rpath_server.R`** — NOT in `rpath_ui.R` (which would do nothing).
-- The rpath module **is namespaced** (`rpathModuleUI(id)` uses `ns()`,
-  `rpathModuleServer` uses `moduleServer`). All new inputs/outputs use `ns(...)`.
-- Server logic in `rpath_server.R` reads the balanced model from
-  `rpath_values$params$model` (`Group`, `Type`, `Biomass`).
-- **Pure core:** `R/functions/rpath/survey_validation.R` holds the two pure
-  functions (§3.3, §3.5) + helpers — unit-testable without Shiny/network. TDD
-  target.
-- **Read-only:** nothing writes back to `rpath_values$params$model`. The pure
-  functions return new data.frames; no `observeEvent`/proxy edit touches the
-  model.
+  tabPanel(...) ) })` (~:85). The new **"Survey Validation"** `tabPanel` goes
+  **inside that `tabBox` in `rpath_server.R`**, not in `rpath_ui.R`.
+- rpath **is namespaced** (`ns()` / `moduleServer`) — all new IDs use `ns(...)`.
+- Reads the balanced model from `rpath_values$params$model`
+  (`Group`, `Type`, `Biomass`).
+- **Pure core:** `R/functions/rpath/survey_validation.R` holds
+  `compute_ordering_check()`, `compute_survey_trends()`, and the aggregation /
+  mapping helpers — unit-testable without Shiny/network. TDD target.
+- **Read-only:** never writes back to `rpath_values$params$model`.
 
 ## 3. Components
 
-### 3.1 Group → species mapping (hybrid)
-For each **living group** (`model$Type %in% c(0, 1)` — consumer/producer;
-explicitly excludes `Type == 2` detritus and `Type == 3` fleets):
-- **Auto-suggest:** `tryCatch(worrms::wm_name2id(Group), error = function(e) {
-  warning(...); NA_real_ })`. The helper applies R3's guard:
-  `length(aid) == 1 && !is.na(aid) && aid > 0` — **a multi-match (`length > 1`)
-  yields `NA` (ambiguous), never a silent `[1]`** (so aggregate/genus names
-  aren't mistaken for a species).
-- **Demersal/pelagic classification:** a resolved AphiaID in the curated
-  pelagic set (§1.3) is marked pelagic and **excluded by default**.
-- **Manual override:** an editable mapping table — `Group | suggested species |
-  AphiaID | class (demersal/pelagic/unmapped) | include`. User confirms,
-  overrides (type a species → re-resolve), or toggles inclusion. Match the
-  editable-table widget rpath already uses for `group_params`.
-- Mapping held in a session `reactiveVal`, (re)seeded with auto-suggestions on
-  **mass-balance completion** (`observeEvent(input$btn_run_ecopath …)` success,
-  when `rpath_values$params$model` carries balanced values) — NOT on the
-  earlier convert step, so the user's mapping isn't silently reset mid-flow.
+### 3.1 Group → species mapping (dictionary-seeded, many-species, persisted)
+For each **living group** (`model$Type %in% c(0, 1)`; excludes detritus
+`Type == 2` and fleets `Type == 3`):
+- **Seed from a shipped dictionary** of common Baltic EwE group names →
+  AphiaID(s) (`R/config/` data; e.g. "Cod"→126436, "Demersal fish"→{cod,
+  flounder, plaice, dab,…}). This is what makes auto-map actually work on
+  *functional* names, not just Linnaean ones.
+- **Fallback auto-suggest:** `tryCatch(worrms::wm_name2id(Group), error =
+  function(e){ warning(...); NA_real_ })` with R3's scalar guard
+  (`length == 1 && !is.na && > 0`; **multi-match → NA**, never silent `[1]`).
+- **Many-species groups map to a SET of AphiaIDs** whose indices are summed
+  (§3.2) — the demersal-assemblage sum machinery already exists. Aggregate
+  groups become *covered*, not "unmapped".
+- **Demersal/pelagic class** from the curated set (§1.3); pelagics excluded by
+  default.
+- **Editable** mapping table (`Group | species/set | AphiaID(s) | class |
+  include`) for overrides and set assignment; match the rpath `group_params`
+  editable-table widget.
+- **Persisted** per model (e.g. keyed by the group-name signature) so a modeller
+  re-running during balancing does **not** re-map each time. (Drops the earlier
+  session-only non-goal — persistence is the highest-impact usability fix.)
+- Re-seed only-missing entries on mass-balance completion
+  (`observeEvent(input$btn_run_ecopath …)` success); never clobber user edits.
 
 ### 3.2 Per-group survey fetch & aggregation
-- **One region-survey** (panel dropdown, default **BITS** for the Baltic study
-  region; not multiple — avoids mixing regions, §1.3).
-- **Multi-year, fetched once:** `lookup_datras_indices(aphia_id, surveys =
-  survey, years = seq(max_year - window, max_year))` using the explicit-`years`
-  path (returns all requested years, no step-back). Fetching the full window
-  once feeds BOTH the trend (§3.3) and the reference-year share (§3.5); the
-  reference year is filtered downstream in the pure functions, not refetched.
-- **Quarter pinned:** filter to one quarter (default the survey's main quarter,
-  **Q1 for BITS**; panel-selectable) — Q1/Q4 sample different size structure, so
-  pooling them is unsound (domain S2).
-- **Area within region:** sum `abundance_index` across only the `index_area`s in
-  the model's region, NOT blindly across all areas. Default offers the survey's
-  areas with the user able to deselect; the footnote lists which areas were
-  summed. (E.g. East vs West Baltic cod are separate stocks — summing both
-  double-counts unless the model spans both; domain S1.)
-- Age aggregation stays `abundance_index` = sum over `Age_*` (the building
-  block's output); a fixed caveat notes strong year-classes (age-0/1) add
-  numbers-share noise — mitigated by the multi-year trend being primary.
+- **One region-survey** (dropdown, default **BITS** for the Baltic).
+- **Multi-year window fetched once:** `lookup_datras_indices(aphia_ids, survey,
+  years = window)` (explicit-`years` path → all years, no step-back). Feeds both
+  §3.3 and §3.4; reference year filtered downstream, never refetched.
+- **`aggregate_survey_series(reshaped_df, quarter, areas, aphia_ids)`** (explicit
+  signature so it is testable): filter to the pinned **quarter** (default Q1 for
+  BITS; selectable), keep only `index_area`s in `areas`, sum `abundance_index`
+  per `year` across the area set and the group's `aphia_ids` (many-species sum)
+  → one `survey_value` per group per year. `na.rm = FALSE` on the per-area sum;
+  a partially-NA sum emits `warning()` rather than coercing NA→0.
+- **Area selection is a confirmed choice, not a silent default.** Defaulting to
+  all of a survey's areas can double-count separate stocks (E vs W Baltic cod).
+  When a run uses the **unconfirmed default** area set, emit `warning(
+  "[survey_validation] area selection not confirmed; summed all <n> areas")` AND
+  a visible UI notice; the footnote lists exactly which areas were summed.
 
-### 3.3 PRIMARY — per-group temporal trend (pure)
-`compute_survey_trends(series_df, ref_year)` where `series_df` has `group`,
-`year`, `survey_value` (one row per group-year, demersal groups only).
-- Per group: normalise to a relative series (`survey_value / mean(survey_value
-  over the window)`), the trend direction over the window (sign/slope, e.g.
-  Spearman of value vs year), and the **relative position of `ref_year`** on the
-  series (is the model's snapshot year high/low/typical vs the window).
-- Returns per group: `group, rel_series (per year), trend_direction,
-  ref_year_percentile`. No verdict. Guard: a group with `< 3` years → trend
-  omitted for that group (noted), not errored.
-
-### 3.4 Reference year & window
-- **Window:** trailing N years (default 10) ending at the most recent year with
-  **complete** indices — labelled as such; a returned-but-provisional latest
-  year is not treated as authoritative (domain S3).
-- **Reference year (the model's snapshot):** default = most recent year common
-  to the mapped demersal groups; user-selectable from the common years. If
-  groups share no common year, fall back per group and emit
-  `warning("[survey_validation] reference years differ across groups: …")` **and**
-  a UI notice (not UI-only).
-
-### 3.5 SECONDARY — cross-group shares (demersal-only, caveated; pure)
-`compute_survey_shares(groups_df)` where `groups_df` has `group`, `biomass`,
+### 3.3 PRIMARY — demersal ordering / inversion check (pure)
+`compute_ordering_check(groups_df)` where `groups_df` has `group`, `biomass`,
 `survey_value` for the **demersal** mapped groups at the reference year.
-- `model_share = biomass / Σ biomass`; `survey_share = survey_value / Σ
-  survey_value`; `log2_ratio = log2(model_share / survey_share)` as an
-  **informational sort key, explicitly not an error metric** (§1.2). No flag.
-- Returns `group, biomass, model_share, survey_value, survey_share, log2_ratio`.
-  Guard: `< 2` rows → structured "insufficient groups" signal.
+- Model rank = rank of `biomass`; survey rank = rank of `survey_value`.
+- **Inversions:** pairs `(a, b)` where the model and survey disagree on order
+  (model says `B_a > B_b` but survey says `N_a < N_b`). Each inversion is a
+  prompt: "model ranks <a> above <b>; survey disagrees — check inputs."
+- **Concordance:** Spearman `ρ` between the two rank vectors as a single
+  headline number ("survey and model orderings agree at ρ=…").
+- Returns: per-group `group, biomass, model_rank, survey_value, survey_rank`;
+  a list of inversion pairs; scalar `rho`. No verdict.
+- **Guards (visible, not silent):** a group with `NA`/`0`/negative biomass or
+  `NA`/`0` `survey_value` is **excluded and reported** (footnote + `warning()`),
+  never ranked as a real 0. `< 2` rankable groups → structured "insufficient
+  groups" signal.
+
+### 3.4 SECONDARY — per-group survey trend (context, pure)
+`compute_survey_trends(series_df, ref_year)`: per demersal group, a relative
+series (`survey_value / mean(window)`), a simple **direction** glyph
+(`↑/↓/≈` from `mean(last 3 yr)` vs `mean(window)` — no Spearman here), and
+`ref_year_percentile` = **fraction of window years with `survey_value ≤` the
+ref-year value** (pinned estimator: min→0, max→1, median→0.5; `ref_year` absent
+from a group's series → `NA`). Purpose: "is the model's snapshot year a survey
+outlier? → consider averaging biomass across years."
+- **Degenerate guard:** a group whose window-mean is `0`/`NA` (all-zero/all-NA
+  series) is **excluded + reported** (footnote + `warning()`), never normalised
+  into `NaN`/`Inf`. `< 3` years → trend omitted for that group, **routed to the
+  exclusions footnote** ("trend omitted: <n> survey years") + `warning()`.
+
+### 3.5 Reference year & window
+- **Window:** fixed trailing **10 years** ending at the most recent year with
+  **complete** indices (labelled; a provisional latest year is not treated as
+  authoritative). Not user-selectable (YAGNI).
+- **Reference year (model snapshot):** most recent year common to the mapped
+  demersal groups; user-selectable from common years. No common year → per-group
+  fallback with `warning("[survey_validation] reference years differ: …")` +
+  UI notice; the ordering table then carries a per-group `survey_year` column so
+  the heterogeneity is visible at the point of use.
 
 ### 3.6 Outputs
-- **Primary panel:** per-group relative trend lines (faceted or overlaid,
-  normalised) with the reference year marked; a short per-group "↑/↓/≈ over last
-  N yr" summary.
-- **Secondary panel (collapsible):** the shares table + paired bar chart
-  (model **biomass**-share vs survey **abundance**-share), axis-labelled with
-  the two currencies, under a **prominent body-size + gear caveat** (§1.2/§1.3).
-- **Exclusions footnote:** counts + names of groups excluded as unmapped,
-  pelagic, or non-fish — partial coverage is explicit, never hidden.
+- **Clupeid banner** (§1.4) at the top — always visible.
+- **Primary:** the ordering table (model rank vs survey rank per demersal group)
+  + an **inversions list** (the actionable prompts) + the `ρ` concordance line,
+  under the §1.2 body-size caveat.
+- **Secondary (collapsible):** per-group trend lines, ref-year marked, `↑/↓/≈`.
+- **Exclusions footnote:** counts + names + **reason** for every excluded group
+  (unmapped, pelagic, non-fish, no-survey-data, zero/NA biomass-or-survey,
+  <3-yr trend) so coverage is fully auditable — the modeller can reconcile
+  "model has N groups; comparison shows M; here's N−M and why."
 
 ## 4. Data flow
-`rpath_values$params$model` → filter `Type %in% c(0,1)` → mapping (auto +
-overrides, demersal-only by default) → for each included group:
-`lookup_datras_indices(survey, years = window)` (once) → filter quarter + region
-areas → annual `survey_value` series → `compute_survey_trends()` (primary) and
-`compute_survey_shares()` at `ref_year` (secondary) → render. Triggered by a
-"Run validation" button. The per-group loop runs under `withProgress`, passing
-`lookup_datras_indices`'s `timeout`, so a many-group model can't hang the
-session silently; results are the function's own `.ices_cache`-memoised lists.
+`rpath_values$params$model` → filter `Type %in% c(0,1)` → mapping (dictionary +
+auto + edits + persistence; demersal-only) → per group:
+`lookup_datras_indices(aphia_ids, survey, years=window)` (once) →
+`aggregate_survey_series(quarter, areas)` → annual `survey_value` →
+`compute_ordering_check()` (primary, at ref year) + `compute_survey_trends()`
+(secondary) → render. "Run validation" button; per-group loop under
+`withProgress` honouring `lookup_datras_indices`'s `timeout`. **Validate group
+count early:** if `< 2` mappable demersal groups, say so *before* the fetch, not
+after the user waited.
 
 ## 5. Error handling
-Project conventions:
-- Inside `error = function(e)` closures, use **`<<-`** to mutate any outer-scope
-  variable (e.g. `result$error <<- conditionMessage(e)`) — plain `<-` is
-  silently discarded (CLAUDE.md).
-- Use **`warning()` not `message()`** inside those closures (production keeps no
-  `message()` logs).
-- **No balanced model** → "Balance an Ecopath model first." (not an error)
-- **Group unmappable / `wm_name2id` fails** → `tryCatch(…, error =
-  function(e){ warning(…); NA })`; excluded; shown in the exclusions footnote.
-- **`lookup_datras_indices` fails / no rows for a group** → `warning()`; group
-  shown as "no survey data" and dropped.
-- **< 2 demersal groups with data** → "Need ≥2 mappable demersal fish groups."
-- **`worrms` / `icesDatras` missing** → notice, no crash. Never `stop()`.
+- Inside `error = function(e)` closures: **`<<-`** to mutate outer state;
+  **`warning()` not `message()`** (production keeps no `message()` logs).
+- **Every drop → an exclusions-footnote row + `warning()`** — never
+  footnote-only, never a silent `NaN`/`Inf`/`0`, never a `message()`. This
+  covers: unmappable, multi-match→NA, pelagic, no-survey-data, <3-yr trend,
+  zero/NA biomass-or-survey, no-value-at-reference-year.
+- **No balanced model** → "Balance an Ecopath model first." (benign UI state,
+  *not* a `warning()`); **`worrms`/`icesDatras` missing** → notice, no crash
+  (benign). These two are deliberately not the `warning()` path; the genuine
+  drops above always are.
+- Never `stop()`.
 
 ## 6. Testing
 Conventions: never gate `expect_*` behind `if`; `skip_if` with reasons; live
-tests behind `RUN_LIVE_TESTS`.
-- **`compute_survey_trends()` (TDD core, no network):** relative series
-  normalised to mean 1; trend direction sign for a rising/falling/flat series;
-  `ref_year_percentile` placement; `< 3` years → group omitted, not errored.
-- **`compute_survey_shares()` (TDD core, no network):** both shares sum to 1;
-  `log2_ratio` correct (model 0.6 / survey 0.3 → +1); **assert no flag/verdict
-  column**; zero/NA handled; `< 2` rows → "insufficient" signal.
-- **Aggregation helper:** synthetic multi-area/multi-quarter
-  `lookup_datras_indices`-shaped frame → correct quarter-pinned, region-area
-  sum per year; mocked `lookup_datras_indices` for the group loop.
-- **Mapping helper:** auto-suggest → `NA` for an aggregate name AND for a
-  multi-match (`length > 1`); a value for a clean single-species name (mocked
-  `wm_name2id`); pelagic AphiaID classified pelagic.
-- **Known live-coverage gap (recorded, intentional):** R3's gated cod test
-  covers `lookup_datras_indices` in isolation; the `wm_name2id → fetch →
-  aggregate` pipeline has no live test in v1 — acceptable, gated for a future
-  R2 integration test.
+behind `RUN_LIVE_TESTS`.
+- **`compute_ordering_check()` (TDD core):** a known biomass/survey set → exact
+  `model_rank`/`survey_rank`; a constructed inversion (model cod>plaice, survey
+  plaice>cod) appears in the inversion list; `rho` exact on a small set;
+  `survey_value == 0`/`NA`/negative biomass → group **excluded + reason**, not
+  ranked; `< 2` groups → "insufficient" signal. Assert output schema via
+  `expect_setequal(names(...), …)` (proves the **verdict-free** contract), not a
+  single negative.
+- **`compute_survey_trends()` (TDD core):** rel-series normalised to mean 1;
+  `↑/↓/≈` for rising/falling/flat; `ref_year_percentile` exact (max→1, min→0,
+  median→0.5); `ref_year` outside series → `NA`; **all-NA / all-zero series →
+  excluded, NOT `NaN`/`Inf`**; `<3` years → omitted + reason.
+- **`aggregate_survey_series()`:** synthetic multi-area/multi-quarter frame —
+  `quarter = 1` drops Q4 rows before summing; `areas = "BS_CodEast"` sums only
+  East, `areas = c(East,West)` sums both (the S1 double-count guard); a
+  many-species `aphia_ids` set sums across species; partial-NA sum → `warning()`,
+  not NA→0.
+- **Mapping helper:** dictionary hit returns the AphiaID(s); `wm_name2id`
+  multi-match → `NA`; `aid <= 0`/`NA` → `NA`; pelagic AphiaID → class "pelagic".
+- **Idiom trap (record for implementer):** the group-loop test mocks **our own**
+  `lookup_datras_indices` via `local_mocked_bindings(lookup_datras_indices = …)`
+  with **no `.package`** (it is not an `icesDatras` binding).
+- **Gated integration test (add — nearly free):** `skip_if_no_live_tests()`;
+  `wm_name2id("Gadus morhua")` → `lookup_datras_indices(survey="BITS")` →
+  `aggregate_survey_series()` → assert a non-empty per-year series. Closes the
+  `wm_name2id → fetch → aggregate` seam that unit mocks can't.
 
-## 7. Gated future phase (explicitly out of R2)
-Absolute biomass estimation — opt-in, requiring **user-supplied** `q`,
-**swept-area / stratified-area weighting** (q alone doesn't convert an index to
-density), and length-weight/age-length params, every assumption shown in the
-UI. Its own spec, gated on those inputs.
+## 7. Gated future phases (out of R2)
+- **Next (R2b): clupeid coverage via BIAS acoustic** — a read-only pull or a
+  user paste-in/manual-entry path for the 2 dominant Baltic pelagic indices, so
+  the panel covers the groups MARBEFES cares most about. Cheap relative to the
+  demersal machinery; the §1.4 banner is the placeholder until then.
+- **Later: absolute biomass calibration** — opt-in, requires user-supplied `q`,
+  **swept-area/stratified-area weighting** (q alone ≠ density), and length-weight
+  params, all assumptions shown. Its own spec.
 
 ## 8. Open items (resolve at implementation)
-- Editable mapping-table widget (DT editable vs `rhandsontable`) — match what
-  rpath uses for `group_params`.
-- The curated pelagic-AphiaID exclusion set — start with herring/sprat and the
-  obvious Baltic pelagics; confirm the list with the user; document it's a
-  heuristic, user-overridable.
-- Region-survey default (BITS) and whether the dropdown offers all three
-  surveys; whether non-Baltic models are in scope for v1 at all.
-- Trend statistic (Spearman vs simple recent-vs-window-mean) — pick the simplest
-  defensible one.
-- `lookup_datras_indices` cache keys differ between R2's single-survey calls and
-  R3's three-survey default → no cache sharing across panels (accepted; note).
+- The shipped Baltic EwE-name → AphiaID(s) dictionary contents + the curated
+  pelagic set — confirm with the user; document as heuristics, user-overridable.
+- Editable mapping-table widget (DT editable vs `rhandsontable`) — match
+  `group_params`.
+- Mapping persistence key/store (per model-file vs per session-restore) and
+  format.
+- Region-survey default (BITS) and whether the dropdown offers all three;
+  whether non-Baltic models are in v1 scope.
+- `lookup_datras_indices` cache keys differ between R2 (single-survey) and R3
+  (three-survey default) → no cross-panel cache sharing (accepted; note).
 
 ## Appendix: reference patterns
 - **Model object & namespaced tabs:** `R/modules/rpath_server.R`
   (`output$rpath_content`/`tabBox` ~:85; `rpath_values$params$model` ~:694;
-  `Group`/`Type`/`Biomass` ~:711-713; balance trigger `btn_run_ecopath`;
-  editable params table ~:832).
-- **Survey fetch + conventions (incl. explicit-`years` multi-year path):**
-  `R/functions/ices_lookups.R` (`lookup_datras_indices` ~:146-303), reused as-is.
-- **`wm_name2id` tryCatch + scalar guard idiom:**
-  `R/modules/trait_research_server.R` (the R3 panel's `datras_fetch` observer).
+  `Group`/`Type`/`Biomass` ~:711-713; `btn_run_ecopath`; editable table ~:832).
+- **Survey fetch + conventions (explicit-`years` path):**
+  `R/functions/ices_lookups.R` (`lookup_datras_indices` ~:146-303); reshape +
+  mock + live-gate + `expect_setequal` idioms in
+  `tests/testthat/test-ices-lookups.R` (~:38-70, :84-99, :195-221, :170/:180).
+- **`wm_name2id` tryCatch + scalar guard:** `R/modules/trait_research_server.R`
+  (R3 `datras_fetch` observer).
 - **Error-closure (`warning()`, `<<-`) / test conventions:** project `CLAUDE.md`;
-  the R1/R3 specs.
+  R1/R3 specs.
