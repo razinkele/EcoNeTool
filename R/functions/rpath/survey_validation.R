@@ -86,6 +86,64 @@ aggregate_sag_ssb <- function(summary_df) {
   data.frame(year = yr[keep], survey_value = ssb[keep], stringsAsFactors = FALSE)
 }
 
+#' Collapse a curated BIAS acoustic frame to one survey_value per year
+#'
+#' The acoustic (herring/sprat) analogue of aggregate_survey_series /
+#' aggregate_sag_ssb: feeds the same compute_survey_trends() contract from the
+#' curated BIAS index CSV. Per-SD rows are summed per year (mirrors the BITS
+#' area-summing path) but the sum is SCOPED TO ONE STOCK: an AphiaID can span
+#' several ICES stocks (herring 126417 -> her.27.25-2932 / her.27.28 / ...), and
+#' summing across them would be a cross-stock body-of-fish confound. A single NA
+#' among a year's SD rows makes the whole-year sum NA (na.rm = FALSE), which
+#' warns then drops the year (matching aggregate_survey_series). A non-numeric
+#' (unparseable) index value warns distinctly so a transcription error is not
+#' silently read as "BIAS lacked that year".
+#'
+#' @param bias_df data.frame from R/config/bias_indices.csv (must contain
+#'   aphia_id, year, abundance_index; stock used when stock_key is given).
+#' @param aphia_id Numeric WoRMS AphiaID to filter to.
+#' @param stock_key Optional ICES stock key; when supplied (and a `stock` column
+#'   exists) rows are additionally filtered to that single stock.
+#' @return data.frame(year, survey_value), one row per year with a non-NA summed
+#'   index. Empty frame (canonical schema) if required columns are missing or no
+#'   rows match.
+#' @keywords internal
+aggregate_bias_series <- function(bias_df, aphia_id, stock_key = NULL) {
+  if (!all(c("aphia_id", "year", "abundance_index") %in% names(bias_df))) {
+    return(data.frame(year = integer(0), survey_value = numeric(0),
+                      stringsAsFactors = FALSE))
+  }
+  keep <- as.integer(bias_df$aphia_id) == as.integer(aphia_id)
+  if (!is.null(stock_key) && "stock" %in% names(bias_df)) {
+    keep <- keep & bias_df$stock == stock_key
+  }
+  df <- bias_df[keep, , drop = FALSE]
+  if (nrow(df) == 0) {
+    return(data.frame(year = integer(0), survey_value = numeric(0),
+                      stringsAsFactors = FALSE))
+  }
+  raw <- df$abundance_index
+  num <- suppressWarnings(as.numeric(raw))
+  unparsed <- is.na(num) & !is.na(raw) & nzchar(trimws(as.character(raw)))
+  if (any(unparsed)) {
+    warning(sprintf("[survey_trends] non-numeric abundance_index for aphia %d (check CSV): %s",
+                    as.integer(aphia_id),
+                    paste(unique(as.character(raw[unparsed])), collapse = ", ")),
+            call. = FALSE)
+  }
+  years <- sort(unique(as.integer(df$year)))
+  survey_value <- vapply(years, function(yr) {
+    v <- num[as.integer(df$year) == yr]
+    if (anyNA(v)) {
+      warning(sprintf("[survey_trends] NA BIAS index in sum for aphia %d year %d",
+                      as.integer(aphia_id), yr), call. = FALSE)
+    }
+    sum(v, na.rm = FALSE)
+  }, numeric(1))
+  out <- data.frame(year = years, survey_value = survey_value, stringsAsFactors = FALSE)
+  out[!is.na(out$survey_value), , drop = FALSE]
+}
+
 #' Resolve an Ecopath group name to a single AphiaID + class
 #'
 #' Dictionary first; else worrms::wm_name2id with the R3 scalar guard (a

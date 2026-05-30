@@ -246,6 +246,63 @@ test_that("R4: partial-NA abundance_index in aggregate_survey_series warns 'surv
   )
 })
 
+test_that("aggregate_bias_series sums per-SD rows per year, scoped to one stock", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+
+  bias <- data.frame(
+    aphia_id = c(126417, 126417, 126417, 126417, 126425),
+    stock = c("her.27.25-2932", "her.27.25-2932", "her.27.25-2932",
+              "her.27.28", "spr.27.22-32"),  # 4th row: a DIFFERENT herring stock
+    sd = c("25-28.2", "29+32", "25-28.2", "28.1", "22-32"),
+    year = c(2010L, 2010L, 2011L, 2010L, 2010L),
+    abundance_index = c(100, 50, 200, 999, 777),
+    unit = "million_ind", source = "test",
+    stringsAsFactors = FALSE
+  )
+
+  # stock-scoped: only her.27.25-2932 rows; the her.27.28 (999) row excluded
+  out <- aggregate_bias_series(bias, 126417, "her.27.25-2932")
+  expect_s3_class(out, "data.frame")
+  expect_setequal(names(out), c("year", "survey_value"))
+  expect_equal(out$year, c(2010L, 2011L))
+  expect_equal(out$survey_value, c(150, 200))  # 100+50 ; 200 ; cross-stock 999 dropped
+
+  # sprat scoped to its own stock
+  expect_equal(aggregate_bias_series(bias, 126425, "spr.27.22-32")$survey_value, 777)
+
+  # missing required column -> empty frame with the canonical schema, not an error
+  empty <- aggregate_bias_series(data.frame(aphia_id = 126417, year = 2010), 126417)
+  expect_equal(nrow(empty), 0)
+  expect_setequal(names(empty), c("year", "survey_value"))
+})
+
+test_that("aggregate_bias_series drops a whole year if one SD row is NA (na.rm=FALSE)", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+
+  bias <- data.frame(
+    aphia_id = 126417, stock = "her.27.25-2932", sd = c("a", "b", "c"),
+    year = c(2010L, 2010L, 2011L), abundance_index = c(100, NA, 200),
+    unit = "u", source = "s", stringsAsFactors = FALSE
+  )
+  # 2010 has rows 100 + NA -> whole year poisoned to NA -> warn + dropped (NOT 100)
+  expect_warning(out <- aggregate_bias_series(bias, 126417, "her.27.25-2932"),
+                 "NA BIAS index")
+  expect_equal(out$year, 2011L)
+  expect_equal(out$survey_value, 200)
+})
+
+test_that("aggregate_bias_series warns on an unparseable index distinctly from absent", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+
+  bias <- data.frame(
+    aphia_id = 126417, stock = "her.27.25-2932", sd = "a",
+    year = c(2010L, 2011L), abundance_index = c("1,234", "200"),  # bad: thousands sep
+    unit = "u", source = "s", stringsAsFactors = FALSE
+  )
+  expect_warning(aggregate_bias_series(bias, 126417, "her.27.25-2932"),
+                 "non-numeric abundance_index")
+})
+
 test_that("survey-trends pipeline returns a real per-year series for cod (live)", {
   skip_if(!identical(Sys.getenv("RUN_LIVE_TESTS"), "true"),
           "Live DATRAS test; set RUN_LIVE_TESTS=true to enable")
