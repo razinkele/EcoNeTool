@@ -106,6 +106,7 @@ compute_survey_trends <- function(series_df) {
       s <- s[!duplicated(s$year), , drop = FALSE]
     }
     s <- s[order(s$year), , drop = FALSE]
+    s <- s[!is.na(s$survey_value), , drop = FALSE]
     n <- nrow(s)
     if (n < 3) {
       add_excluded(g, sprintf("trend omitted: %d survey year(s)", n))
@@ -118,7 +119,7 @@ compute_survey_trends <- function(series_df) {
     }
 
     rel <- s$survey_value / m
-    ref_idx <- which(isTRUE(s$is_ref_year) | s$is_ref_year %in% TRUE)
+    ref_idx <- which(s$is_ref_year %in% TRUE)
     ref_rank <- if (length(ref_idx) == 1L) {
       rank(s$survey_value, ties.method = "average")[ref_idx]
     } else {
@@ -129,7 +130,7 @@ compute_survey_trends <- function(series_df) {
     if (n >= 5) {
       recent <- mean(utils::tail(s$survey_value, 3))
       earlier <- mean(utils::head(s$survey_value, n - 3))
-      delta <- if (earlier == 0) NA_real_ else (recent - earlier) / earlier
+      delta <- if (is.na(earlier) || earlier == 0) NA_real_ else (recent - earlier) / earlier
       direction <- if (is.na(delta)) NA_character_
                    else if (abs(delta) < 0.10) "flat"
                    else if (delta > 0) "up"

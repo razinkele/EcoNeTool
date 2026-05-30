@@ -72,7 +72,7 @@ test_that(".map_group_to_aphia: dictionary hit, multi-match->NA, pelagic class",
 test_that("compute_survey_trends: rel series, ref rank-of-n, glyph, guards, schema", {
   source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
 
-  # Cod: 6 rising years, ref year = 2018 (the lowest -> rank 1 of 6).
+  # Cod: 6 rising years, ref year = 2018 (value 11, 2nd lowest -> rank 2 of 6).
   cod <- data.frame(
     group = "Cod",
     year = 2016:2021,
@@ -118,4 +118,85 @@ test_that("compute_survey_trends: <1 usable group -> insufficient", {
   res <- compute_survey_trends(only_short)
   expect_false(res$success)
   expect_equal(res$status, "insufficient")
+})
+
+# R1: 4-year series -> group IS included in trends (4>=3) but direction = NA_character_
+#     (glyph requires >=5 non-NA years)
+test_that("R1: 4-year rising Cod series yields direction NA (no glyph below 5 years)", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+
+  cod4 <- data.frame(
+    group        = "Cod",
+    year         = 2018:2021,
+    survey_value = c(5, 10, 15, 20),
+    is_ref_year  = c(FALSE, FALSE, FALSE, TRUE),
+    stringsAsFactors = FALSE
+  )
+  res <- compute_survey_trends(cod4)
+
+  cod_rows <- res$trends[res$trends$group == "Cod", ]
+  expect_true(nrow(cod_rows) > 0L)         # group IS in trends (4 >= 3)
+  expect_true(all(is.na(cod_rows$direction)))  # no glyph for <5 years
+})
+
+# R2: All-NA survey_value -> group dropped to 0 non-NA rows after FIX 2 ->
+#     excluded (n < 3), NOT in trends
+test_that("R2: all-NA survey_value group is excluded, not in trends", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+
+  all_na <- data.frame(
+    group        = "Ghost",
+    year         = 2015:2019,
+    survey_value = rep(NA_real_, 5),
+    is_ref_year  = c(rep(FALSE, 4), TRUE),
+    stringsAsFactors = FALSE
+  )
+  res <- compute_survey_trends(all_na)
+
+  expect_true("Ghost" %in% res$excluded$group)
+  expect_false(isTRUE("Ghost" %in% res$trends$group))
+})
+
+# R3: Duplicate (group, year) row warns with "survey_trends" and de-dups to
+#     one trends row per distinct year
+test_that("R3: duplicate (group, year) warns 'survey_trends' and de-dups correctly", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+
+  cod_dup <- data.frame(
+    group        = "Cod",
+    year         = c(2016L, 2017L, 2017L, 2018L),  # 2017 duplicated
+    survey_value = c(10, 12, 99, 20),
+    is_ref_year  = c(FALSE, FALSE, FALSE, TRUE),
+    stringsAsFactors = FALSE
+  )
+
+  expect_warning(
+    res <- compute_survey_trends(cod_dup),
+    "survey_trends"
+  )
+
+  cod_rows <- res$trends[res$trends$group == "Cod", ]
+  # De-duped: 3 distinct years -> 3 rows in trends
+  expect_equal(nrow(cod_rows), 3L)
+  expect_equal(sort(unique(cod_rows$year)), c(2016L, 2017L, 2018L))
+})
+
+# R4: aggregate_survey_series() warns "survey_trends" when an area-year cell
+#     has an NA abundance_index
+test_that("R4: partial-NA abundance_index in aggregate_survey_series warns 'survey_trends'", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+
+  reshaped_na <- data.frame(
+    survey          = "BITS",
+    year            = c(2020L, 2020L, 2021L, 2021L),
+    quarter         = c(1L, 1L, 1L, 1L),
+    index_area      = c("BS_CodEast", "BS_CodWest", "BS_CodEast", "BS_CodWest"),
+    abundance_index = c(10, NA_real_, 20, 8),
+    stringsAsFactors = FALSE
+  )
+
+  expect_warning(
+    aggregate_survey_series(reshaped_na, quarter = 1L, areas = NULL),
+    "survey_trends"
+  )
 })
