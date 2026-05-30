@@ -79,3 +79,82 @@ aggregate_survey_series <- function(reshaped_df, quarter, areas = NULL) {
   }
   list(aphia_id = aid, class = class)
 }
+
+#' Per-group DATRAS survey trend (trend-only; no cross-group comparison)
+#'
+#' @param series_df data.frame(group, year, survey_value, is_ref_year). Per-group
+#'   is_ref_year (so the no-common-year fallback needs no scalar ref year).
+#' @return list(success, status, trends, excluded):
+#'   trends = df(group, year, rel, ref_rank, n_years, direction) long format;
+#'   excluded = df(group, reason). Degenerate series are excluded + reported,
+#'   never normalised to NaN/Inf.
+#' @keywords internal
+compute_survey_trends <- function(series_df) {
+  trends_list <- list()
+  excluded_list <- list()
+
+  add_excluded <- function(g, reason) {
+    excluded_list[[length(excluded_list) + 1L]] <<-
+      data.frame(group = g, reason = reason, stringsAsFactors = FALSE)
+  }
+
+  for (g in unique(series_df$group)) {
+    s <- series_df[series_df$group == g, , drop = FALSE]
+    if (anyDuplicated(s$year)) {
+      warning(sprintf("[survey_trends] duplicate (group, year) for '%s'; de-duping", g),
+              call. = FALSE)
+      s <- s[!duplicated(s$year), , drop = FALSE]
+    }
+    s <- s[order(s$year), , drop = FALSE]
+    n <- nrow(s)
+    if (n < 3) {
+      add_excluded(g, sprintf("trend omitted: %d survey year(s)", n))
+      next
+    }
+    m <- mean(s$survey_value)
+    if (is.na(m) || m == 0) {
+      add_excluded(g, "all-zero or all-NA survey series")
+      next
+    }
+
+    rel <- s$survey_value / m
+    ref_idx <- which(isTRUE(s$is_ref_year) | s$is_ref_year %in% TRUE)
+    ref_rank <- if (length(ref_idx) == 1L) {
+      rank(s$survey_value, ties.method = "average")[ref_idx]
+    } else {
+      NA_real_
+    }
+
+    direction <- NA_character_
+    if (n >= 5) {
+      recent <- mean(utils::tail(s$survey_value, 3))
+      earlier <- mean(utils::head(s$survey_value, n - 3))
+      delta <- if (earlier == 0) NA_real_ else (recent - earlier) / earlier
+      direction <- if (is.na(delta)) NA_character_
+                   else if (abs(delta) < 0.10) "flat"
+                   else if (delta > 0) "up"
+                   else "down"
+    }
+
+    trends_list[[length(trends_list) + 1L]] <- data.frame(
+      group = g, year = s$year, rel = rel,
+      ref_rank = ref_rank, n_years = n, direction = direction,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  trends <- if (length(trends_list)) do.call(rbind, trends_list) else NULL
+  excluded <- if (length(excluded_list)) {
+    do.call(rbind, excluded_list)
+  } else {
+    data.frame(group = character(0), reason = character(0), stringsAsFactors = FALSE)
+  }
+
+  ok <- !is.null(trends) && length(unique(trends$group)) >= 1L
+  list(
+    success = ok,
+    status  = if (ok) "ok" else "insufficient",
+    trends  = trends,
+    excluded = excluded
+  )
+}

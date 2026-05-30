@@ -68,3 +68,54 @@ test_that(".map_group_to_aphia: dictionary hit, multi-match->NA, pelagic class",
   expect_true(is.na(none$aphia_id))
   expect_equal(none$class, "unmapped")
 })
+
+test_that("compute_survey_trends: rel series, ref rank-of-n, glyph, guards, schema", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+
+  # Cod: 6 rising years, ref year = 2018 (the lowest -> rank 1 of 6).
+  cod <- data.frame(
+    group = "Cod",
+    year = 2016:2021,
+    survey_value = c(10, 12, 11, 20, 30, 40),  # 2018 is index 3 (value 11)... set ref below
+    is_ref_year = c(FALSE, FALSE, TRUE, FALSE, FALSE, FALSE),
+    stringsAsFactors = FALSE
+  )
+  # 2-year group (Dab) -> omitted (<3 years); all-zero group (Plaice) -> excluded.
+  dab <- data.frame(group = "Dab", year = c(2020, 2021),
+                    survey_value = c(5, 6), is_ref_year = c(FALSE, TRUE),
+                    stringsAsFactors = FALSE)
+  plaice <- data.frame(group = "Plaice", year = 2016:2020,
+                       survey_value = rep(0, 5), is_ref_year = c(rep(FALSE,4), TRUE),
+                       stringsAsFactors = FALSE)
+  series <- rbind(cod, dab, plaice)
+
+  res <- compute_survey_trends(series)
+
+  expect_setequal(names(res), c("success", "status", "trends", "excluded"))
+  expect_true(res$success)
+  expect_equal(res$status, "ok")
+
+  # Cod rel series normalised to mean 1
+  cod_rows <- res$trends[res$trends$group == "Cod", ]
+  expect_equal(mean(cod_rows$rel), 1)
+  expect_equal(unique(cod_rows$n_years), 6L)
+  # ref year (2018, value 11) is the 2nd lowest of 6 -> rank 2
+  expect_equal(unique(cod_rows$ref_rank), 2)
+  # >=5 yr rising series -> direction "up"
+  expect_equal(unique(cod_rows$direction), "up")
+
+  # Dab omitted (<3 yr) and Plaice excluded (all-zero), both with reasons
+  expect_true(all(c("Dab", "Plaice") %in% res$excluded$group))
+  expect_false("Dab" %in% res$trends$group)
+  expect_false("Plaice" %in% res$trends$group)
+})
+
+test_that("compute_survey_trends: <1 usable group -> insufficient", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+  only_short <- data.frame(group = "Dab", year = c(2020, 2021),
+                           survey_value = c(5, 6), is_ref_year = c(FALSE, TRUE),
+                           stringsAsFactors = FALSE)
+  res <- compute_survey_trends(only_short)
+  expect_false(res$success)
+  expect_equal(res$status, "insufficient")
+})
