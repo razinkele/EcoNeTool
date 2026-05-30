@@ -28,6 +28,28 @@ test_that("aggregate_survey_series pins quarter and sums chosen areas per year",
   expect_equal(east$survey_value, c(10, 20))
 })
 
+test_that("aggregate_sag_ssb extracts Year+SSB and drops NA SSB years", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+
+  # icesSAG::getSummaryTable()-shaped frame (Year, SSB among many cols)
+  ss <- data.frame(Year = 2018:2022, SSB = c(100, NA, 120, 130, 140),
+                   F = c(0.3, 0.3, 0.3, 0.3, 0.3), stringsAsFactors = FALSE)
+  out <- aggregate_sag_ssb(ss)
+  expect_setequal(names(out), c("year", "survey_value"))
+  expect_equal(out$year, c(2018L, 2020L, 2021L, 2022L))   # NA-SSB year dropped
+  expect_equal(out$survey_value, c(100, 120, 130, 140))
+
+  # missing SSB column -> empty frame, not an error
+  empty <- aggregate_sag_ssb(data.frame(Year = 2020, F = 0.3))
+  expect_equal(nrow(empty), 0)
+})
+
+test_that("clupeid SAG map pairs herring/sprat AphiaIDs to their stock keys", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+  expect_equal(SURVEY_TRENDS_CLUPEID_SAG[["126417"]], "her.27.25-2932")  # herring
+  expect_equal(SURVEY_TRENDS_CLUPEID_SAG[["126425"]], "spr.27.22-32")    # sprat
+})
+
 test_that(".map_group_to_aphia flags BITS-non-indexed species as not_surveyed", {
   source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
 

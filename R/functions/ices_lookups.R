@@ -323,6 +323,71 @@ lookup_datras_indices <- function(aphia_id,
 }
 
 
+#' Fetch an ICES SAG stock's SSB time series
+#'
+#' The clupeid (herring/sprat) counterpart to lookup_datras_indices: BITS
+#' bottom-trawl cannot index pelagics, so their trend comes from the assessed
+#' SSB in ICES SAG. Returns the same shape so compute_survey_trends() consumes
+#' it identically. Trend-only (SSB units differ by stock - tonnes vs relative
+#' "ratio" - so only the relative trend is comparable, not the level).
+#'
+#' @param stock_key ICES SAG StockKeyLabel, e.g. "her.27.25-2932".
+#' @param timeout Per-call network budget in seconds.
+#' @return list(success, source = "SAG_SSB", data, error). On success `data` is
+#'   a data.frame(year, survey_value) of non-NA SSB by year. Failures populate
+#'   `error` and warning().
+#' @export
+fetch_sag_ssb <- function(stock_key, timeout = 60) {
+  result <- list(success = FALSE, source = "SAG_SSB", data = NULL,
+                 error = NA_character_)
+
+  if (is.null(stock_key) || !is.character(stock_key) || !nzchar(stock_key)) {
+    result$error <- "stock_key must be a non-empty character"
+    return(result)
+  }
+  if (!requireNamespace("icesSAG", quietly = TRUE)) {
+    result$error <- "icesSAG package not installed"
+    return(result)
+  }
+
+  cache_key <- paste0("sag_ssb_", stock_key)
+  if (!is.null(.ices_cache[[cache_key]])) return(.ices_cache[[cache_key]])
+
+  tryCatch({
+    keys <- with_timeout(icesSAG::findAssessmentKey(stock_key),
+                         timeout = timeout, on_timeout = NULL)
+    if (is.null(keys) || length(keys) == 0) {
+      result$error <<- sprintf("no SAG assessment for '%s'", stock_key)
+      return(result)
+    }
+    key <- max(as.integer(keys), na.rm = TRUE)  # latest assessment
+    ss <- with_timeout(icesSAG::getSummaryTable(key),
+                       timeout = timeout, on_timeout = NULL)
+    if (is.list(ss) && !is.data.frame(ss)) ss <- ss[[1]]
+    if (!is.data.frame(ss) || nrow(ss) == 0) {
+      result$error <<- sprintf("SAG returned no summary table for '%s'", stock_key)
+      return(result)
+    }
+    # aggregate_sag_ssb() lives in R/functions/rpath/survey_validation.R, sourced
+    # at app start; reshape Year/SSB -> year/survey_value, dropping NA SSB.
+    ser <- aggregate_sag_ssb(ss)
+    if (nrow(ser) == 0) {
+      result$error <<- sprintf("no non-NA SSB for '%s'", stock_key)
+      return(result)
+    }
+    result$data    <- ser
+    result$success <- TRUE
+    .ices_cache[[cache_key]] <- result
+    result
+  }, error = function(e) {
+    warning(sprintf("[fetch_sag_ssb] %s: %s", stock_key, conditionMessage(e)),
+            call. = FALSE)
+    result$error <<- conditionMessage(e)
+    result
+  })
+}
+
+
 #' Look up the ICES Statistical Area code for a (lon, lat) point
 #'
 #' Point-in-polygon against the ICES Areas layer. Returns the MOST SPECIFIC

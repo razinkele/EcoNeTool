@@ -25,6 +25,16 @@ SURVEY_TRENDS_BITS_INDEXED_APHIA <- c(
   127143   # Pleuronectes platessa (plaice)
 )
 
+# Clupeid AphiaID -> ICES SAG stock key. BITS bottom-trawl can't index
+# herring/sprat (the dominant Baltic groups); instead their assessed SSB
+# time series comes from SAG (icesSAG). Trend-only: SSB units differ by stock
+# (sprat = tonnes, central Baltic herring = relative "ratio"), so only the
+# relative trend is comparable, not the level. Names are AphiaIDs as strings.
+SURVEY_TRENDS_CLUPEID_SAG <- c(
+  "126417" = "her.27.25-2932",  # Clupea harengus, central Baltic herring
+  "126425" = "spr.27.22-32"     # Sprattus sprattus, Baltic sprat
+)
+
 #' Collapse a getIndices-shaped frame to one survey_value per year
 #'
 #' @param reshaped_df data.frame from lookup_datras_indices()$data, columns
@@ -53,6 +63,27 @@ aggregate_survey_series <- function(reshaped_df, quarter, areas = NULL) {
     sum(v, na.rm = FALSE)
   }, numeric(1))
   data.frame(year = years, survey_value = survey_value, stringsAsFactors = FALSE)
+}
+
+#' Collapse an icesSAG getSummaryTable() frame to one SSB value per year
+#'
+#' The clupeid (herring/sprat) analogue of aggregate_survey_series: feeds the
+#' same compute_survey_trends() contract from SAG SSB instead of DATRAS
+#' abundance. SSB-NA years are dropped.
+#'
+#' @param summary_df data.frame from icesSAG::getSummaryTable() (cols incl.
+#'   Year, SSB).
+#' @return data.frame(year, survey_value), one row per year with a non-NA SSB.
+#' @keywords internal
+aggregate_sag_ssb <- function(summary_df) {
+  if (!all(c("Year", "SSB") %in% names(summary_df))) {
+    return(data.frame(year = integer(0), survey_value = numeric(0),
+                      stringsAsFactors = FALSE))
+  }
+  yr <- as.integer(summary_df$Year)
+  ssb <- suppressWarnings(as.numeric(summary_df$SSB))
+  keep <- !is.na(ssb) & !is.na(yr)
+  data.frame(year = yr[keep], survey_value = ssb[keep], stringsAsFactors = FALSE)
 }
 
 #' Resolve an Ecopath group name to a single AphiaID + class

@@ -561,14 +561,15 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
           value = "survey_trends",
           br(),
           div(
-            class = "alert alert-warning",
-            icon("triangle-exclamation"),
+            class = "alert alert-info",
+            icon("circle-info"),
             HTML(paste0(
-              " <strong>Demersal fish only.</strong> BITS is a bottom-trawl ",
-              "survey and under-samples pelagics: <strong>herring and sprat ",
-              "cannot yet be validated here</strong> (they need BIAS acoustic ",
-              "data — planned). Values are relative survey abundance trends, ",
-              "not biomass."
+              " <strong>Relative trends only — not biomass.</strong> Demersal ",
+              "fish use ICES BITS bottom-trawl abundance indices (cod, ",
+              "flounder, plaice). Herring &amp; sprat use ICES SAG assessed ",
+              "<strong>SSB</strong> instead (BITS under-samples pelagics); SSB ",
+              "units differ by stock (sprat tonnes, herring relative), so only ",
+              "the normalised trend is comparable across groups, not the level."
             ))
           ),
           fluidRow(
@@ -1921,6 +1922,37 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
         mapping_rows[[length(mapping_rows) + 1L]] <- data.frame(
           Group = g, AphiaID = m$aphia_id, Class = m$class, stringsAsFactors = FALSE
         )
+        # Clupeid path: herring/sprat can't be BITS-indexed (bottom trawl
+        # under-samples pelagics); their assessed SSB trend comes from ICES SAG
+        # instead of being excluded as pelagic.
+        if (!is.na(m$aphia_id) &&
+            as.character(m$aphia_id) %in% names(SURVEY_TRENDS_CLUPEID_SAG)) {
+          sag_key <- SURVEY_TRENDS_CLUPEID_SAG[[as.character(m$aphia_id)]]
+          mapping_rows[[length(mapping_rows)]]$Class <- "clupeid (SAG SSB)"
+          res <- fetch_sag_ssb(sag_key)
+          if (!isTRUE(res$success)) {
+            warning(sprintf("[survey_trends] no SAG SSB for '%s' (%s): %s",
+                            g, sag_key, res$error), call. = FALSE)
+            excluded_map[[length(excluded_map) + 1L]] <-
+              data.frame(group = g, reason = "no SAG SSB", stringsAsFactors = FALSE)
+            next
+          }
+          # Window the full SSB history to the same trailing window as the
+          # demersal series so the plot x-range and ref_rank are comparable.
+          ser <- res$data[res$data$year %in% window_years, , drop = FALSE]
+          if (nrow(ser) > 0) {
+            ser$group <- g
+            ser$is_ref_year <- ser$year == ref_year
+            series_list[[length(series_list) + 1L]] <- ser
+          } else {
+            warning(sprintf("[survey_trends] no SAG SSB in window for '%s'", g),
+                    call. = FALSE)
+            excluded_map[[length(excluded_map) + 1L]] <-
+              data.frame(group = g, reason = "no SAG SSB in window",
+                         stringsAsFactors = FALSE)
+          }
+          next
+        }
         if (m$class != "demersal") {
           excluded_map[[length(excluded_map) + 1L]] <-
             data.frame(group = g, reason = m$class, stringsAsFactors = FALSE)

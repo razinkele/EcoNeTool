@@ -220,6 +220,33 @@ test_that("lookup_datras_indices returns structured data for cod (live)", {
   expect_gt(nrow(res$data), 0)
 })
 
+test_that("fetch_sag_ssb rejects an empty stock key (offline contract)", {
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  bad <- fetch_sag_ssb("")
+  expect_false(bad$success)
+  expect_equal(bad$source, "SAG_SSB")
+  expect_true(nzchar(bad$error))
+})
+
+test_that("fetch_sag_ssb returns an SSB series for Baltic sprat (live)", {
+  skip_if_no_live_tests()
+  skip_if_not_installed("icesSAG")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  # spr.27.22-32 SSB is reported in tonnes and is a low-flake assessed stock.
+  res <- fetch_sag_ssb("spr.27.22-32", timeout = 90)
+  skip_if(!isTRUE(res$success),
+          paste("SAG returned no SSB for spr.27.22-32:", res$error))
+  expect_s3_class(res$data, "data.frame")
+  expect_setequal(names(res$data), c("year", "survey_value"))
+  expect_true(is.numeric(res$data$survey_value))
+  expect_gt(nrow(res$data), 0)
+})
+
 test_that("lookup_ices_subdivision rejects invalid coordinates", {
   source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
   source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
