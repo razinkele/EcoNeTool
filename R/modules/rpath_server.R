@@ -576,6 +576,9 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
               width = 4,
               selectInput(ns("survey_trends_quarter"), "Survey quarter:",
                           choices = c("Q1" = 1, "Q4" = 4), selected = 1),
+              numericInput(ns("survey_trends_ref_year"), "Model reference year:",
+                           value = as.integer(format(Sys.Date(), "%Y")) - 1,
+                           min = 1990, max = as.integer(format(Sys.Date(), "%Y")), step = 1),
               actionButton(ns("survey_trends_run"),
                            tagList(icon("play"), " Run survey trends"),
                            class = "btn-info btn-block"),
@@ -584,7 +587,8 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
             ),
             column(
               width = 8,
-              plotly::plotlyOutput(ns("survey_trends_plot"), height = "360px")
+              plotly::plotlyOutput(ns("survey_trends_plot"), height = "360px"),
+              uiOutput(ns("survey_trends_summary"))
             )
           ),
           hr(),
@@ -1248,6 +1252,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
 
     # Run Ecopath mass balance
     observeEvent(input$btn_run_ecopath, {
+      rpath_values$survey_trends <- NULL
       if (is.null(rpath_values$params)) {
         showNotification("Please convert data to Rpath format first", type = "error")
         return()
@@ -1890,17 +1895,23 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
         return()
       }
       living <- model[model$Type %in% c(0, 1), , drop = FALSE]
+      if (nrow(living) == 0) {
+        showNotification("No living (consumer/producer) groups in the model.", type = "warning")
+        return()
+      }
       dict <- .survey_trends_dict()
       window_years <- seq(as.integer(format(Sys.Date(), "%Y")) - 10,
                           as.integer(format(Sys.Date(), "%Y")))
       quarter <- as.integer(input$survey_trends_quarter)
+      ref_year <- as.integer(input$survey_trends_ref_year)
 
       mapping_rows <- list()
       series_list <- list()
       excluded_map <- list()
 
       progress <- Progress$new(min = 0, max = nrow(living))
-      on.exit(progress$close())
+      on.exit(progress$close(), add = TRUE)
+      progress$set(message = "Fetching BITS survey data...", value = 0)
 
       for (i in seq_len(nrow(living))) {
         g <- as.character(living$Group[i])
@@ -1925,7 +1936,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
         ser <- aggregate_survey_series(res$data, quarter = quarter, areas = NULL)
         if (nrow(ser) > 0) {
           ser$group <- g
-          ser$is_ref_year <- ser$year == max(ser$year)
+          ser$is_ref_year <- ser$year == ref_year
           series_list[[length(series_list) + 1L]] <- ser
         }
       }
@@ -1936,12 +1947,21 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
         data.frame(group = character(0), year = integer(0),
                    survey_value = numeric(0), is_ref_year = logical(0))
 
+      warning("[survey_trends] area selection not confirmed; summed all BITS index areas per species",
+              call. = FALSE)
+      showNotification(
+        paste0("Survey trends summed all BITS areas per species (P1). For stocks split by area",
+               " (e.g. East/West Baltic cod) interpret with care."),
+        type = "warning", duration = 8
+      )
+
       trends <- compute_survey_trends(series_df)
       # fold the mapping-stage exclusions into the result for the footnote
       if (length(excluded_map)) {
         trends$excluded <- rbind(do.call(rbind, excluded_map), trends$excluded)
       }
       trends$mapping <- mapping_df
+      trends$ref_year <- ref_year
       rpath_values$survey_trends <- trends
     })
 
@@ -1964,19 +1984,45 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
     output$survey_trends_plot <- plotly::renderPlotly({
       res <- rpath_values$survey_trends
       req(res, isTRUE(res$success))
-      t <- res$trends
+      td <- res$trends
       p <- plotly::plot_ly()
-      for (g in unique(t$group)) {
-        gd <- t[t$group == g, ]
+      for (g in unique(td$group)) {
+        gd <- td[td$group == g, ]
         p <- plotly::add_lines(p, x = gd$year, y = gd$rel, name = g)
       }
-      plotly::layout(p, yaxis = list(title = "Relative survey abundance"),
-                     xaxis = list(title = "Year"))
+      plotly::layout(p,
+        yaxis = list(title = "Relative survey abundance"),
+        xaxis = list(title = "Year"),
+        shapes = list(list(type = "line", x0 = res$ref_year, x1 = res$ref_year,
+                           y0 = 0, y1 = 1, yref = "paper",
+                           line = list(dash = "dot", color = "grey"))))
+    })
+
+    output$survey_trends_summary <- renderUI({
+      res <- rpath_values$survey_trends
+      req(res, isTRUE(res$success))
+      td <- res$trends
+      glyph <- c(up = "↑", down = "↓", flat = "≈")
+      items <- lapply(unique(td$group), function(g) {
+        gd <- td[td$group == g, ]
+        rr <- gd$ref_rank[1]; n <- gd$n_years[1]; d <- gd$direction[1]
+        gl <- if (!is.na(d) && d %in% names(glyph)) glyph[[d]] else ""
+        txt <- if (is.na(rr)) {
+          sprintf("%s: model reference year not in the survey series %s", g, gl)
+        } else {
+          sprintf("%s: reference year is rank %g of %d survey years %s", g, rr, n, gl)
+        }
+        tags$li(txt)
+      })
+      tags$div(tags$p(class = "text-muted",
+                      paste0("Lowest/highest-rank reference years may be anomalous",
+                             " - consider averaging biomass across years.")),
+               tags$ul(items))
     })
 
     output$survey_trends_mapping <- DT::renderDataTable({
       res <- rpath_values$survey_trends
-      req(res)
+      req(res, !is.null(res$mapping))
       DT::datatable(res$mapping, rownames = FALSE,
                     options = list(pageLength = 10, dom = "tp"))
     })
