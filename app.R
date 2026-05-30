@@ -1,6 +1,15 @@
 # app.R
 # EcoNeTool - Ecological Interaction Network Explorer
 # Shiny app for marine food web network analysis
+
+# Make the app-local R library (r-libs/) discoverable when present. Used on the
+# server for dependencies not in the system library (e.g. icesSAG, needed by the
+# R2b clupeid SSB path) without requiring sudo. No-op in dev where r-libs/ is
+# absent. Must precede any code that requireNamespace()s those packages.
+if (dir.exists("r-libs")) {
+  .libPaths(c(normalizePath("r-libs", winslash = "/"), .libPaths()))
+}
+
 library(shiny)
 library(bs4Dash)
 library(shinyBS)  # For modals
