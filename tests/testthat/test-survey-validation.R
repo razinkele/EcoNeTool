@@ -200,3 +200,26 @@ test_that("R4: partial-NA abundance_index in aggregate_survey_series warns 'surv
     "survey_trends"
   )
 })
+
+test_that("survey-trends pipeline returns a real per-year series for cod (live)", {
+  skip_if(!identical(Sys.getenv("RUN_LIVE_TESTS"), "true"),
+          "Live DATRAS test; set RUN_LIVE_TESTS=true to enable")
+  skip_if_not_installed("icesDatras")
+  skip_if_not_installed("worrms")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+
+  aid <- worrms::wm_name2id("Gadus morhua")
+  this_year <- as.integer(format(Sys.Date(), "%Y"))
+  res <- lookup_datras_indices(aid, surveys = "BITS",
+                               years = seq(this_year - 10, this_year), timeout = 90)
+  skip_if(!isTRUE(res$success),
+          paste("DATRAS returned no cod indices for BITS:", res$error))
+
+  ser <- aggregate_survey_series(res$data, quarter = 1L, areas = NULL)
+  expect_s3_class(ser, "data.frame")
+  expect_true(all(c("year", "survey_value") %in% names(ser)))
+  expect_gt(nrow(ser), 0)
+  expect_true(is.numeric(ser$survey_value))
+})
