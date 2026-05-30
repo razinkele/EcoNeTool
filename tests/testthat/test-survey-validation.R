@@ -28,6 +28,29 @@ test_that("aggregate_survey_series pins quarter and sums chosen areas per year",
   expect_equal(east$survey_value, c(10, 20))
 })
 
+test_that(".map_group_to_aphia flags BITS-non-indexed species as not_surveyed", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+
+  dict <- data.frame(group = c("Cod", "Turbot", "Herring"),
+                     aphia_id = c(126436, 127149, 126417), stringsAsFactors = FALSE)
+  bits <- c(126436, 127141, 127143)   # cod, flounder, plaice (verified BITS-indexed)
+
+  # BITS-indexed species -> demersal
+  expect_equal(.map_group_to_aphia("Cod", dict, SURVEY_TRENDS_PELAGIC_APHIA, bits)$class,
+               "demersal")
+  # resolves, demersal, but NOT BITS-indexed -> not_surveyed (no wasted fetch)
+  expect_equal(.map_group_to_aphia("Turbot", dict, SURVEY_TRENDS_PELAGIC_APHIA, bits)$class,
+               "not_surveyed")
+  # pelagic takes precedence over the allowlist
+  expect_equal(.map_group_to_aphia("Herring", dict, SURVEY_TRENDS_PELAGIC_APHIA, bits)$class,
+               "pelagic")
+  # back-compat: no allowlist (NULL) -> any non-pelagic resolved name is demersal
+  expect_equal(.map_group_to_aphia("Turbot", dict, SURVEY_TRENDS_PELAGIC_APHIA)$class,
+               "demersal")
+  # the shipped constant exists and contains cod/flounder/plaice
+  expect_true(all(c(126436, 127141, 127143) %in% SURVEY_TRENDS_BITS_INDEXED_APHIA))
+})
+
 test_that(".map_group_to_aphia: dictionary hit, multi-match->NA, pelagic class", {
   skip_if_not_installed("worrms")
   source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)

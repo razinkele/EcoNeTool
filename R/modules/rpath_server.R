@@ -1916,7 +1916,8 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
       for (i in seq_len(nrow(living))) {
         g <- as.character(living$Group[i])
         progress$set(value = i, detail = g)
-        m <- .map_group_to_aphia(g, dict, SURVEY_TRENDS_PELAGIC_APHIA)
+        m <- .map_group_to_aphia(g, dict, SURVEY_TRENDS_PELAGIC_APHIA,
+                                 SURVEY_TRENDS_BITS_INDEXED_APHIA)
         mapping_rows[[length(mapping_rows) + 1L]] <- data.frame(
           Group = g, AphiaID = m$aphia_id, Class = m$class, stringsAsFactors = FALSE
         )

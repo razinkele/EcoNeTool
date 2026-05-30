@@ -14,6 +14,17 @@ SURVEY_TRENDS_PELAGIC_APHIA <- c(
   126425   # Sprattus sprattus (sprat)
 )
 
+# AphiaIDs for which BITS getIndices() actually computes survey indices.
+# Verified empirically against icesDatras (BITS Q1/Q4, 2020-2026): only these
+# three return data; dab/turbot/brill/eelpout/etc. have NO BITS index, so a
+# group resolving outside this set is classed "not_surveyed" (excluded up front,
+# no wasted DATRAS fetch). BITS-specific; revisit if other surveys are added.
+SURVEY_TRENDS_BITS_INDEXED_APHIA <- c(
+  126436,  # Gadus morhua        (cod)
+  127141,  # Platichthys flesus  (flounder)
+  127143   # Pleuronectes platessa (plaice)
+)
+
 #' Collapse a getIndices-shaped frame to one survey_value per year
 #'
 #' @param reshaped_df data.frame from lookup_datras_indices()$data, columns
@@ -53,9 +64,15 @@ aggregate_survey_series <- function(reshaped_df, quarter, areas = NULL) {
 #' @param group_name Character Ecopath group name.
 #' @param dictionary data.frame(group, aphia_id).
 #' @param pelagic_set Numeric vector of pelagic AphiaIDs to exclude.
-#' @return list(aphia_id = numeric scalar or NA_real_, class = chr).
+#' @param bits_indexed Optional numeric vector of AphiaIDs BITS getIndices
+#'   actually computes; a resolved, non-pelagic AphiaID outside this set is
+#'   classed "not_surveyed". NULL (default) disables the check (any non-pelagic
+#'   resolved name -> "demersal").
+#' @return list(aphia_id = numeric scalar or NA_real_, class = chr:
+#'   demersal/pelagic/not_surveyed/unmapped).
 #' @keywords internal
-.map_group_to_aphia <- function(group_name, dictionary, pelagic_set) {
+.map_group_to_aphia <- function(group_name, dictionary, pelagic_set,
+                                bits_indexed = NULL) {
   hit <- dictionary$aphia_id[dictionary$group == group_name]
   aid <- if (length(hit) == 1 && !is.na(hit) && hit > 0) {
     as.numeric(hit)
@@ -74,6 +91,8 @@ aggregate_survey_series <- function(reshaped_df, quarter, areas = NULL) {
     "unmapped"
   } else if (aid %in% pelagic_set) {
     "pelagic"
+  } else if (!is.null(bits_indexed) && !(aid %in% bits_indexed)) {
+    "not_surveyed"
   } else {
     "demersal"
   }
