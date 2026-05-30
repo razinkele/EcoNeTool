@@ -21,4 +21,7 @@ source("R/functions/rpath/rpath_simulation.R")
 # Complete end-to-end workflows
 source("R/functions/rpath/rpath_workflows.R")
 
-message("✓ Rpath functions loaded (4 files)")
+# Survey trends (R2: DATRAS survey validation of biomass inputs)
+source("R/functions/rpath/survey_validation.R")
+
+message("✓ Rpath functions loaded (5 files)")
