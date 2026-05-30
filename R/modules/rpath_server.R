@@ -35,7 +35,8 @@ rpathModuleServer <- function(id, ecopath_import_reactive) {
       ecopath_model = NULL,
       mti = NULL,
       ecosim = NULL,
-      status = "not_started"
+      status = "not_started",
+      survey_trends = NULL   # result list from compute_survey_trends()
     )
 
     # Note: Integration functions are loaded globally in app.R
@@ -552,6 +553,44 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
               )
             )
           )
+        ),
+
+        # Tab 8: Survey Trends (R2: DATRAS survey validation of biomass inputs)
+        tabPanel(
+          title = tagList(icon("chart-line"), " Survey Trends"),
+          value = "survey_trends",
+          br(),
+          div(
+            class = "alert alert-warning",
+            icon("triangle-exclamation"),
+            HTML(paste0(
+              " <strong>Demersal fish only.</strong> BITS is a bottom-trawl ",
+              "survey and under-samples pelagics: <strong>herring and sprat ",
+              "cannot yet be validated here</strong> (they need BIAS acoustic ",
+              "data — planned). Values are relative survey abundance trends, ",
+              "not biomass."
+            ))
+          ),
+          fluidRow(
+            column(
+              width = 4,
+              selectInput(ns("survey_trends_quarter"), "Survey quarter:",
+                          choices = c("Q1" = 1, "Q4" = 4), selected = 1),
+              actionButton(ns("survey_trends_run"),
+                           tagList(icon("play"), " Run survey trends"),
+                           class = "btn-info btn-block"),
+              br(),
+              uiOutput(ns("survey_trends_status"))
+            ),
+            column(
+              width = 8,
+              plotly::plotlyOutput(ns("survey_trends_plot"), height = "360px")
+            )
+          ),
+          hr(),
+          h5("Group → species mapping"),
+          DT::dataTableOutput(ns("survey_trends_mapping")),
+          uiOutput(ns("survey_trends_exclusions"))
         )
       )
     })
@@ -1832,6 +1871,126 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
       } else {
         plot_ecosim_results(rpath_values$fishing_scenario, type = "biomass")
       }
+    })
+
+    # ---- R2: DATRAS survey trends (read-only diagnostic) --------------------
+    .survey_trends_dict <- reactive({
+      f <- "R/config/ewe_group_dictionary.csv"
+      if (file.exists(f)) {
+        read.csv(f, stringsAsFactors = FALSE)
+      } else {
+        data.frame(group = character(0), aphia_id = numeric(0))
+      }
+    })
+
+    observeEvent(input$survey_trends_run, {
+      model <- rpath_values$params$model
+      if (is.null(model)) {
+        showNotification("Balance an Ecopath model first.", type = "warning")
+        return()
+      }
+      living <- model[model$Type %in% c(0, 1), , drop = FALSE]
+      dict <- .survey_trends_dict()
+      window_years <- seq(as.integer(format(Sys.Date(), "%Y")) - 10,
+                          as.integer(format(Sys.Date(), "%Y")))
+      quarter <- as.integer(input$survey_trends_quarter)
+
+      mapping_rows <- list()
+      series_list <- list()
+      excluded_map <- list()
+
+      progress <- Progress$new(min = 0, max = nrow(living))
+      on.exit(progress$close())
+
+      for (i in seq_len(nrow(living))) {
+        g <- as.character(living$Group[i])
+        progress$set(value = i, detail = g)
+        m <- .map_group_to_aphia(g, dict, SURVEY_TRENDS_PELAGIC_APHIA)
+        mapping_rows[[length(mapping_rows) + 1L]] <- data.frame(
+          Group = g, AphiaID = m$aphia_id, Class = m$class, stringsAsFactors = FALSE
+        )
+        if (m$class != "demersal") {
+          excluded_map[[length(excluded_map) + 1L]] <-
+            data.frame(group = g, reason = m$class, stringsAsFactors = FALSE)
+          next
+        }
+        res <- lookup_datras_indices(m$aphia_id, surveys = "BITS", years = window_years)
+        if (!isTRUE(res$success)) {
+          warning(sprintf("[survey_trends] no survey data for '%s': %s",
+                          g, res$error), call. = FALSE)
+          excluded_map[[length(excluded_map) + 1L]] <-
+            data.frame(group = g, reason = "no survey data", stringsAsFactors = FALSE)
+          next
+        }
+        ser <- aggregate_survey_series(res$data, quarter = quarter, areas = NULL)
+        if (nrow(ser) > 0) {
+          ser$group <- g
+          ser$is_ref_year <- ser$year == max(ser$year)
+          series_list[[length(series_list) + 1L]] <- ser
+        }
+      }
+
+      mapping_df <- if (length(mapping_rows)) do.call(rbind, mapping_rows) else
+        data.frame(Group = character(0), AphiaID = numeric(0), Class = character(0))
+      series_df <- if (length(series_list)) do.call(rbind, series_list) else
+        data.frame(group = character(0), year = integer(0),
+                   survey_value = numeric(0), is_ref_year = logical(0))
+
+      trends <- compute_survey_trends(series_df)
+      # fold the mapping-stage exclusions into the result for the footnote
+      if (length(excluded_map)) {
+        trends$excluded <- rbind(do.call(rbind, excluded_map), trends$excluded)
+      }
+      trends$mapping <- mapping_df
+      rpath_values$survey_trends <- trends
+    })
+
+    output$survey_trends_status <- renderUI({
+      res <- rpath_values$survey_trends
+      if (is.null(res)) {
+        return(tags$span(class = "text-muted", icon("info-circle"),
+                         " Not run yet."))
+      }
+      if (isTRUE(res$success)) {
+        n <- length(unique(res$trends$group))
+        tags$span(class = "text-success", icon("check-circle"),
+                  sprintf(" %d demersal group(s) with trends", n))
+      } else {
+        tags$span(class = "text-warning", icon("triangle-exclamation"),
+                  " No demersal groups with a usable survey trend.")
+      }
+    })
+
+    output$survey_trends_plot <- plotly::renderPlotly({
+      res <- rpath_values$survey_trends
+      req(res, isTRUE(res$success))
+      t <- res$trends
+      p <- plotly::plot_ly()
+      for (g in unique(t$group)) {
+        gd <- t[t$group == g, ]
+        p <- plotly::add_lines(p, x = gd$year, y = gd$rel, name = g)
+      }
+      plotly::layout(p, yaxis = list(title = "Relative survey abundance"),
+                     xaxis = list(title = "Year"))
+    })
+
+    output$survey_trends_mapping <- DT::renderDataTable({
+      res <- rpath_values$survey_trends
+      req(res)
+      DT::datatable(res$mapping, rownames = FALSE,
+                    options = list(pageLength = 10, dom = "tp"))
+    })
+
+    output$survey_trends_exclusions <- renderUI({
+      res <- rpath_values$survey_trends
+      req(res)
+      ex <- res$excluded
+      if (is.null(ex) || nrow(ex) == 0) return(NULL)
+      tags$div(
+        class = "text-muted", style = "font-size:12px;",
+        tags$strong(sprintf("Excluded (%d): ", nrow(ex))),
+        paste(sprintf("%s (%s)", ex$group, ex$reason), collapse = "; ")
+      )
     })
 
     # Return reactive values for external access if needed
