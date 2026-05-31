@@ -126,8 +126,12 @@ select_clupeid_series(bias_df, aphia_id, stock_key, window_years, ref_year,
 1. BIAS rows in window → BIAS series, `class = "clupeid (BIAS acoustic)"`.
 2. BIAS rows exist but all outside `window_years` → falls through to SAG.
 3. BIAS empty + SAG success → SAG series, `class = "clupeid (SAG SSB)"`.
-4. BIAS empty + SAG failure/empty → `series = NULL`,
-   `excluded_reason = "no BIAS or SAG data in window"`.
+4. BIAS empty + SAG failure/empty/malformed → `series = NULL`,
+   `class = "clupeid (excluded)"` (honest — nothing was sourced, so the mapping
+   table must not claim SAG was used), `excluded_reason = "no BIAS or SAG data
+   in window"`. (The SAG branch also guards `success && !is.null(data) &&
+   "year" %in% names(data)` so a malformed feed degrades to this branch instead
+   of crashing.)
 
 ### 3.3 Loader — `.survey_trends_bias()` reactive
 
