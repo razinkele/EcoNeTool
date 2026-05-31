@@ -320,6 +320,48 @@ test_that("aggregate_bias_series warns on an unparseable index distinctly from a
                  "non-numeric abundance_index")
 })
 
+test_that("select_clupeid_series chooses BIAS, falls back to SAG, then excludes", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+
+  win <- 2014:2024
+  bias_in <- data.frame(
+    aphia_id = 126417, stock = "her.27.25-2932", sd = "x",
+    year = c(2018L, 2019L, 2020L), abundance_index = c(10, 20, 30),
+    unit = "u", source = "s", stringsAsFactors = FALSE
+  )
+  fake_ok   <- function(key) list(success = TRUE,
+                                  data = data.frame(year = 2015:2024,
+                                                    survey_value = 1:10))
+  fake_fail <- function(key) list(success = FALSE, data = NULL, error = "boom")
+
+  # Branch 1: BIAS rows in window -> BIAS chosen
+  b1 <- select_clupeid_series(bias_in, 126417, "her.27.25-2932", win, 2019,
+                              fetch_sag = fake_fail)
+  expect_equal(b1$class, "clupeid (BIAS acoustic)")
+  expect_equal(b1$series$year, c(2018L, 2019L, 2020L))
+  expect_equal(b1$series$is_ref_year, c(FALSE, TRUE, FALSE))
+  expect_null(b1$excluded_reason)
+
+  # Branch 2: BIAS rows exist but ALL outside window -> SAG fallback
+  bias_old <- transform(bias_in, year = c(1990L, 1991L, 1992L))
+  b2 <- select_clupeid_series(bias_old, 126417, "her.27.25-2932", win, 2019,
+                              fetch_sag = fake_ok)
+  expect_equal(b2$class, "clupeid (SAG SSB)")
+  expect_true(all(b2$series$year %in% win))
+
+  # Branch 3: BIAS empty + SAG success -> SAG
+  b3 <- select_clupeid_series(bias_in[0, ], 126417, "her.27.25-2932", win, 2019,
+                              fetch_sag = fake_ok)
+  expect_equal(b3$class, "clupeid (SAG SSB)")
+  expect_true(nrow(b3$series) > 0)
+
+  # Branch 4: BIAS empty + SAG failure -> exclusion
+  b4 <- select_clupeid_series(bias_in[0, ], 126417, "her.27.25-2932", win, 2019,
+                              fetch_sag = fake_fail)
+  expect_null(b4$series)
+  expect_equal(b4$excluded_reason, "no BIAS or SAG data in window")
+})
+
 test_that("survey-trends pipeline returns a real per-year series for cod (live)", {
   skip_if(!identical(Sys.getenv("RUN_LIVE_TESTS"), "true"),
           "Live DATRAS test; set RUN_LIVE_TESTS=true to enable")

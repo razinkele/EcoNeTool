@@ -147,6 +147,48 @@ aggregate_bias_series <- function(bias_df, aphia_id, stock_key = NULL) {
   out[!is.na(out$survey_value), , drop = FALSE]
 }
 
+#' Choose a clupeid trend series: BIAS acoustic primary, SAG SSB fallback
+#'
+#' Encapsulates the herring/sprat source-selection fork so it is unit-testable
+#' (fetch_sag is injected). Prefers the curated BIAS acoustic series windowed to
+#' window_years; falls back to assessed SAG SSB when BIAS has no rows in the
+#' window. SSB units differ by stock (sprat tonnes, central Baltic herring
+#' relative "ratio"); trend-only.
+#'
+#' @param bias_df data.frame from R/config/bias_indices.csv.
+#' @param aphia_id Numeric AphiaID.
+#' @param stock_key ICES stock key (scopes the BIAS sum and keys the SAG fetch).
+#' @param window_years Integer vector of years to retain.
+#' @param ref_year Integer model reference year (stamps is_ref_year).
+#' @param fetch_sag Function(stock_key) -> list(success, data, error). Injected
+#'   for testing; defaults to fetch_sag_ssb.
+#' @return list(series, class, excluded_reason). `series` is
+#'   data.frame(year, survey_value, is_ref_year) or NULL; `class` is
+#'   "clupeid (BIAS acoustic)" or "clupeid (SAG SSB)"; `excluded_reason` is NULL
+#'   or "no BIAS or SAG data in window".
+#' @keywords internal
+select_clupeid_series <- function(bias_df, aphia_id, stock_key, window_years,
+                                  ref_year, fetch_sag = fetch_sag_ssb) {
+  bias <- aggregate_bias_series(bias_df, aphia_id, stock_key)
+  bias <- bias[bias$year %in% window_years, , drop = FALSE]
+  if (nrow(bias) > 0) {
+    bias$is_ref_year <- bias$year == ref_year
+    return(list(series = bias, class = "clupeid (BIAS acoustic)",
+                excluded_reason = NULL))
+  }
+  res <- fetch_sag(stock_key)
+  if (isTRUE(res$success)) {
+    ser <- res$data[res$data$year %in% window_years, , drop = FALSE]
+    if (nrow(ser) > 0) {
+      ser$is_ref_year <- ser$year == ref_year
+      return(list(series = ser, class = "clupeid (SAG SSB)",
+                  excluded_reason = NULL))
+    }
+  }
+  list(series = NULL, class = "clupeid (SAG SSB)",
+       excluded_reason = "no BIAS or SAG data in window")
+}
+
 #' Resolve an Ecopath group name to a single AphiaID + class
 #'
 #' Dictionary first; else worrms::wm_name2id with the R3 scalar guard (a
