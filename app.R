@@ -138,6 +138,7 @@ source("R/functions/ecopath/load_all.R")
 # Rpath integration (ECOPATH/ECOSIM module)
 source("R/functions/rpath/load_all.R")
 source("R/functions/auxillary_parser.R")  # Auxillary data parser for comments/tooltips
+source("R/functions/feedback_store.R")  # bug/suggestion feedback store
 source("R/ui/rpath_ui.R")  # Rpath module UI component
 source("R/modules/rpath_server.R")  # Rpath module server logic
 

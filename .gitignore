@@ -92,3 +92,8 @@ docs/superpowers/plans/
 
 # GitHub Copilot per-user config
 .github/copilot/
+
+# Local feedback dev store (prod uses FEEDBACK_DB_PATH, outside the repo)
+feedback_dev.db
+feedback_dev.db-wal
+feedback_dev.db-shm
