@@ -177,7 +177,7 @@ select_clupeid_series <- function(bias_df, aphia_id, stock_key, window_years,
                 excluded_reason = NULL))
   }
   res <- fetch_sag(stock_key)
-  if (isTRUE(res$success)) {
+  if (isTRUE(res$success) && !is.null(res$data) && "year" %in% names(res$data)) {
     ser <- res$data[res$data$year %in% window_years, , drop = FALSE]
     if (nrow(ser) > 0) {
       ser$is_ref_year <- ser$year == ref_year
@@ -185,7 +185,9 @@ select_clupeid_series <- function(bias_df, aphia_id, stock_key, window_years,
                   excluded_reason = NULL))
     }
   }
-  list(series = NULL, class = "clupeid (SAG SSB)",
+  # Nothing sourced from either feed: report an honest "excluded" class so the
+  # mapping table doesn't claim SAG was used when the group was actually dropped.
+  list(series = NULL, class = "clupeid (excluded)",
        excluded_reason = "no BIAS or SAG data in window")
 }
 

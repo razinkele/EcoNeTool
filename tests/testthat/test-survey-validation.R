@@ -355,11 +355,19 @@ test_that("select_clupeid_series chooses BIAS, falls back to SAG, then excludes"
   expect_equal(b3$class, "clupeid (SAG SSB)")
   expect_true(nrow(b3$series) > 0)
 
-  # Branch 4: BIAS empty + SAG failure -> exclusion
+  # Branch 4: BIAS empty + SAG failure -> exclusion with honest class
   b4 <- select_clupeid_series(bias_in[0, ], 126417, "her.27.25-2932", win, 2019,
                               fetch_sag = fake_fail)
   expect_null(b4$series)
+  expect_equal(b4$class, "clupeid (excluded)")
   expect_equal(b4$excluded_reason, "no BIAS or SAG data in window")
+
+  # Branch 5: malformed SAG (success=TRUE but data=NULL) -> exclusion, no crash
+  fake_bad <- function(key) list(success = TRUE, data = NULL)
+  b5 <- select_clupeid_series(bias_in[0, ], 126417, "her.27.25-2932", win, 2019,
+                              fetch_sag = fake_bad)
+  expect_null(b5$series)
+  expect_equal(b5$excluded_reason, "no BIAS or SAG data in window")
 })
 
 test_that("survey-trends pipeline returns a real per-year series for cod (live)", {
