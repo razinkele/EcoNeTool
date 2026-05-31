@@ -293,6 +293,21 @@ test_that("aggregate_bias_series with stock_key=NULL sums across all stocks for 
   expect_equal(out$survey_value, c(1099, 200))
 })
 
+test_that("aggregate_bias_series excludes a row with NA stock without crashing", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+  bias <- data.frame(
+    aphia_id = c(126417, 126417),
+    stock = c("her.27.25-2932", NA),
+    sd = c("a", "b"),
+    year = c(2010L, 2011L),
+    abundance_index = c(100, 200),
+    unit = "u", source = "s", stringsAsFactors = FALSE
+  )
+  out <- aggregate_bias_series(bias, 126417, "her.27.25-2932")
+  expect_equal(out$year, 2010L)        # NA-stock row dropped, no crash
+  expect_equal(out$survey_value, 100)
+})
+
 test_that("aggregate_bias_series drops a whole year if one SD row is NA (na.rm=FALSE)", {
   source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
 

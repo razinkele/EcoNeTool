@@ -114,10 +114,10 @@ aggregate_bias_series <- function(bias_df, aphia_id, stock_key = NULL) {
                       stringsAsFactors = FALSE))
   }
   keep <- suppressWarnings(as.numeric(as.character(bias_df$aphia_id))) == as.numeric(aphia_id)
-  keep[is.na(keep)] <- FALSE
   if (!is.null(stock_key) && "stock" %in% names(bias_df)) {
     keep <- keep & bias_df$stock == stock_key
   }
+  keep[is.na(keep)] <- FALSE   # coalesce AFTER both filters (NA stock/aphia -> drop, never crash)
   df <- bias_df[keep, , drop = FALSE]
   if (nrow(df) == 0) {
     return(data.frame(year = integer(0), survey_value = numeric(0),
