@@ -109,3 +109,72 @@ feedback_list <- function(status = NULL, include_email = FALSE, db_path = NULL) 
     data.frame()
   })
 }
+
+#' Mark a feedback row addressed. 0 rows matched -> failure (not silent success).
+#' @return list(success, error)
+#' @export
+feedback_mark_addressed <- function(id, fix_commit = NA, resolution_note = NA,
+                                    addressed_by = "skill", db_path = NULL) {
+  result <- list(success = FALSE, error = NA_character_)
+  path <- if (is.null(db_path)) feedback_db_path() else db_path
+  tryCatch({
+    con <- .feedback_con(path)
+    on.exit({
+      tryCatch(DBI::dbExecute(con, "PRAGMA wal_checkpoint(TRUNCATE)"), error = function(e) NULL)
+      DBI::dbDisconnect(con)
+    }, add = TRUE)
+    n <- DBI::dbExecute(con, paste(
+      "UPDATE feedback SET status = 'addressed', addressed_at = ?, addressed_by = ?,",
+      "fix_commit = ?, resolution_note = ? WHERE id = ?"),
+      params = list(.feedback_now(), addressed_by,
+                    if (is.na(fix_commit)) NA_character_ else fix_commit,
+                    if (is.na(resolution_note)) NA_character_ else resolution_note,
+                    as.integer(id)))
+    if (n == 0L) result$error <- sprintf("no feedback row with id=%s", id)
+    else result$success <- TRUE
+  }, error = function(e) {
+    warning(sprintf("[feedback_mark_addressed] failed (db=%s): %s", path, conditionMessage(e)),
+            call. = FALSE)
+    result$error <<- conditionMessage(e)
+  })
+  result
+}
+
+#' Delete a feedback row (GDPR deletion path). 0 rows -> failure.
+#' @return list(success, error)
+#' @export
+feedback_delete <- function(id, db_path = NULL) {
+  result <- list(success = FALSE, error = NA_character_)
+  path <- if (is.null(db_path)) feedback_db_path() else db_path
+  tryCatch({
+    con <- .feedback_con(path)
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+    n <- DBI::dbExecute(con, "DELETE FROM feedback WHERE id = ?", params = list(as.integer(id)))
+    if (n == 0L) result$error <- sprintf("no feedback row with id=%s", id)
+    else result$success <- TRUE
+  }, error = function(e) {
+    warning(sprintf("[feedback_delete] failed (db=%s): %s", path, conditionMessage(e)),
+            call. = FALSE)
+    result$error <<- conditionMessage(e)
+  })
+  result
+}
+
+#' Counts by status.
+#' @return list(open, addressed, total)
+#' @export
+feedback_summary <- function(db_path = NULL) {
+  path <- if (is.null(db_path)) feedback_db_path() else db_path
+  tryCatch({
+    con <- .feedback_con(path)
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+    q <- DBI::dbGetQuery(con, "SELECT status, COUNT(*) AS n FROM feedback GROUP BY status")
+    open <- sum(q$n[q$status == "open"]); addr <- sum(q$n[q$status == "addressed"])
+    list(open = as.integer(open), addressed = as.integer(addr),
+         total = as.integer(open + addr))
+  }, error = function(e) {
+    warning(sprintf("[feedback_summary] failed (db=%s): %s", path, conditionMessage(e)),
+            call. = FALSE)
+    list(open = 0L, addressed = 0L, total = 0L)
+  })
+}

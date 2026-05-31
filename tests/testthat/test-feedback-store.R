@@ -55,3 +55,41 @@ test_that("feedback_insert caps over-long fields", {
   expect_equal(nchar(got$description), 5000)
   expect_equal(nchar(got$submitter_email), 254)
 })
+
+test_that("mark_addressed sets status, fails loudly on a missing id", {
+  skip_if_not_installed("RSQLite")
+  source(file.path(app_root, "R/functions/feedback_store.R"), local = TRUE)
+  db <- local_db()
+  id <- feedback_insert("bug", "x", db_path = db)$id
+
+  ok <- feedback_mark_addressed(id, fix_commit = "abc123",
+                                resolution_note = "fixed in abc123",
+                                addressed_by = "skill", db_path = db)
+  expect_true(ok$success)
+  addr <- feedback_list(status = "addressed", db_path = db)
+  expect_equal(nrow(addr), 1)
+  expect_equal(addr$fix_commit, "abc123")
+  expect_equal(addr$addressed_by, "skill")
+  expect_true(nzchar(addr$addressed_at))
+
+  # 0-row update must NOT silently succeed
+  miss <- feedback_mark_addressed(99999L, db_path = db)
+  expect_false(miss$success)
+  expect_match(miss$error, "no feedback row")
+})
+
+test_that("feedback_delete removes a row; summary counts", {
+  skip_if_not_installed("RSQLite")
+  source(file.path(app_root, "R/functions/feedback_store.R"), local = TRUE)
+  db <- local_db()
+  id1 <- feedback_insert("bug", "a", db_path = db)$id
+  feedback_insert("suggestion", "b", db_path = db)
+  feedback_mark_addressed(id1, db_path = db)
+
+  s <- feedback_summary(db_path = db)
+  expect_equal(s$total, 2); expect_equal(s$open, 1); expect_equal(s$addressed, 1)
+
+  expect_true(feedback_delete(id1, db_path = db)$success)
+  expect_false(feedback_delete(id1, db_path = db)$success)   # already gone
+  expect_equal(feedback_summary(db_path = db)$total, 1)
+})
