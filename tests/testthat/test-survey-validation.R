@@ -370,6 +370,26 @@ test_that("select_clupeid_series chooses BIAS, falls back to SAG, then excludes"
   expect_equal(b5$excluded_reason, "no BIAS or SAG data in window")
 })
 
+test_that("shipped bias_indices.csv has the required schema and clean values", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+  f <- file.path(app_root, "R/config/bias_indices.csv")
+  skip_if(!file.exists(f), "R/config/bias_indices.csv not present")
+  df <- read.csv(f, stringsAsFactors = FALSE)
+  expect_true(all(c("aphia_id", "stock", "sd", "year",
+                    "abundance_index", "unit", "source") %in% names(df)))
+  skip_if(nrow(df) == 0,
+          "bias_indices.csv is a header-only stub; populate from WGBIFS to enable BIAS path")
+  # Assert against the routing constant, not hard-coded literals (robust to
+  # adding a clupeid stock later).
+  expect_true(all(as.integer(df$aphia_id) %in% as.integer(names(SURVEY_TRENDS_CLUPEID_SAG))))
+  expect_true(all(df$stock %in% unname(SURVEY_TRENDS_CLUPEID_SAG)))
+  expect_false(anyNA(suppressWarnings(as.integer(df$year))))
+  idx <- suppressWarnings(as.numeric(df$abundance_index))
+  expect_false(anyNA(idx))            # clean numeric, no transcription junk
+  expect_true(all(idx >= 0))          # abundance indices are non-negative
+  expect_true(all(nzchar(trimws(df$source))))   # mechanical no-fabrication guard
+})
+
 test_that("survey-trends pipeline returns a real per-year series for cod (live)", {
   skip_if(!identical(Sys.getenv("RUN_LIVE_TESTS"), "true"),
           "Live DATRAS test; set RUN_LIVE_TESTS=true to enable")
