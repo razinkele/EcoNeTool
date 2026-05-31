@@ -113,7 +113,8 @@ aggregate_bias_series <- function(bias_df, aphia_id, stock_key = NULL) {
     return(data.frame(year = integer(0), survey_value = numeric(0),
                       stringsAsFactors = FALSE))
   }
-  keep <- as.integer(bias_df$aphia_id) == as.integer(aphia_id)
+  keep <- suppressWarnings(as.numeric(as.character(bias_df$aphia_id))) == as.numeric(aphia_id)
+  keep[is.na(keep)] <- FALSE
   if (!is.null(stock_key) && "stock" %in% names(bias_df)) {
     keep <- keep & bias_df$stock == stock_key
   }
@@ -131,14 +132,16 @@ aggregate_bias_series <- function(bias_df, aphia_id, stock_key = NULL) {
                     paste(unique(as.character(raw[unparsed])), collapse = ", ")),
             call. = FALSE)
   }
-  years <- sort(unique(as.integer(df$year)))
+  int_years <- as.integer(df$year)
+  genuine_na <- is.na(num) & !unparsed
+  years <- sort(unique(int_years))
   survey_value <- vapply(years, function(yr) {
-    v <- num[as.integer(df$year) == yr]
-    if (anyNA(v)) {
+    sel <- int_years == yr
+    if (any(genuine_na[sel])) {
       warning(sprintf("[survey_trends] NA BIAS index in sum for aphia %d year %d",
                       as.integer(aphia_id), yr), call. = FALSE)
     }
-    sum(v, na.rm = FALSE)
+    sum(num[sel], na.rm = FALSE)
   }, numeric(1))
   out <- data.frame(year = years, survey_value = survey_value, stringsAsFactors = FALSE)
   out[!is.na(out$survey_value), , drop = FALSE]

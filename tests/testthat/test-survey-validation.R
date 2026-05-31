@@ -276,6 +276,23 @@ test_that("aggregate_bias_series sums per-SD rows per year, scoped to one stock"
   expect_setequal(names(empty), c("year", "survey_value"))
 })
 
+test_that("aggregate_bias_series with stock_key=NULL sums across all stocks for the aphia", {
+  source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
+
+  bias <- data.frame(
+    aphia_id = c(126417, 126417, 126417),
+    stock = c("her.27.25-2932", "her.27.28", "her.27.25-2932"),
+    sd = c("a", "b", "c"),
+    year = c(2010L, 2010L, 2011L),
+    abundance_index = c(100, 999, 200),
+    unit = "u", source = "s", stringsAsFactors = FALSE
+  )
+  # No stock_key -> both 2010 herring stocks summed (100 + 999), 2011 = 200
+  out <- aggregate_bias_series(bias, 126417)
+  expect_equal(out$year, c(2010L, 2011L))
+  expect_equal(out$survey_value, c(1099, 200))
+})
+
 test_that("aggregate_bias_series drops a whole year if one SD row is NA (na.rm=FALSE)", {
   source(file.path(app_root, "R/functions/rpath/survey_validation.R"), local = TRUE)
 
