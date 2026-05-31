@@ -148,7 +148,10 @@ feedback_delete <- function(id, db_path = NULL) {
   path <- if (is.null(db_path)) feedback_db_path() else db_path
   tryCatch({
     con <- .feedback_con(path)
-    on.exit(DBI::dbDisconnect(con), add = TRUE)
+    on.exit({
+      tryCatch(DBI::dbExecute(con, "PRAGMA wal_checkpoint(TRUNCATE)"), error = function(e) NULL)
+      DBI::dbDisconnect(con)
+    }, add = TRUE)
     n <- DBI::dbExecute(con, "DELETE FROM feedback WHERE id = ?", params = list(as.integer(id)))
     if (n == 0L) result$error <- sprintf("no feedback row with id=%s", id)
     else result$success <- TRUE
