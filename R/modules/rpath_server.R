@@ -2028,10 +2028,10 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
       if (isTRUE(res$success)) {
         n <- length(unique(res$trends$group))
         tags$span(class = "text-success", icon("check-circle"),
-                  sprintf(" %d demersal group(s) with trends", n))
+                  sprintf(" %d group(s) with survey trends", n))
       } else {
         tags$span(class = "text-warning", icon("triangle-exclamation"),
-                  " No demersal groups with a usable survey trend.")
+                  " No groups with a usable survey trend.")
       }
     })
 
@@ -2068,9 +2068,18 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
         }
         tags$li(txt)
       })
+      legend <- if (any(grepl("\\[BIAS\\]|\\[SSB\\]", td$group))) {
+        tags$p(class = "text-muted", style = "font-size:12px;",
+               paste0("[BIAS] = acoustic survey abundance; [SSB] = assessed spawning",
+                      " stock biomass (clupeid fallback). Trend-only; series differ in",
+                      " level and are not comparable across groups."))
+      } else {
+        NULL
+      }
       tags$div(tags$p(class = "text-muted",
                       paste0("Lowest/highest-rank reference years may be anomalous",
                              " - consider averaging biomass across years.")),
+               legend,
                tags$ul(items))
     })
 
