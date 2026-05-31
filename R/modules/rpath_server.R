@@ -1889,6 +1889,18 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
       }
     })
 
+    .survey_trends_bias <- reactive({
+      f <- "R/config/bias_indices.csv"
+      if (file.exists(f)) {
+        read.csv(f, stringsAsFactors = FALSE)
+      } else {
+        data.frame(aphia_id = integer(0), stock = character(0), sd = character(0),
+                   year = integer(0), abundance_index = numeric(0),
+                   unit = character(0), source = character(0),
+                   stringsAsFactors = FALSE)
+      }
+    })
+
     observeEvent(input$survey_trends_run, {
       model <- rpath_values$params$model
       if (is.null(model)) {
@@ -1901,6 +1913,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
         return()
       }
       dict <- .survey_trends_dict()
+      bias_df <- .survey_trends_bias()
       window_years <- seq(as.integer(format(Sys.Date(), "%Y")) - 10,
                           as.integer(format(Sys.Date(), "%Y")))
       quarter <- as.integer(input$survey_trends_quarter)
@@ -1909,6 +1922,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
       mapping_rows <- list()
       series_list <- list()
       excluded_map <- list()
+      summed_bits <- FALSE   # set TRUE only when a real DATRAS/BITS series is added
 
       progress <- Progress$new(min = 0, max = nrow(living))
       on.exit(progress$close(), add = TRUE)
@@ -1923,33 +1937,28 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
           Group = g, AphiaID = m$aphia_id, Class = m$class, stringsAsFactors = FALSE
         )
         # Clupeid path: herring/sprat can't be BITS-indexed (bottom trawl
-        # under-samples pelagics); their assessed SSB trend comes from ICES SAG
-        # instead of being excluded as pelagic.
+        # under-samples pelagics). select_clupeid_series() prefers the BIAS
+        # acoustic survey trend (survey-vs-survey) and falls back to assessed
+        # SAG SSB, returning the chosen series, the provenance Class, and an
+        # exclusion reason when neither source has data in the window.
         if (!is.na(m$aphia_id) &&
             as.character(m$aphia_id) %in% names(SURVEY_TRENDS_CLUPEID_SAG)) {
-          sag_key <- SURVEY_TRENDS_CLUPEID_SAG[[as.character(m$aphia_id)]]
-          mapping_rows[[length(mapping_rows)]]$Class <- "clupeid (SAG SSB)"
-          res <- fetch_sag_ssb(sag_key)
-          if (!isTRUE(res$success)) {
-            warning(sprintf("[survey_trends] no SAG SSB for '%s' (%s): %s",
-                            g, sag_key, res$error), call. = FALSE)
+          stock_key <- SURVEY_TRENDS_CLUPEID_SAG[[as.character(m$aphia_id)]]
+          sel <- select_clupeid_series(bias_df, m$aphia_id, stock_key,
+                                        window_years, ref_year)
+          mapping_rows[[length(mapping_rows)]]$Class <- sel$class
+          if (is.null(sel$series)) {
+            warning(sprintf("[survey_trends] %s for '%s' (%s)",
+                            sel$excluded_reason, g, stock_key), call. = FALSE)
             excluded_map[[length(excluded_map) + 1L]] <-
-              data.frame(group = g, reason = "no SAG SSB", stringsAsFactors = FALSE)
-            next
-          }
-          # Window the full SSB history to the same trailing window as the
-          # demersal series so the plot x-range and ref_rank are comparable.
-          ser <- res$data[res$data$year %in% window_years, , drop = FALSE]
-          if (nrow(ser) > 0) {
-            ser$group <- g
-            ser$is_ref_year <- ser$year == ref_year
-            series_list[[length(series_list) + 1L]] <- ser
-          } else {
-            warning(sprintf("[survey_trends] no SAG SSB in window for '%s'", g),
-                    call. = FALSE)
-            excluded_map[[length(excluded_map) + 1L]] <-
-              data.frame(group = g, reason = "no SAG SSB in window",
+              data.frame(group = g, reason = sel$excluded_reason,
                          stringsAsFactors = FALSE)
+          } else {
+            # Tag the plot label with provenance so a mixed BIAS/SSB plot is
+            # self-documenting in the legend (the mapping table keeps Group + Class).
+            tag <- if (identical(sel$class, "clupeid (BIAS acoustic)")) " [BIAS]" else " [SSB]"
+            sel$series$group <- paste0(g, tag)
+            series_list[[length(series_list) + 1L]] <- sel$series
           }
           next
         }
@@ -1971,6 +1980,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
           ser$group <- g
           ser$is_ref_year <- ser$year == ref_year
           series_list[[length(series_list) + 1L]] <- ser
+          summed_bits <- TRUE
         } else {
           # Fetched ok but no rows after the quarter filter (e.g. data only in
           # the other quarter). Surface the drop so coverage stays auditable.
@@ -1989,7 +1999,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
                    survey_value = numeric(0), is_ref_year = logical(0))
 
       # Only warn about area summing when there was actually data to sum.
-      if (length(series_list) > 0) {
+      if (isTRUE(summed_bits)) {
         warning("[survey_trends] area selection not confirmed; summed all BITS index areas per species",
                 call. = FALSE)
         showNotification(
