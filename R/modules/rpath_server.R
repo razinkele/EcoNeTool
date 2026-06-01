@@ -569,7 +569,9 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
               "flounder, plaice). Herring &amp; sprat use ICES SAG assessed ",
               "<strong>SSB</strong> instead (BITS under-samples pelagics); SSB ",
               "units differ by stock (sprat tonnes, herring relative), so only ",
-              "the normalised trend is comparable across groups, not the level."
+              "the normalised trend is comparable across groups, not the level. ",
+              "Demersal indices sum ages 2+ (age-0/1 excluded as recruitment-pulse ",
+              "noise); the trait-research DATRAS panel shows all ages."
             ))
           ),
           fluidRow(
@@ -1967,7 +1969,8 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
             data.frame(group = g, reason = m$class, stringsAsFactors = FALSE)
           next
         }
-        res <- lookup_datras_indices(m$aphia_id, surveys = "BITS", years = window_years)
+        res <- lookup_datras_indices(m$aphia_id, surveys = "BITS",
+                                     years = window_years, min_age = 2L)
         if (!isTRUE(res$success)) {
           warning(sprintf("[survey_trends] no survey data for '%s': %s",
                           g, res$error), call. = FALSE)
@@ -1976,12 +1979,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
           next
         }
         ser <- aggregate_survey_series(res$data, quarter = quarter, areas = NULL)
-        if (nrow(ser) > 0) {
-          ser$group <- g
-          ser$is_ref_year <- ser$year == ref_year
-          series_list[[length(series_list) + 1L]] <- ser
-          summed_bits <- TRUE
-        } else {
+        if (nrow(ser) == 0) {
           # Fetched ok but no rows after the quarter filter (e.g. data only in
           # the other quarter). Surface the drop so coverage stays auditable.
           warning(sprintf("[survey_trends] no rows after quarter filter for '%s'", g),
@@ -1989,6 +1987,20 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
           excluded_map[[length(excluded_map) + 1L]] <-
             data.frame(group = g, reason = "no data for selected quarter",
                        stringsAsFactors = FALSE)
+        } else if (all(is.na(ser$survey_value))) {
+          # The age-2+ filter left no adult-age index in any year (the stock is
+          # recruitment-only in this window). Report the real reason, not a
+          # generic insufficient-data exclusion.
+          warning(sprintf("[survey_trends] '%s' has no age-2+ index in window (recruitment-only)",
+                          g), call. = FALSE)
+          excluded_map[[length(excluded_map) + 1L]] <-
+            data.frame(group = g, reason = "no age-2+ survey index (recruitment-only)",
+                       stringsAsFactors = FALSE)
+        } else {
+          ser$group <- paste0(g, " [BITS 2+]")  # cutoff visible in the legend (cf. [BIAS]/[SSB])
+          ser$is_ref_year <- ser$year == ref_year
+          series_list[[length(series_list) + 1L]] <- ser
+          summed_bits <- TRUE
         }
       }
 
