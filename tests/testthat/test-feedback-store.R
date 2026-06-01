@@ -93,3 +93,22 @@ test_that("feedback_delete removes a row; summary counts", {
   expect_false(feedback_delete(id1, db_path = db)$success)   # already gone
   expect_equal(feedback_summary(db_path = db)$total, 1)
 })
+
+test_that("feedback_mark_addressed rejects non-integer id (FIX 3)", {
+  skip_if_not_installed("RSQLite")
+  source(file.path(app_root, "R/functions/feedback_store.R"), local = TRUE)
+  db <- local_db()
+  res <- feedback_mark_addressed("abc", db_path = db)
+  expect_false(res$success)
+  expect_match(res$error, "integer-coercible")
+})
+
+test_that("feedback_list on fresh empty db returns typed data.frame (FIX 2)", {
+  skip_if_not_installed("RSQLite")
+  source(file.path(app_root, "R/functions/feedback_store.R"), local = TRUE)
+  db <- local_db()
+  df <- feedback_list(db_path = db)
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 0L)
+  expect_true(all(c("id", "type", "status", "description") %in% names(df)))
+})

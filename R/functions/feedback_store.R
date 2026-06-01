@@ -19,6 +19,8 @@ feedback_db_path <- function() {
   d <- dirname(db_path)
   if (nzchar(d) && !dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
   con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+  ok <- FALSE
+  on.exit(if (!ok) DBI::dbDisconnect(con))
   DBI::dbExecute(con, "PRAGMA journal_mode = WAL")
   DBI::dbExecute(con, "PRAGMA busy_timeout = 5000")
   DBI::dbExecute(con, paste(
@@ -36,6 +38,7 @@ feedback_db_path <- function() {
     "  addressed_by TEXT DEFAULT NULL,",
     "  fix_commit TEXT DEFAULT NULL,",
     "  resolution_note TEXT DEFAULT NULL )"))
+  ok <- TRUE
   con
 }
 
@@ -106,7 +109,11 @@ feedback_list <- function(status = NULL, include_email = FALSE, db_path = NULL) 
   }, error = function(e) {
     warning(sprintf("[feedback_list] failed (db=%s): %s", path, conditionMessage(e)),
             call. = FALSE)
-    data.frame()
+    data.frame(id = integer(0), created_at = character(0), type = character(0),
+               description = character(0), app_version = character(0), tab = character(0),
+               session_id = character(0), status = character(0), addressed_at = character(0),
+               addressed_by = character(0), fix_commit = character(0),
+               resolution_note = character(0), stringsAsFactors = FALSE)
   })
 }
 
@@ -117,6 +124,11 @@ feedback_mark_addressed <- function(id, fix_commit = NA, resolution_note = NA,
                                     addressed_by = "skill", db_path = NULL) {
   result <- list(success = FALSE, error = NA_character_)
   path <- if (is.null(db_path)) feedback_db_path() else db_path
+  id_int <- suppressWarnings(as.integer(id))
+  if (is.na(id_int)) {
+    result$error <- sprintf("id must be integer-coercible, got: %s", id)
+    return(result)
+  }
   tryCatch({
     con <- .feedback_con(path)
     on.exit({
@@ -129,7 +141,7 @@ feedback_mark_addressed <- function(id, fix_commit = NA, resolution_note = NA,
       params = list(.feedback_now(), addressed_by,
                     if (is.na(fix_commit)) NA_character_ else fix_commit,
                     if (is.na(resolution_note)) NA_character_ else resolution_note,
-                    as.integer(id)))
+                    id_int))
     if (n == 0L) result$error <- sprintf("no feedback row with id=%s", id)
     else result$success <- TRUE
   }, error = function(e) {
@@ -146,13 +158,18 @@ feedback_mark_addressed <- function(id, fix_commit = NA, resolution_note = NA,
 feedback_delete <- function(id, db_path = NULL) {
   result <- list(success = FALSE, error = NA_character_)
   path <- if (is.null(db_path)) feedback_db_path() else db_path
+  id_int <- suppressWarnings(as.integer(id))
+  if (is.na(id_int)) {
+    result$error <- sprintf("id must be integer-coercible, got: %s", id)
+    return(result)
+  }
   tryCatch({
     con <- .feedback_con(path)
     on.exit({
       tryCatch(DBI::dbExecute(con, "PRAGMA wal_checkpoint(TRUNCATE)"), error = function(e) NULL)
       DBI::dbDisconnect(con)
     }, add = TRUE)
-    n <- DBI::dbExecute(con, "DELETE FROM feedback WHERE id = ?", params = list(as.integer(id)))
+    n <- DBI::dbExecute(con, "DELETE FROM feedback WHERE id = ?", params = list(id_int))
     if (n == 0L) result$error <- sprintf("no feedback row with id=%s", id)
     else result$success <- TRUE
   }, error = function(e) {
