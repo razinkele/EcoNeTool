@@ -112,3 +112,26 @@ test_that("feedback_list on fresh empty db returns typed data.frame (FIX 2)", {
   expect_equal(nrow(df), 0L)
   expect_true(all(c("id", "type", "status", "description") %in% names(df)))
 })
+
+test_that(".feedback_con creates a group-writable store (shared-writer invariant)", {
+  # The app writes as OS user `shiny`; the triage skill writes as `razinka`.
+  # Both are in the shared `shiny` group. If the DB / WAL sidecars are created
+  # owner-writable only (644), whichever user creates them locks the other out
+  # with "attempt to write a readonly database" (prod incident 2026-06-01).
+  # The store must create files group-writable (664). POSIX modes only.
+  skip_on_os("windows")
+  skip_if_not_installed("RSQLite")
+  source(file.path(app_root, "R/functions/feedback_store.R"), local = TRUE)
+  db <- local_db()
+  con <- .feedback_con(db)
+  DBI::dbExecute(con, "PRAGMA wal_checkpoint(TRUNCATE)")
+  DBI::dbDisconnect(con)
+  group_write <- as.integer(as.octmode("020"))
+  for (f in c(db, paste0(db, "-wal"), paste0(db, "-shm"))) {
+    if (!file.exists(f)) next
+    mode_i <- as.integer(file.mode(f))
+    expect_true(bitwAnd(mode_i, group_write) != 0L,
+                info = sprintf("%s mode %s lacks group-write", basename(f),
+                               as.character(as.octmode(mode_i))))
+  }
+})

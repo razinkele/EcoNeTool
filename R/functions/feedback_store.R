@@ -14,13 +14,28 @@ feedback_db_path <- function() {
 }
 
 #' Open a WAL connection and ensure the schema exists
+#'
+#' Shared-writer invariant: this store is written by two OS users - the app
+#' (runs as `shiny`) inserts; the triage skill (runs as `razinka`) marks
+#' addressed / deletes. Both are in a shared group. SQLite's default file mode
+#' (umask 022 -> 644) is owner-writable only, so whichever user CREATES the DB
+#' or its WAL sidecars locks the other out with "attempt to write a readonly
+#' database" (prod incident 2026-06-01). We therefore create the DB, WAL, and
+#' SHM files group-writable (umask 002 -> 664) and setgid the directory so the
+#' group is inherited. Sys.umask/Sys.chmod are POSIX no-ops on Windows (dev),
+#' which is harmless - the invariant only matters on the multi-user server.
 #' @keywords internal
 .feedback_con <- function(db_path) {
   d <- dirname(db_path)
-  if (nzchar(d) && !dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
+  if (nzchar(d) && !dir.exists(d)) {
+    dir.create(d, recursive = TRUE, showWarnings = FALSE)
+    try(Sys.chmod(d, mode = "2775"), silent = TRUE)  # setgid + group-writable
+  }
+  old_umask <- Sys.umask("0002")                      # group-writable new files
+  on.exit(Sys.umask(old_umask), add = TRUE)
   con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
   ok <- FALSE
-  on.exit(if (!ok) DBI::dbDisconnect(con))
+  on.exit(if (!ok) DBI::dbDisconnect(con), add = TRUE)
   DBI::dbExecute(con, "PRAGMA journal_mode = WAL")
   DBI::dbExecute(con, "PRAGMA busy_timeout = 5000")
   DBI::dbExecute(con, paste(
@@ -38,6 +53,8 @@ feedback_db_path <- function() {
     "  addressed_by TEXT DEFAULT NULL,",
     "  fix_commit TEXT DEFAULT NULL,",
     "  resolution_note TEXT DEFAULT NULL )"))
+  # Widen an already-existing owner-only DB when we own it (no-op otherwise).
+  try(Sys.chmod(db_path, mode = "0664"), silent = TRUE)
   ok <- TRUE
   con
 }
