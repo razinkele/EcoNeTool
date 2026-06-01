@@ -479,8 +479,15 @@ function Deploy-Application {
                     # Upload tar file
                     Copy-ToRemote -LocalPath $tarFile -RemotePath "/tmp/econetool_deploy.tar.gz"
 
-                    # Extract on server
-                    Invoke-RemoteCommand "${sudoPrefix}rm -rf $APP_DEPLOY_PATH/* && ${sudoPrefix}tar -xzf /tmp/econetool_deploy.tar.gz -C $APP_DEPLOY_PATH && rm /tmp/econetool_deploy.tar.gz"
+                    # Extract on server.
+                    # Clean stale top-level entries BUT preserve persistent
+                    # server-only state that lives under the app dir and is NOT
+                    # in the tar: data/ (incl. data/feedback/feedback.db),
+                    # cache/ (offline_traits.db), and r-libs/ (app-local R
+                    # packages e.g. icesSAG). A blanket `rm -rf APP/*` would
+                    # silently wipe user feedback, the offline DB, and icesSAG.
+                    $preserve = "! -name data ! -name cache ! -name r-libs"
+                    Invoke-RemoteCommand "${sudoPrefix}find $APP_DEPLOY_PATH -mindepth 1 -maxdepth 1 $preserve -exec rm -rf {} + && ${sudoPrefix}tar -xzf /tmp/econetool_deploy.tar.gz -C $APP_DEPLOY_PATH && rm /tmp/econetool_deploy.tar.gz"
                 }
 
                 Remove-Item $tarFile -Force -ErrorAction SilentlyContinue
