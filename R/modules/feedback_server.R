@@ -48,4 +48,75 @@ feedback_server <- function(input, output, session) {
         type = "error", duration = 10)
     }
   })
+
+  # ---- Admin (URL-key gated; fail closed) ------------------------------------
+  is_admin <- reactive({
+    key <- Sys.getenv("FEEDBACK_ADMIN_KEY", "")
+    if (!nzchar(key)) return(FALSE)                      # unset env -> no admin
+    qkey <- tryCatch(
+      shiny::parseQueryString(session$clientData$url_search)$admin,
+      error = function(e) NULL)
+    isTRUE(identical(key, qkey))                          # nzchar guard ran first
+  })
+
+  feedback_refresh <- reactiveVal(0)
+
+  output$feedback_admin_ui <- renderUI({
+    if (!is_admin()) return(NULL)                         # panel not sent to non-admins
+    tagList(
+      fluidRow(
+        column(4, valueBoxOutput("feedback_box_open", width = 12)),
+        column(4, valueBoxOutput("feedback_box_addressed", width = 12)),
+        column(4, valueBoxOutput("feedback_box_total", width = 12))
+      ),
+      selectInput("feedback_filter", "Show:",
+                  c("Open" = "open", "Addressed" = "addressed", "All" = "all"),
+                  selected = "open"),
+      DT::dataTableOutput("feedback_admin_table"),
+      tags$hr(),
+      textInput("feedback_resolution", "Resolution note (for selected row):"),
+      actionButton("feedback_mark", "Mark selected addressed",
+                   icon = icon("check"), class = "btn-primary")
+    )
+  })
+
+  .fb_admin_data <- reactive({
+    feedback_refresh()
+    req(is_admin())
+    st <- if (identical(input$feedback_filter, "all")) NULL else input$feedback_filter
+    feedback_list(status = st, include_email = TRUE)
+  })
+
+  output$feedback_admin_table <- DT::renderDataTable({
+    df <- .fb_admin_data()
+    DT::datatable(df, escape = TRUE, selection = "single", rownames = FALSE,
+                  options = list(pageLength = 15, scrollX = TRUE))
+  })
+
+  observeEvent(input$feedback_mark, {
+    req(is_admin())
+    sel <- input$feedback_admin_table_rows_selected
+    df <- .fb_admin_data()
+    if (length(sel) != 1 || nrow(df) == 0) {
+      showNotification("Select one row first.", type = "warning"); return()
+    }
+    note <- input$feedback_resolution
+    res <- feedback_mark_addressed(
+      id = df$id[sel],
+      resolution_note = if (nzchar(note)) note else NA_character_,
+      addressed_by = "admin")
+    if (isTRUE(res$success)) {
+      showNotification("Marked addressed.", type = "message")
+      feedback_refresh(feedback_refresh() + 1)
+    } else {
+      showNotification(paste("Couldn't mark addressed:", res$error), type = "error")
+    }
+  })
+
+  output$feedback_box_open <- renderValueBox(
+    valueBox(feedback_summary()$open, "Open", icon = icon("inbox"), color = "warning"))
+  output$feedback_box_addressed <- renderValueBox(
+    valueBox(feedback_summary()$addressed, "Addressed", icon = icon("check"), color = "success"))
+  output$feedback_box_total <- renderValueBox(
+    valueBox(feedback_summary()$total, "Total", icon = icon("list"), color = "primary"))
 }

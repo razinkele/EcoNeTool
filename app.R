@@ -324,7 +324,9 @@ ui <- dashboardPage(
         text = "ECOPATH/ECOSIM",
         tabName = "rpath",
         icon = icon("fish")
-      )
+      ),
+
+      menuItem("Feedback admin", tabName = "feedback_admin", icon = icon("comments"))
     )
   ),
 
@@ -377,7 +379,11 @@ ui <- dashboardPage(
       tabItem(
         tabName = "rpath",
         rpathModuleUI("rpath_module")
-      )
+      ),
+
+      tabItem(tabName = "feedback_admin",
+              h3(icon("comments"), " Feedback management"),
+              uiOutput("feedback_admin_ui"))
 
     ),    # End of tabItems()
 
