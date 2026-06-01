@@ -392,8 +392,10 @@ ui <- dashboardPage(
       radioButtons("feedback_type", "Type:",
                    choices = c("Bug" = "bug", "Suggestion" = "suggestion"),
                    selected = "bug", inline = TRUE),
-      textAreaInput("feedback_description", "What happened / your idea:",
-                    rows = 5, placeholder = "Describe it...", width = "100%"),
+      htmltools::tagAppendAttributes(
+        textAreaInput("feedback_description", "What happened / your idea:",
+                      rows = 5, placeholder = "Describe it...", width = "100%"),
+        .cssSelector = "textarea", maxlength = "5000"),
       tags$small(class = "text-muted",
                  "Optional: leave your email if you'd like a follow-up."),
       textInput("feedback_email", NULL, placeholder = "you@example.org (optional)",
