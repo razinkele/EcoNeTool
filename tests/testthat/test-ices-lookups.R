@@ -536,3 +536,17 @@ test_that("lookup_ices_subdivision resolves a real Baltic point (live)", {
   expect_true(res$success)
   expect_match(res$data$area_full, "^27\\.3\\.")
 })
+
+test_that("[live] min_age=2 abundance does not exceed all-ages (BITS cod)", {
+  skip_if_no_live_tests()
+  skip_if_not_installed("icesDatras")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  yrs <- 2020:2023
+  all_ages <- lookup_datras_indices(126436, surveys = "BITS", years = yrs, min_age = 0L)
+  aged     <- lookup_datras_indices(126436, surveys = "BITS", years = yrs, min_age = 2L)
+  skip_if(!isTRUE(all_ages$success) || !isTRUE(aged$success),
+          "DATRAS unavailable or no indices in window; refresh year range")
+  expect_lte(sum(aged$data$abundance_index, na.rm = TRUE),
+             sum(all_ages$data$abundance_index, na.rm = TRUE))
+})
