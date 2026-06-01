@@ -97,26 +97,32 @@ feedback_server <- function(input, output, session) {
     req(is_admin())
     sel <- input$feedback_admin_table_rows_selected
     df <- .fb_admin_data()
-    if (length(sel) != 1 || nrow(df) == 0) {
+    if (length(sel) != 1 || nrow(df) == 0 || sel > nrow(df)) {
       showNotification("Select one row first.", type = "warning"); return()
     }
     note <- input$feedback_resolution
     res <- feedback_mark_addressed(
       id = df$id[sel],
-      resolution_note = if (nzchar(note)) note else NA_character_,
+      resolution_note = if (!is.null(note) && nzchar(note)) note else NA_character_,
       addressed_by = "admin")
     if (isTRUE(res$success)) {
       showNotification("Marked addressed.", type = "message")
       feedback_refresh(feedback_refresh() + 1)
     } else {
-      showNotification(paste("Couldn't mark addressed:", res$error), type = "error")
+      showNotification("Couldn't mark addressed (see server log).", type = "error")
     }
   })
 
-  output$feedback_box_open <- renderValueBox(
-    valueBox(feedback_summary()$open, "Open", icon = icon("inbox"), color = "warning"))
-  output$feedback_box_addressed <- renderValueBox(
-    valueBox(feedback_summary()$addressed, "Addressed", icon = icon("check"), color = "success"))
-  output$feedback_box_total <- renderValueBox(
-    valueBox(feedback_summary()$total, "Total", icon = icon("list"), color = "primary"))
+  output$feedback_box_open <- renderValueBox({
+    req(is_admin())
+    valueBox(feedback_summary()$open, "Open", icon = icon("inbox"), color = "warning")
+  })
+  output$feedback_box_addressed <- renderValueBox({
+    req(is_admin())
+    valueBox(feedback_summary()$addressed, "Addressed", icon = icon("check"), color = "success")
+  })
+  output$feedback_box_total <- renderValueBox({
+    req(is_admin())
+    valueBox(feedback_summary()$total, "Total", icon = icon("list"), color = "primary")
+  })
 }
