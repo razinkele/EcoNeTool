@@ -225,19 +225,24 @@ get_ices_area_detail <- function(code, timeout = 30) {
 #'   live in a different ICES database - so it is excluded.)
 #' @param years Optional integer vector of years; NULL = use the most
 #'   recent year that actually has computed indices for each survey.
+#' @param min_age Integer; sum only Age_k columns with k >= min_age. Default
+#'   0L sums every age (current behavior). The R2 demersal trend passes 2L to
+#'   drop age-0/1 recruitment noise.
 #' @param timeout Per-call network budget in seconds.
 #' @return list(success, source = "DATRAS", data, error). On success
 #'   `data` is a data.frame with columns survey / year / quarter /
 #'   index_area / abundance_index. `abundance_index` is the sum across
-#'   the Age_0..Age_N columns getIndices() returns (total numbers-per-hour,
-#'   abundance NOT biomass); one row per (survey, year, quarter, IndexArea)
-#'   so stock-area structure (e.g. East/West Baltic cod) is preserved.
+#'   the Age_k columns getIndices() returns with k >= `min_age`
+#'   (total numbers-per-hour, abundance NOT biomass); one row per
+#'   (survey, year, quarter, IndexArea) so stock-area structure
+#'   (e.g. East/West Baltic cod) is preserved.
 #'   Failures populate `error` and warning() so the failure mode is visible.
 #' @export
 lookup_datras_indices <- function(aphia_id,
                                   surveys = c("BITS", "NS-IBTS", "BTS"),
                                   years = NULL,
-                                  timeout = 30) {
+                                  timeout = 30,
+                                  min_age = 0L) {
   result <- list(
     success = FALSE,
     source  = "DATRAS",
@@ -257,7 +262,8 @@ lookup_datras_indices <- function(aphia_id,
 
   cache_key <- paste0("datras_", aphia_id, "_",
                       paste(surveys, collapse = "."),
-                      if (is.null(years)) "" else paste0("_", paste(years, collapse = ".")))
+                      if (is.null(years)) "" else paste0("_", paste(years, collapse = ".")),
+                      "_a", min_age)
   if (!is.null(.ices_cache[[cache_key]])) return(.ices_cache[[cache_key]])
 
   # When `years` is NULL we search newest-first and stop at the first year
@@ -326,7 +332,7 @@ lookup_datras_indices <- function(aphia_id,
         }
         if (nrow(idx) == 0) next
 
-        rows[[length(rows) + 1L]] <- .datras_reshape_indices(idx, svy, yr)
+        rows[[length(rows) + 1L]] <- .datras_reshape_indices(idx, svy, yr, min_age)
         got_rows_for_survey <- TRUE  # this year had indices; stop stepping back
       }
     }

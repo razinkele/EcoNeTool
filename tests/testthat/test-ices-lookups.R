@@ -272,6 +272,31 @@ test_that("lookup_datras_indices defaults exclude BIAS (not a DATRAS survey)", {
   expect_setequal(default_surveys, c("BITS", "NS-IBTS", "BTS"))
 })
 
+test_that("lookup_datras_indices min_age changes the sum and keeps a separate cache entry", {
+  skip_if_not_installed("icesDatras")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+
+  testthat::local_mocked_bindings(
+    getSurveyYearList = function(survey) 2023L,
+    getSurveyYearQuarterList = function(survey, year) 1L,
+    getIndices = function(survey, year, quarter, species) data.frame(
+      Survey = "BITS", Year = 2023L, Quarter = quarter,
+      IndexArea = "X",
+      Age_0 = 100, Age_1 = 50, Age_2 = 8, Age_3 = 2,
+      stringsAsFactors = FALSE, check.names = FALSE
+    ),
+    .package = "icesDatras"
+  )
+
+  all_ages <- lookup_datras_indices(126436, surveys = "BITS", years = 2023, min_age = 0L)
+  aged     <- lookup_datras_indices(126436, surveys = "BITS", years = 2023, min_age = 2L)
+
+  expect_true(all_ages$success && aged$success)
+  expect_equal(sum(all_ages$data$abundance_index), 160)   # 100+50+8+2
+  expect_equal(sum(aged$data$abundance_index), 10)        # 8+2 only (age-0/1 dropped)
+})
+
 test_that("get_ices_area_codes returns a non-empty data.frame (live)", {
   skip_if_no_live_tests()
   skip_if_not_installed("icesVocab")
