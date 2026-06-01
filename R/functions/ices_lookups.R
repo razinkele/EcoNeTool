@@ -150,7 +150,7 @@ get_ices_area_detail <- function(code, timeout = 30) {
 #' Age_0..Age_N columns — there is NO single "Index" column (verified live
 #' against icesDatras 1.4.1; see the R3 design spec). This collapses each
 #' row's age columns into a numeric `abundance_index` (total numbers-per-hour
-#' summed across ages, NA treated as 0) and keeps `index_area` as a row
+#' summed across ages, within-row NAs treated as 0; an all-NA kept-age row yields NA) and keeps `index_area` as a row
 #' dimension so stock-area structure (East/West cod, roundfish areas) isn't
 #' silently dropped. The data is abundance, NOT biomass.
 #'
@@ -160,6 +160,10 @@ get_ices_area_detail <- function(code, timeout = 30) {
 #' @param idx data.frame as returned by getIndices().
 #' @param svy,yr Survey code / year, used as fallbacks if the frame lacks
 #'   Survey/Year columns.
+#' @param min_age Integer >= 0. Sum only Age_k columns with k >= min_age.
+#'   Default 0L keeps every age (current behaviour); 2L drops the age-0/1
+#'   recruitment classes for the demersal trend. A row whose kept ages are all
+#'   NA yields NA (not a false zero), so the year is dropped downstream.
 #' @return data.frame: survey, year, quarter, index_area, abundance_index.
 #' @keywords internal
 .datras_reshape_indices <- function(idx, svy, yr, min_age = 0L) {

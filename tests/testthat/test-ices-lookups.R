@@ -80,7 +80,7 @@ test_that(".datras_reshape_indices min_age=0 preserves the all-ages sum (backwar
   )
   out0 <- .datras_reshape_indices(idx, "BITS", 2023)               # default min_age = 0
   out0b <- .datras_reshape_indices(idx, "BITS", 2023, min_age = 0L)
-  expect_equal(out0$abundance_index, c(34, 16))                   # 10+20+0+4 ; 5+5+(NA)+6
+  expect_equal(out0$abundance_index, c(34, 16))                   # 10+20+0+4 ; 5+5+6 = 16 (na.rm drops the NA)
   expect_equal(out0b$abundance_index, c(34, 16))                  # explicit 0 == default
 })
 
@@ -147,6 +147,18 @@ test_that(".datras_reshape_indices min_age=0 keeps a genuine zero as 0 (does not
                     Age_0 = NA_real_, Age_1 = 0,
                     stringsAsFactors = FALSE, check.names = FALSE)
   expect_equal(.datras_reshape_indices(idx, "BITS", 2023, min_age = 0L)$abundance_index, 0)
+})
+
+test_that(".datras_reshape_indices min_age=2 parses multi-digit age suffixes (Age_10)", {
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  idx <- data.frame(
+    Survey = "BITS", Year = 2023, Quarter = 1L, IndexArea = "X",
+    Age_0 = 100, Age_2 = 3, Age_10 = 5,
+    stringsAsFactors = FALSE, check.names = FALSE
+  )
+  out <- .datras_reshape_indices(idx, "BITS", 2023, min_age = 2L)
+  expect_equal(out$abundance_index, 8)   # Age_2 + Age_10 = 3 + 5 (Age_0 dropped, 10 >= 2 kept)
 })
 
 test_that("lookup_datras_indices passes species + real quarters and returns abundance rows", {
