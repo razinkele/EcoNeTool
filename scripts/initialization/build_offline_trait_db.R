@@ -141,6 +141,15 @@ if (file.exists(db_path)) {
   cat("Removed existing database for fresh build.\n")
 }
 
+# Shared-writer invariant: this script runs as the developer (e.g. `razinka`),
+# but the Shiny app runs as a DIFFERENT OS user (`shiny`) and MIGRATES this DB
+# at runtime via lookup_offline_traits() -> migrate_offline_schema(). With the
+# default umask (022 -> 644) the freshly-built DB is owner-write only, so the
+# app (only a group member) fails every ALTER TABLE with "attempt to write a
+# readonly database" (incident 2026-06-01, same class as the feedback store).
+# umask 002 creates the DB group-writable (664). POSIX no-op on Windows.
+Sys.umask("0002")
+
 con <- dbConnect(RSQLite::SQLite(), db_path)
 on.exit(dbDisconnect(con), add = TRUE)
 
@@ -848,6 +857,10 @@ if (coverage$total > 0) {
                 coverage[[paste0("has_", trait)]], coverage$total, pct))
   }
 }
+
+# Belt-and-suspenders: widen to group-writable even if umask was overridden,
+# so the app user (`shiny`) can migrate the schema at runtime. POSIX-only.
+try(Sys.chmod(db_path, mode = "0664"), silent = TRUE)
 
 cat("\nDatabase saved to:", db_path, "\n")
 cat("Finished:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
