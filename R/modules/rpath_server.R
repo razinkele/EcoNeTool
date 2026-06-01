@@ -1991,7 +1991,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
           # The age-2+ filter left no adult-age index in any year (the stock is
           # recruitment-only in this window). Report the real reason, not a
           # generic insufficient-data exclusion.
-          warning(sprintf("[survey_trends] '%s' has no age-2+ index in window (recruitment-only)",
+          warning(sprintf("[survey_trends] '%s': all years in window have NA age-2+ index (recruitment-only)",
                           g), call. = FALSE)
           excluded_map[[length(excluded_map) + 1L]] <-
             data.frame(group = g, reason = "no age-2+ survey index (recruitment-only)",
@@ -2080,11 +2080,17 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
         }
         tags$li(txt)
       })
-      legend <- if (any(grepl("\\[BIAS\\]|\\[SSB\\]", td$group))) {
+      legend_parts <- c(
+        if (any(grepl("\\[BIAS\\]|\\[SSB\\]", td$group)))
+          paste0("[BIAS] = acoustic survey abundance; [SSB] = assessed spawning",
+                 " stock biomass (clupeid fallback). Trend-only; series differ in",
+                 " level and are not comparable across groups."),
+        if (any(grepl("\\[BITS 2\\+\\]", td$group)))
+          "[BITS 2+] = BITS bottom-trawl index summed over ages 2+ (age-0/1 excluded)."
+      )
+      legend <- if (length(legend_parts) > 0L) {
         tags$p(class = "text-muted", style = "font-size:12px;",
-               paste0("[BIAS] = acoustic survey abundance; [SSB] = assessed spawning",
-                      " stock biomass (clupeid fallback). Trend-only; series differ in",
-                      " level and are not comparable across groups."))
+               paste(legend_parts, collapse = " "))
       } else {
         NULL
       }
