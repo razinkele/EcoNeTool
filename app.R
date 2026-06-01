@@ -175,6 +175,7 @@ source("R/modules/metaweb_manager_server.R")  # Metaweb manager
 source("R/modules/spatial_server.R")  # Spatial analysis
 source("R/modules/ecobase_server.R")  # EcoBase connection
 source("R/modules/shark_server.R")  # SHARK4R integration
+source("R/modules/feedback_server.R")  # Feedback submit modal handler
 
 # Data loading and validation (loads net and info objects)
 source("R/data_loading.R")
@@ -203,6 +204,12 @@ ui <- dashboardPage(
         tags$span("Ecological Interaction Network Explorer", style = "margin-left: 10px; color: #007bff; font-size: 1.1rem; font-weight: 500;")
     ),
     rightUI = tagList(
+      # Feedback Button
+      tags$div(
+        style = "margin: 10px 5px; display: inline-block;",
+        actionButton("feedback_open", tagList(icon("comment-dots"), " Feedback"),
+                     class = "btn-sm btn-outline-light")
+      ),
       # Settings Button
       tags$div(
         style = "margin: 10px 15px; display: inline-block;",
@@ -377,6 +384,26 @@ ui <- dashboardPage(
     # ==========================================================================
     # MODALS
     # ==========================================================================
+
+    # Feedback Modal
+    shinyBS::bsModal(
+      id = "feedback_modal", title = tagList(icon("comment-dots"), " Send feedback"),
+      trigger = "feedback_open", size = "medium",
+      radioButtons("feedback_type", "Type:",
+                   choices = c("Bug" = "bug", "Suggestion" = "suggestion"),
+                   selected = "bug", inline = TRUE),
+      textAreaInput("feedback_description", "What happened / your idea:",
+                    rows = 5, placeholder = "Describe it...", width = "100%"),
+      tags$small(class = "text-muted",
+                 "Optional: leave your email if you'd like a follow-up."),
+      textInput("feedback_email", NULL, placeholder = "you@example.org (optional)",
+                width = "100%"),
+      tags$small(class = "text-muted",
+                 "Stored to follow up on your report; please don't include sensitive personal data."),
+      tags$hr(),
+      actionButton("feedback_submit", "Submit", icon = icon("paper-plane"),
+                   class = "btn-success")
+    ),
 
     # Settings Modal (combines plugins, about, and links)
     bsModal(
@@ -742,6 +769,11 @@ server <- function(input, output, session) {
   # SHARK4R INTEGRATION
   # ============================================================================
   shark_server(input, output, session)
+
+  # ============================================================================
+  # FEEDBACK MODULE
+  # ============================================================================
+  feedback_server(input, output, session)
 
   # Ensure dashboard outputs are not suspended when hidden (load by default)
   outputOptions(output, "box_species", suspendWhenHidden = FALSE)
