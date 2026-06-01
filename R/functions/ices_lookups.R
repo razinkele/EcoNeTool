@@ -225,10 +225,10 @@ get_ices_area_detail <- function(code, timeout = 30) {
 #'   live in a different ICES database - so it is excluded.)
 #' @param years Optional integer vector of years; NULL = use the most
 #'   recent year that actually has computed indices for each survey.
+#' @param timeout Per-call network budget in seconds.
 #' @param min_age Integer; sum only Age_k columns with k >= min_age. Default
 #'   0L sums every age (current behavior). The R2 demersal trend passes 2L to
 #'   drop age-0/1 recruitment noise.
-#' @param timeout Per-call network budget in seconds.
 #' @return list(success, source = "DATRAS", data, error). On success
 #'   `data` is a data.frame with columns survey / year / quarter /
 #'   index_area / abundance_index. `abundance_index` is the sum across

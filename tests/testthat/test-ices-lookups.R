@@ -292,9 +292,13 @@ test_that("lookup_datras_indices min_age changes the sum and keeps a separate ca
   all_ages <- lookup_datras_indices(126436, surveys = "BITS", years = 2023, min_age = 0L)
   aged     <- lookup_datras_indices(126436, surveys = "BITS", years = 2023, min_age = 2L)
 
-  expect_true(all_ages$success && aged$success)
+  expect_true(all_ages$success, label = "all_ages$success")
+  expect_true(aged$success,     label = "aged$success")
   expect_equal(sum(all_ages$data$abundance_index), 160)   # 100+50+8+2
   expect_equal(sum(aged$data$abundance_index), 10)        # 8+2 only (age-0/1 dropped)
+  # Distinct cache entries prove the min_age suffix is in the key (not one shared entry)
+  expect_false(is.null(.ices_cache[["datras_126436_BITS_2023_a0"]]))
+  expect_false(is.null(.ices_cache[["datras_126436_BITS_2023_a2"]]))
 })
 
 test_that("get_ices_area_codes returns a non-empty data.frame (live)", {
