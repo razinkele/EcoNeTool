@@ -162,9 +162,19 @@ get_ices_area_detail <- function(code, timeout = 30) {
 #'   Survey/Year columns.
 #' @return data.frame: survey, year, quarter, index_area, abundance_index.
 #' @keywords internal
-.datras_reshape_indices <- function(idx, svy, yr) {
+.datras_reshape_indices <- function(idx, svy, yr, min_age = 0L) {
   age_cols <- grep("^Age_", names(idx), value = TRUE)
+  # Age filter: keep only Age_k columns with k >= min_age. min_age = 0L keeps
+  # every Age_ column (incl. any whose suffix doesn't parse) -> current
+  # behavior. min_age = 2L (R2 demersal trend) drops age-0/1 recruitment noise.
+  if (min_age > 0L && length(age_cols) > 0L) {
+    ages <- suppressWarnings(as.integer(sub("^Age_", "", age_cols)))
+    age_cols <- age_cols[!is.na(ages) & ages >= min_age]
+  }
   if (length(age_cols) == 0) {
+    # No age columns at all, OR the cutoff removed them all (sparse species):
+    # emit NA, never a false-zero sum. NA years are dropped downstream by
+    # compute_survey_trends().
     abundance_index <- rep(NA_real_, nrow(idx))
   } else {
     age_mat <- suppressWarnings(
@@ -174,6 +184,14 @@ get_ices_area_detail <- function(code, timeout = 30) {
     )
     if (is.null(dim(age_mat))) age_mat <- matrix(age_mat, nrow = nrow(idx))
     abundance_index <- rowSums(age_mat, na.rm = TRUE)
+    # False-zero guard (only when a cutoff is applied, so min_age=0 stays
+    # byte-identical for R3): a row whose kept ages are ALL NA is "no adult-age
+    # data", not a real zero catch. rowSums(na.rm=TRUE) would make it 0 and put a
+    # spurious low point in the trend; restore NA so the year is dropped instead.
+    if (min_age > 0L) {
+      all_na <- rowSums(!is.na(age_mat)) == 0
+      abundance_index[all_na] <- NA_real_
+    }
   }
 
   data.frame(

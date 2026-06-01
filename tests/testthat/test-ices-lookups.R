@@ -69,6 +69,86 @@ test_that(".datras_reshape_indices yields one abundance row per IndexArea", {
   expect_false("biomass_index" %in% names(out))               # corrected naming
 })
 
+test_that(".datras_reshape_indices min_age=0 preserves the all-ages sum (backward compat)", {
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  idx <- data.frame(
+    Survey = c("BITS", "BITS"), Year = c(2023, 2023), Quarter = c(1L, 1L),
+    IndexArea = c("BS_CodEast", "BS_CodWest"),
+    Age_0 = c(10, 5), Age_1 = c(20, 5), Age_2 = c(0, NA_real_), Age_3 = c(4, 6),
+    stringsAsFactors = FALSE, check.names = FALSE
+  )
+  out0 <- .datras_reshape_indices(idx, "BITS", 2023)               # default min_age = 0
+  out0b <- .datras_reshape_indices(idx, "BITS", 2023, min_age = 0L)
+  expect_equal(out0$abundance_index, c(34, 16))                   # 10+20+0+4 ; 5+5+(NA)+6
+  expect_equal(out0b$abundance_index, c(34, 16))                  # explicit 0 == default
+})
+
+test_that(".datras_reshape_indices min_age=2 drops age-0/1 (keeps 2+)", {
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  idx <- data.frame(
+    Survey = c("BITS", "BITS"), Year = c(2023, 2023), Quarter = c(1L, 1L),
+    IndexArea = c("BS_CodEast", "BS_CodWest"),
+    Age_0 = c(10, 5), Age_1 = c(20, 5), Age_2 = c(0, NA_real_), Age_3 = c(4, 6),
+    stringsAsFactors = FALSE, check.names = FALSE
+  )
+  out2 <- .datras_reshape_indices(idx, "BITS", 2023, min_age = 2L)
+  expect_equal(out2$abundance_index, c(4, 6))                     # Age_2+Age_3, na.rm (row2: NA+6)
+})
+
+test_that(".datras_reshape_indices min_age=2 with only age-0/1 yields NA, not 0 (sparse guard)", {
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  idx <- data.frame(
+    Survey = "BITS", Year = 2023, Quarter = 1L, IndexArea = "X",
+    Age_0 = 10, Age_1 = 20,
+    stringsAsFactors = FALSE, check.names = FALSE
+  )
+  out <- .datras_reshape_indices(idx, "BITS", 2023, min_age = 2L)
+  expect_true(is.na(out$abundance_index))                        # NA, never 0
+})
+
+test_that(".datras_reshape_indices with no Age_ columns yields NA (min_age irrelevant)", {
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  idx <- data.frame(Survey = "BITS", Year = 2023, Quarter = 1L, IndexArea = "X",
+                    stringsAsFactors = FALSE, check.names = FALSE)
+  expect_true(is.na(.datras_reshape_indices(idx, "BITS", 2023, min_age = 0L)$abundance_index))
+  expect_true(is.na(.datras_reshape_indices(idx, "BITS", 2023, min_age = 2L)$abundance_index))
+})
+
+test_that(".datras_reshape_indices min_age=2: a row whose kept ages are ALL NA yields NA, not 0 (false-zero guard)", {
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  # Realistic case: the frame HAS Age_2/Age_3 columns (an adult area populates
+  # them), but a recruitment-only area carries NA across every kept age. Without
+  # the guard, rowSums(na.rm=TRUE) over that row returns 0 (a false zero); with
+  # the guard it must be NA so the year is dropped, not plotted as ~0 abundance.
+  idx <- data.frame(
+    Survey = c("BITS", "BITS"), Year = c(2023, 2023), Quarter = c(1L, 1L),
+    IndexArea = c("adult", "recruit"),
+    Age_0 = c(1, 30), Age_1 = c(2, 40),
+    Age_2 = c(5, NA_real_), Age_3 = c(7, NA_real_),
+    stringsAsFactors = FALSE, check.names = FALSE
+  )
+  out <- .datras_reshape_indices(idx, "BITS", 2023, min_age = 2L)
+  expect_equal(out$abundance_index[1], 12)            # adult: Age_2+Age_3 = 5+7
+  expect_true(is.na(out$abundance_index[2]))          # recruit: kept ages all NA -> NA, not 0
+})
+
+test_that(".datras_reshape_indices min_age=0 keeps a genuine zero as 0 (does not over-NA)", {
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  # Guard the guard: the all-NA->NA restoration is gated to min_age > 0, so the
+  # default (R3) path is byte-identical to today. A row with a real 0 and an NA
+  # stays a summed value, never forced to NA.
+  idx <- data.frame(Survey = "BITS", Year = 2023, Quarter = 1L, IndexArea = "X",
+                    Age_0 = NA_real_, Age_1 = 0,
+                    stringsAsFactors = FALSE, check.names = FALSE)
+  expect_equal(.datras_reshape_indices(idx, "BITS", 2023, min_age = 0L)$abundance_index, 0)
+})
+
 test_that("lookup_datras_indices passes species + real quarters and returns abundance rows", {
   skip_if_not_installed("icesDatras")
   source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
