@@ -159,10 +159,12 @@ helpers**, unit-tested directly. The observer is thin glue.
        "no positive survey index" (guards the normalise divide-by-zero).
      - else → a **contributing** member series.
   3. Build the group series from the contributing list:
-     - 0 contributing & ≥1 demersal member existed → `series = NULL`, group reason "no
-       usable age-2+ index for any member".
-     - 0 demersal members at all → `series = NULL`, group reason "no BITS-surveyed demersal
-       members" (covers all-pelagic / all-clupeid sets).
+     - **0 contributing** → `series = NULL`. The group's exclusion is documented entirely
+       by its member sub-rows (every non-contributing member already produced one in steps
+       1-2, and `.map_group_to_aphia` always returns ≥1 member, so ≥1 sub-row exists). **No
+       separate group-level exclusion row is added** — this is the §4.4/§4.5 no-double-count
+       rule. (Defensive only: if `members` were somehow empty, add a single group row "no
+       BITS-surveyed demersal members".)
      - **exactly 1 contributing** → `grp <- that raw series` (passthrough; backward-compat).
      - **≥2 contributing** → `grp <- .combine_member_trends(list)`; `notes <- sprintf(
        "group trend = mean of %d normalised member series", k)`.
@@ -184,10 +186,10 @@ helpers**, unit-tested directly. The observer is thin glue.
     the existing body `:1948-1966` (`select_clupeid_series`, `sel$series$group` tag, `next`)
     is reused **verbatim** inside the new guard.
   - Else: `res <- .fetch_group_demersal_series(m, quarter, window_years, ref_year, g)`.
-    `rbind` `res$excluded` into `excluded_map`; collect `res$notes`. If `res$series` non-NULL
-    → append to `series_list`, `summed_bits <- TRUE`. If NULL → add the group-level exclusion
-    from `res$excluded`'s group reason (do **not** also add a duplicate group row when
-    member sub-rows already explain the drop — avoid double counting in the exclusions count).
+    Always `rbind` `res$excluded` (member sub-rows) into `excluded_map`; collect `res$notes`.
+    If `res$series` non-NULL → append to `series_list`, `summed_bits <- TRUE`. (No separate
+    group-level exclusion handling in the observer — the helper already emitted member
+    sub-rows; this is the no-double-count rule.)
 - Reword the preserved `summed_bits` notice copy from "per species" to **"per member"** (the
   text only; keep the `warning()`+`showNotification` in place). Store notes for the UI:
   `trends$notes <- unlist(notes_list)` alongside `trends$mapping` (`:2023+`).
@@ -211,7 +213,8 @@ helpers**, unit-tested directly. The observer is thin glue.
   scale; absent members are not zero-filled, and no years are dropped.
 - The normalise divide-by-zero is impossible: §4.3 excludes any member with mean ≤ 0 before
   `.combine_member_trends` runs.
-- Group excluded only when zero members contribute, with a specific reason.
+- Group excluded only when zero members contribute; its absence is explained by its
+  per-member sub-rows (member-level, not a duplicate group-level row).
 
 ## 6. Testing (TDD)
 In `tests/testthat/test-survey-validation.R`. **The two existing `.map_group_to_aphia`
@@ -249,10 +252,10 @@ hits the network.**
 11. **Two good members → combined series (note "mean of 2 …"), no exclusions.**
 12. **One member `success=FALSE` → that member excluded sub-row, the other passes through
     raw (1 contributing → passthrough, no normalise).**
-13. **All members recruitment-only → `series = NULL`, group reason set, each member an
-    excluded sub-row.**
-14. **Zero demersal members (all pelagic) → `series = NULL`, reason "no BITS-surveyed
-    demersal members", each member an excluded sub-row.**
+13. **All members recruitment-only → `series = NULL`; each member has an excluded sub-row
+    with reason "recruitment-only" (and NO extra group-level row — no double count).**
+14. **Zero demersal members (all pelagic) → `series = NULL`; each pelagic member has an
+    excluded sub-row with reason "pelagic" (no group-level row).**
 15. **Non-positive member (mean 0) → excluded "no positive survey index"; remaining member
     used.**
 
