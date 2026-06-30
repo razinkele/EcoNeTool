@@ -295,20 +295,25 @@ lookup_shark_traits <- function(species_name) {
     traits = list()
   )
 
-  # Check if shark4r is available
-  if (!requireNamespace("shark4r", quietly = TRUE)) {
-    result$note <- "shark4r package not installed. Install with: remotes::install_github('sharksmhi/shark4r')"
+  # Check if SHARK4R is available (note: package is SHARK4R; the GitHub repo is sharksmhi/shark4r)
+  if (!requireNamespace("SHARK4R", quietly = TRUE)) {
+    result$note <- "SHARK4R package not installed. Install with: install.packages('SHARK4R')"
     return(result)
   }
 
   tryCatch({
-    # Use existing shark_api_utils.R functions if available
-    # Otherwise use shark4r package directly
-
-    # Query SHARK database for species occurrence data
-    shark_data <- shark4r::get_datasets(
-      datatype = "PhysicalChemical",
-      scientificname = species_name
+    # Query the SHARK database for the species' physical-chemical samples.
+    # Migrated from the removed shark4r::get_datasets() to SHARK4R::get_shark_data()
+    # (datatype -> dataTypes, scientificname -> taxonName). Bounded by with_timeout
+    # so a slow Swedish-DB response cannot stall the trait lookup.
+    shark_data <- with_timeout(
+      SHARK4R::get_shark_data(
+        dataTypes = "PhysicalChemical",
+        taxonName = species_name,
+        verbose   = FALSE
+      ),
+      timeout = 20,
+      on_timeout = NULL
     )
 
     if (is.null(shark_data) || nrow(shark_data) == 0) {
