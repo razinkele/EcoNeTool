@@ -75,12 +75,12 @@ HARMONIZATION_CONFIG <- list(
   # harmonize_protection had no branch, so any "mucus"-flagged species got
   # NA. Added between PR0_none and PR2_tube to fill the gap.
   protection_patterns = list(
-    PR0_none = "soft.?body|naked|unprotected|no shell|no armor|jellyfish|cephalopod",
+    PR0_none = "soft.?bod|naked|unprotected|no shell|no armor|jellyfish|cephalopod|^soft$|crustose|cushion|stalked",
     PR1_mucus = "mucus|slime|cuticle|cuticular|hagfish",
     PR2_tube = "tube|tube.?dwell|calcareous tube|parchment tube",
     PR3_burrow = "deep burrow|permanent burrow|burrow refuge",
     PR4_exoskeleton = "exoskeleton|chitinous|thin carapace|small arthropod",
-    PR5_soft_shell = "soft shell|partial shell|flexible shell|cartilage|thin shell",
+    PR5_soft_shell = "soft.?shell|partial shell|flexible shell|cartilage|thin shell",
     PR6_hard_shell = "shell|calcified|calcareous|bivalve shell|gastropod shell|hard carapace|test|barnacle",
     PR7_spines = "spine|spiny|spicule|prickle|thorn|ossicle|urchin",
     PR8_armoured = "armoured|armored|heavy carapace|thick carapace|lobster|crab carapace"
