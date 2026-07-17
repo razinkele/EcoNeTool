@@ -57,8 +57,8 @@ HARMONIZATION_CONFIG <- list(
   mobility_patterns = list(
     MB1_sessile = "sessile|attached|fixed|cemented|anchored|immobile",
     MB2_burrower = "burrow|infauna|endobenthic|burrowing|sediment dweller",
-    MB3_crawler = "crawl|creep|benthic|epibenthic|slow moving|sluggish",
-    MB4_swimmer_limited = "slow swim|limited swim|weak swim|drift|plankton",
+    MB3_crawler = "crawl|creep|benthic|epibenthic|slow moving|sluggish|limited.?movement",
+    MB4_swimmer_limited = "slow swim|limited swim|weak swim|drift|plankton|limited.?swim|float",
     MB5_swimmer = "swim|pelagic|nektonic|fast|active|mobile|free-swimming"
   ),
 
