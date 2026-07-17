@@ -689,11 +689,10 @@ try {
             Write-Host " Files deployed to: $APP_DEPLOY_PATH" -ForegroundColor Cyan
             Write-Host ""
             Write-Host " NEXT STEPS (run on server via SSH):" -ForegroundColor Yellow
-            Write-Host "   ssh $SSH_TARGET" -ForegroundColor Gray
-            Write-Host "   sudo rm -rf /srv/shiny-server/$APP_NAME/*" -ForegroundColor Gray
-            Write-Host "   sudo cp -r $APP_DEPLOY_PATH/* /srv/shiny-server/$APP_NAME/" -ForegroundColor Gray
-            Write-Host "   sudo chown -R shiny:shiny /srv/shiny-server/$APP_NAME" -ForegroundColor Gray
-            Write-Host "   sudo systemctl restart shiny-server" -ForegroundColor Gray
+            Write-Host "   # cp -rT copies staging CONTENTS over the live tree WITHOUT" -ForegroundColor DarkGray
+            Write-Host "   # deleting siblings, so the live data/ (feedback.db), cache/" -ForegroundColor DarkGray
+            Write-Host "   # (offline_traits.db) and r-libs/ survive. Do NOT 'rm -rf' the tree." -ForegroundColor DarkGray
+            Write-Host "   ssh $SSH_TARGET ""cp -rT $APP_DEPLOY_PATH /srv/shiny-server/$APP_NAME && touch /srv/shiny-server/$APP_NAME/restart.txt""" -ForegroundColor Gray
             Write-Host ""
         } else {
             Write-Host " Application URL: http://$Server/$APP_NAME/" -ForegroundColor Cyan

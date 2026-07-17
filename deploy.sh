@@ -105,6 +105,15 @@ EXCLUDE_PATTERNS=(
   "models/*"
   "archive/*"
   "data_conversion/*"
+  # Persistent server-side runtime state - MUST survive rsync --delete.
+  # These live only on the server (absent from the local repo), so without
+  # these excludes --delete would silently wipe them on every deploy.
+  ".Renviron"
+  "r-libs"
+  "r-libs/*"
+  "data/feedback"
+  "data/feedback/*"
+  "restart.txt"
 )
 
 # Flags
