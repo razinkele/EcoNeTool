@@ -8,6 +8,17 @@
 
 source_app_dependencies()
 
+# parse_ecopath_data (#6) needs the DEFAULT_* constants from R/config.R and the
+# ecopath CSV parser, neither of which source_app_dependencies() loads.
+local({
+  root <- get_app_root()
+  tryCatch(
+    source(file.path(root, "R/config.R"), local = FALSE),
+    error = function(e) message("Note: R/config.R side effects skipped: ", conditionMessage(e))
+  )
+  source(file.path(root, "R/functions/ecopath/ecopath_csv.R"), local = FALSE)
+})
+
 # -----------------------------------------------------------------------------
 # #7 - Foraging strategy: diet nouns must not force FS0 (primary producer)
 # -----------------------------------------------------------------------------
@@ -78,4 +89,41 @@ test_that("combine_trait_results drops NULL entries from failed lookups", {
   combined <- combine_trait_results(list(a, NULL))
   expect_equal(nrow(combined), 1)
   expect_equal(combined$species, "Species A")
+})
+
+# -----------------------------------------------------------------------------
+# #6 - ecopath_csv: a blank group name must not misalign biomass/PB/QB
+# -----------------------------------------------------------------------------
+
+test_that("parse_ecopath_data keeps biomass aligned when a group name is blank", {
+  basic <- tempfile(fileext = ".csv")
+  diet <- tempfile(fileext = ".csv")
+  on.exit(unlink(c(basic, diet)), add = TRUE)
+
+  # A blank group-name row between Cod and Herring - routine in hand-edited
+  # ECOPATH exports. Pre-fix, dropping it shrank species_names but the summary
+  # mask (built from the shrunk vector) was recycled against the full frame,
+  # so biomass zipped to the wrong species.
+  writeLines(c(
+    "Group,Biomass,PB,QB",
+    "Cod,10,0.5,3",
+    ",999,0.1,1",
+    "Herring,20,1.0,5",
+    "Sprat,30,1.2,6"
+  ), basic)
+
+  writeLines(c(
+    "Prey,Cod,Herring,Sprat",
+    "Cod,0,0,0",
+    "Herring,0.5,0,0",
+    "Sprat,0.3,0.6,0"
+  ), diet)
+
+  res <- parse_ecopath_data(basic, diet)
+
+  expect_equal(res$info["Cod", "meanB"], 10)
+  expect_equal(res$info["Herring", "meanB"], 20)
+  expect_equal(res$info["Sprat", "meanB"], 30)
+  # The blank row's biomass must never leak into a real species.
+  expect_false(999 %in% res$info$meanB)
 })

@@ -62,15 +62,18 @@ parse_ecopath_data <- function(basic_est_file, diet_file) {
     stop("Could not find required columns in Basic Estimates file. Need: Group name, Biomass")
   }
 
-  # Extract species names and biomass
-  species_names <- as.character(basic_data[[group_col]])
-  species_names <- species_names[!is.na(species_names) & species_names != ""]
+  # Extract species names and drop blank / summary rows.
+  # The mask MUST be computed against the full-length column so it aligns with
+  # basic_data: filtering species_names first and reusing that (shorter) vector
+  # to subset the full frame recycles the mask and misaligns biomass/PB/QB.
+  raw_names <- as.character(basic_data[[group_col]])
+  name_present <- !is.na(raw_names) & raw_names != ""
+  not_summary <- !grepl("^sum$|^total$|^import$|^export$|^detritus$",
+                        tolower(raw_names))
+  valid_rows <- name_present & not_summary
 
-  # Remove any summary rows (like "Sum", "Total", etc.)
-  valid_rows <- !grepl("^sum$|^total$|^import$|^export$|^detritus$",
-                       tolower(species_names))
-  species_names <- species_names[valid_rows]
-  basic_data <- basic_data[valid_rows, ]
+  basic_data <- basic_data[valid_rows, , drop = FALSE]
+  species_names <- raw_names[valid_rows]
 
   biomass_values <- as.numeric(basic_data[[biomass_col]])
 
