@@ -1699,6 +1699,28 @@ lookup_species_traits <- function(species_name,
 }
 
 
+#' Combine per-species trait results into one data frame
+#'
+#' lookup_species_traits() returns a path-dependent column set (an
+#' offline-complete or no-data species returns a narrow frame; a full-pipeline
+#' species appends *_confidence / interval / imputation columns). `rbind` errors
+#' the moment two rows disagree on columns, which discarded an entire multi-species
+#' run. bind_rows() unions the columns and NA-fills the gaps instead. NULL entries
+#' (failed lookups) are dropped.
+#'
+#' @param results_list List of per-species trait data frames (may contain NULL)
+#' @return Single data frame with the union of all columns, or an empty
+#'   data frame if every entry was NULL
+#' @export
+combine_trait_results <- function(results_list) {
+  results_list <- Filter(Negate(is.null), results_list)
+  if (length(results_list) == 0) return(data.frame())
+
+  results_df <- dplyr::bind_rows(results_list)
+  rownames(results_df) <- NULL
+  results_df
+}
+
 #' Batch lookup traits for multiple species
 #'
 #' @param species_list Character vector of species names
@@ -1718,9 +1740,5 @@ batch_lookup_traits <- function(species_list, ...) {
     # Rate limiting handled by api_rate_limiter.R
   }
 
-  # Combine results
-  results_df <- do.call(rbind, results_list)
-  rownames(results_df) <- NULL
-
-  return(results_df)
+  combine_trait_results(results_list)
 }

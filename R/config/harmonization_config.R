@@ -18,7 +18,14 @@ HARMONIZATION_CONFIG <- list(
 
   # FORAGING STRATEGY PATTERNS
   foraging_patterns = list(
-    FS0_primary_producer = "photosyn|autotrop|producer|plant|algae|phytoplankton|diatom|dinoflagellate",
+    # FS0 must match only producer-specific vocabulary. Diet nouns
+    # (plant|algae|phytoplankton|diatom|...) were removed 2026-07-17: because FS0
+    # is tested before FS1-FS6 and all sources are paste()-collapsed, any consumer
+    # whose diet text mentioned algae/diatoms was silently coded as an autotroph,
+    # inverting trophic structure at the base of the food web. True producers are
+    # still caught here (photosyn|autotroph|producer) and by the trophic_level<1.5
+    # guard in harmonize_foraging_strategy().
+    FS0_primary_producer = "photosyn|autotroph|autotrop|primary.?produc|producer",
     FS1_predator = "predat|carnivor|pisciv|hunter|predaceous|carnivore|predator",
     FS2_scavenger = "scaveng|detritivor|carrion|scavenger|detritus feeder",
     FS3_omnivore = "omnivore|omnivorous|mixed diet|generalist feeder",
