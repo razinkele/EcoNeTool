@@ -781,7 +781,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
           caption = sprintf("Edit parameters for %d groups (detritus only needs Biomass)", nrow(df))
         )
       }, error = function(e) {
-        message(sprintf("  ERROR in group_params_table: %s", conditionMessage(e)))
+        warning(sprintf("[rpath] ERROR in group_params_table: %s", conditionMessage(e)), call. = FALSE)
         DT::datatable(
           data.frame(Error = paste("Error rendering table:", conditionMessage(e))),
           options = list(dom = 't'),
@@ -1086,7 +1086,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
                           length(unique(df$Group)))
         )
       }, error = function(e) {
-        message(sprintf("ERROR in calibration_table: %s", conditionMessage(e)))
+        warning(sprintf("[rpath] ERROR in calibration_table: %s", conditionMessage(e)), call. = FALSE)
         DT::datatable(
           data.frame(Error = paste("Error rendering calibration table:", conditionMessage(e))),
           options = list(dom = 't'),
@@ -1193,7 +1193,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
                           length(unique(df$Entity_Name)))
         )
       }, error = function(e) {
-        message(sprintf("ERROR in comments_table: %s", conditionMessage(e)))
+        warning(sprintf("[rpath] ERROR in comments_table: %s", conditionMessage(e)), call. = FALSE)
         DT::datatable(
           data.frame(Error = paste("Error rendering comments table:", conditionMessage(e))),
           options = list(dom = 't'),

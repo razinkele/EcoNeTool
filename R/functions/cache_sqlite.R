@@ -781,7 +781,8 @@ migrate_offline_schema <- function(con) {
 
   tryCatch(
     dbExecute(con, "INSERT OR REPLACE INTO metadata (key, value) VALUES ('schema_version', '2.0')"),
-    error = function(e) message("Could not update schema version: ", e$message)
+    error = function(e) warning(sprintf("[cache_sqlite] could not update schema version: %s",
+                                        conditionMessage(e)), call. = FALSE)
   )
 
   invisible(NULL)

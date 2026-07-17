@@ -1375,7 +1375,8 @@ lookup_species_traits <- function(species_name,
         }
 
       }, error = function(e) {
-        message("  \u26a0\ufe0f  ML prediction error: ", e$message)
+        warning(sprintf("[orchestrator] ML prediction failed for '%s': %s",
+                        species_name, conditionMessage(e)), call. = FALSE)
       })
     }
   }
@@ -1392,7 +1393,8 @@ lookup_species_traits <- function(species_name,
       source("R/functions/uncertainty_quantification.R")
       message("  [DEBUG] uncertainty_quantification.R sourced successfully")
     }, error = function(e) {
-      message("  \u26a0\ufe0f  Uncertainty quantification not available: ", e$message)
+      warning(sprintf("[orchestrator] uncertainty_quantification.R source failed: %s",
+                      conditionMessage(e)), call. = FALSE)
     })
   } else {
     message("  [DEBUG] calculate_all_trait_confidence already exists in environment")
@@ -1433,7 +1435,8 @@ lookup_species_traits <- function(species_name,
     confidence_data <- tryCatch(
       calculate_all_trait_confidence(trait_record),
       error = function(e) {
-        message("  Warning: Uncertainty quantification failed: ", e$message)
+        warning(sprintf("[orchestrator] confidence calc failed for '%s' (falling back to count-based): %s",
+                        species_name, conditionMessage(e)), call. = FALSE)
         list()
       }
     )
