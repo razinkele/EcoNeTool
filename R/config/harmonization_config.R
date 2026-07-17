@@ -26,7 +26,7 @@ HARMONIZATION_CONFIG <- list(
     # still caught here (photosyn|autotroph|producer) and by the trophic_level<1.5
     # guard in harmonize_foraging_strategy().
     FS0_primary_producer = "photosyn|autotroph|autotrop|primary.?produc|producer",
-    FS1_predator = "predat|carnivor|pisciv|hunter|predaceous|carnivore|predator",
+    FS1_predator = "predat|carnivor|pisciv|hunter|predaceous|carnivore|predator|parasit",
     FS2_scavenger = "scaveng|detritivor|carrion|scavenger|detritus feeder",
     FS3_omnivore = "omnivore|omnivorous|mixed diet|generalist feeder",
     FS4_grazer = "graz|herbiv|scraper|browser|grazer|herbivore|algivore",
