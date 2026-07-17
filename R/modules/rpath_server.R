@@ -963,28 +963,17 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
 
     # Handle cell edits in diet matrix
     observeEvent(input$diet_matrix_table_cell_edit, {
-      info <- input$diet_matrix_table_cell_edit
+      edit <- apply_diet_cell_edit(rpath_values$params$diet,
+                                   input$diet_matrix_table_cell_edit)
 
-      row <- info$row + 1  # R uses 1-indexed
-      col <- info$col + 1  # DT is 0-indexed, R is 1-indexed
-      value <- info$value
-
-      if (col == 1) return()  # Don't edit Group column
-
-      # Convert value to numeric
-      new_value <- as.numeric(value)
-
-      # Validate
-      if (!is.na(new_value) && (new_value < 0 || new_value > 1)) {
+      if (edit$status == "invalid") {
         showNotification("Diet values must be between 0 and 1", type = "error")
         return()
       }
+      if (edit$status == "skip") return()  # Group column is not editable
 
-      # Update the diet matrix (using data.table format)
-      col_name <- names(rpath_values$params$diet)[col]
-      rpath_values$params$diet[[col_name]][row] <- new_value
-
-      showNotification(paste("Updated diet value"), type = "message", duration = 2)
+      rpath_values$params$diet <- edit$diet
+      showNotification("Updated diet value", type = "message", duration = 2)
     })
 
     # Save diet changes

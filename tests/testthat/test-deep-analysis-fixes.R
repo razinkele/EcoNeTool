@@ -127,3 +127,51 @@ test_that("parse_ecopath_data keeps biomass aligned when a group name is blank",
   # The blank row's biomass must never leak into a real species.
   expect_false(999 %in% res$info$meanB)
 })
+
+# -----------------------------------------------------------------------------
+# #5 - Rpath diet-matrix cell edit must write to the edited prey row (no +1)
+# -----------------------------------------------------------------------------
+
+local({
+  root <- get_app_root()
+  source(file.path(root, "R/functions/rpath/rpath_conversion.R"), local = FALSE)
+})
+
+make_diet <- function() {
+  data.table::data.table(
+    Group = c("Phytoplankton", "Zooplankton", "Cod"),
+    Cod = c(0.0, 0.0, 0.0),
+    Zooplankton = c(0.0, 0.0, 0.0)
+  )
+}
+
+test_that("apply_diet_cell_edit writes to the edited prey row, not the next", {
+  # DT _cell_edit row is already 1-based; col is 0-based (rownames = FALSE).
+  # Edit prey row 2 (Zooplankton), predator column 'Cod' (col index 1).
+  res <- apply_diet_cell_edit(make_diet(), list(row = 2L, col = 1L, value = "0.7"))
+
+  expect_equal(res$status, "ok")
+  expect_equal(res$diet[["Cod"]][2], 0.7)  # the row the user edited
+  expect_equal(res$diet[["Cod"]][1], 0.0)  # untouched
+  expect_equal(res$diet[["Cod"]][3], 0.0)  # NOT shifted onto the next prey
+})
+
+test_that("apply_diet_cell_edit on the last prey row does not grow the column", {
+  res <- apply_diet_cell_edit(make_diet(), list(row = 3L, col = 1L, value = "0.5"))
+
+  expect_equal(res$status, "ok")
+  expect_equal(nrow(res$diet), 3)          # no ragged data.table growth
+  expect_equal(res$diet[["Cod"]][3], 0.5)
+})
+
+test_that("apply_diet_cell_edit leaves the Group (prey-name) column unedited", {
+  res <- apply_diet_cell_edit(make_diet(), list(row = 1L, col = 0L, value = "Renamed"))
+  expect_equal(res$status, "skip")
+  expect_equal(res$diet[["Group"]][1], "Phytoplankton")
+})
+
+test_that("apply_diet_cell_edit rejects out-of-range diet proportions", {
+  res <- apply_diet_cell_edit(make_diet(), list(row = 1L, col = 1L, value = "1.5"))
+  expect_equal(res$status, "invalid")
+  expect_equal(res$diet[["Cod"]][1], 0.0)  # unchanged
+})
