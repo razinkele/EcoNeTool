@@ -5,9 +5,12 @@ cat("=============================================================\n")
 cat("HARMONIZATION CONFIGURATION SYSTEM TEST\n")
 cat("=============================================================\n\n")
 
-# Load required functions
+# Load required functions. trait_lookup.R was split into the trait_lookup/
+# module directory; load_all.R sources the 5 files, and validation_utils.R
+# (%||%, with_timeout) must be sourced first as they depend on it.
 source("R/config/harmonization_config.R")
-source("R/functions/trait_lookup.R")
+source("R/functions/validation_utils.R")
+source("R/functions/trait_lookup/load_all.R")
 
 # TEST 1: Configuration loads correctly
 cat("TEST 1: Configuration Loading\n")
@@ -111,12 +114,14 @@ cat("\n")
 cat("TEST 4: Foraging Strategy Harmonization\n")
 cat("-------------------------------------------------------------\n")
 
+# Keys are comma-joined feeding terms; the loop below splits each name back into
+# a character vector via strsplit(", "). (A bare c(...) cannot be a list name.)
 test_feeding <- list(
-  c("photosynthesis", "autotroph") = "FS0",
-  c("predator", "carnivore") = "FS1",
-  c("scavenger", "detritivore") = "FS2",
-  c("grazer", "herbivore") = "FS4",
-  c("filter feeder", "suspension") = "FS6"
+  "photosynthesis, autotroph" = "FS0",
+  "predator, carnivore" = "FS1",
+  "scavenger, detritivore" = "FS2",
+  "grazer, herbivore" = "FS4",
+  "filter feeder, suspension" = "FS6"
 )
 
 cat("Testing harmonize_foraging_strategy():\n")
