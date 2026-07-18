@@ -6,6 +6,17 @@
 default_language_version:
   python: python3
 
+# Vendored, third-party and data-fixture trees are not first-party source.
+# Excluding them globally keeps the file-hygiene hooks (whitespace, end-of-file,
+# line-ending) focused on code we actually maintain, instead of being swamped by
+# imported package files (metawebs/ alone is ~120 flagged vendored files).
+exclude: |
+  (?x)^(
+    metawebs/|
+    tests/rpath_data/|
+    examples/
+  )
+
 repos:
   # ==========================================================================
   # General file hygiene
@@ -42,10 +53,16 @@ repos:
   # ==========================================================================
   - repo: local
     hooks:
-      # Prevent DEBUG prints from being committed
+      # Prevent DEBUG prints from being committed.
+      # NOTE: pre-commit `language: system` runs the entry via exec, NOT a shell,
+      # so &&/||/pipes/$() must be wrapped in `bash -c` or they are passed as
+      # literal argv and the hook fails with exit 2 on every run. (In YAML single
+      # quotes, '' is a literal single quote.)
+      # pass_filenames:false means the global `exclude` above does not reach this
+      # grep, so scope out the vendored trees here too.
       - id: no-debug-prints
         name: Check for DEBUG prints
-        entry: 'grep -n "DEBUG:" --include="*.R" --include="*.sh" -r . && exit 1 || exit 0'
+        entry: 'bash -c ''grep -n "DEBUG:" --include="*.R" --include="*.sh" --exclude-dir=metawebs --exclude-dir=rpath_data -r . && exit 1 || exit 0'''
         language: system
         pass_filenames: false
         types: [file]
@@ -53,14 +70,14 @@ repos:
       # Prevent .Rproj.user from being committed
       - id: no-rproj-user
         name: Check for .Rproj.user files
-        entry: 'test -z "$(git ls-files .Rproj.user)" || (echo "ERROR: .Rproj.user files are tracked" && exit 1)'
+        entry: 'bash -c ''test -z "$(git ls-files .Rproj.user)" || { echo "ERROR: .Rproj.user files are tracked"; exit 1; }'''
         language: system
         pass_filenames: false
 
       # Check for large binary files
       - id: no-large-binaries
         name: Check for large binary files
-        entry: 'git diff --cached --name-only | grep -E "\.(ewemdb|eweaccdb|zip)$" && echo "WARNING: Binary file staged" && exit 1 || exit 0'
+        entry: 'bash -c ''git diff --cached --name-only | grep -E "\.(ewemdb|eweaccdb|zip)$" && echo "WARNING: Binary file staged" && exit 1 || exit 0'''
         language: system
         pass_filenames: false
 

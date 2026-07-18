@@ -41,7 +41,7 @@ Macoma balthica,141579,feeding,feeding_mode,suspension_feeder,2,score,ECO,ECO:00
 traits <- read.csv("data/ontology_traits.csv")
 
 # Find deposit feeders (score >= 2)
-deposit <- traits[traits$trait_modality == "surface_deposit_feeder" & 
+deposit <- traits[traits$trait_modality == "surface_deposit_feeder" &
                   traits$trait_score >= 2, ]
 
 # Get fuzzy profile for one species

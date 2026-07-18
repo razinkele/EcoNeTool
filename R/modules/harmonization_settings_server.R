@@ -27,7 +27,7 @@ harmonization_settings_server <- function(input, output, session) {
     updateSliderInput(session, "harm_thresh_MS5_MS6", value = rv$config$size_thresholds$MS5_MS6)
     updateSliderInput(session, "harm_thresh_MS6_MS7", value = rv$config$size_thresholds$MS6_MS7)
   })
-  
+
   # UPDATE CONFIG. Mirror writes into session$userData so the helpers
   # see the user's customised thresholds for THIS session immediately;
   # cross-session persistence still routes through the JSON save below.
@@ -55,7 +55,7 @@ harmonization_settings_server <- function(input, output, session) {
       session$userData$harm_config <- rv$config
       save_harmonization_config(rv$config, "config/harmonization_custom.json")
       rv$unsaved_changes <- FALSE
-      
+
       output$harm_status_message <- renderUI({
         div(class = "alert alert-success", icon("check-circle"), " Configuration saved!")
       })
@@ -66,7 +66,7 @@ harmonization_settings_server <- function(input, output, session) {
       })
     })
   })
-  
+
   # RESET TO DEFAULTS. Pre-PR9α this re-sourced harmonization_config.R
   # with local=FALSE, mutating globalenv across sessions. After PR9α the
   # global default is treated as immutable; reset just rolls the
@@ -83,11 +83,11 @@ harmonization_settings_server <- function(input, output, session) {
     rv$unsaved_changes <- TRUE
     showNotification("Reset to defaults", type = "warning", duration = 3)
   })
-  
+
   # SIZE DISTRIBUTION PREVIEW
   output$harm_size_distribution_plot <- renderPlot({
     req(input$harm_preview_size)
-    
+
     isolate({
       cache_dir <- "cache/taxonomy"
       if (!dir.exists(cache_dir)) {
@@ -95,22 +95,22 @@ harmonization_settings_server <- function(input, output, session) {
         text(0.5, 0.5, "No cached data available", cex = 1.5)
         return()
       }
-      
+
       cache_files <- list.files(cache_dir, pattern = "\\.rds$", full.names = TRUE)
       sample_files <- sample(cache_files, min(100, length(cache_files)))
       sizes <- numeric()
-      
+
       for (file in sample_files) {
         data <- tryCatch(readRDS(file), error = function(e) NULL)
         if (!is.null(data) && !is.null(data$max_length_cm)) {
           sizes <- c(sizes, data$max_length_cm)
         }
       }
-      
+
       hist(log10(sizes + 0.01), breaks = 30, col = "lightblue", border = "white",
            main = paste("Size Distribution (", length(sizes), " species)"),
            xlab = "log10(Size in cm)", ylab = "Frequency")
-      
+
       abline(v = log10(rv$config$size_thresholds$MS1_MS2), col = "red", lwd = 2, lty = 2)
       abline(v = log10(rv$config$size_thresholds$MS2_MS3), col = "orange", lwd = 2, lty = 2)
       abline(v = log10(rv$config$size_thresholds$MS3_MS4), col = "yellow", lwd = 2, lty = 2)
@@ -119,7 +119,7 @@ harmonization_settings_server <- function(input, output, session) {
       abline(v = log10(rv$config$size_thresholds$MS6_MS7), col = "purple", lwd = 2, lty = 2)
     })
   })
-  
+
   # ECOSYSTEM PROFILE DETAILS
   output$harm_profile_details <- renderUI({
     req(input$harm_active_profile)
@@ -131,7 +131,7 @@ harmonization_settings_server <- function(input, output, session) {
       p(paste0(profile$size_multiplier, "x"))
     )
   })
-  
+
   # EXPORT
   output$harm_export_json <- downloadHandler(
     filename = function() {
@@ -141,7 +141,7 @@ harmonization_settings_server <- function(input, output, session) {
       export_config_json(file, rv$config)
     }
   )
-  
+
   # IMPORT
   observeEvent(input$harm_import_json, {
     req(input$harm_import_json)

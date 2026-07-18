@@ -565,4 +565,3 @@ print.spatial_foodweb_data <- function(x, ...) {
   cat("\nCreated:", format(x$metadata$created, "%Y-%m-%d %H:%M:%S"), "\n")
   invisible(x)
 }
-

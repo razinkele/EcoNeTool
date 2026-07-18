@@ -5,9 +5,12 @@ cat("=============================================================\n")
 cat("HARMONIZATION CONFIGURATION SYSTEM TEST\n")
 cat("=============================================================\n\n")
 
-# Load required functions
+# Load required functions. trait_lookup.R was split into the trait_lookup/
+# module directory; load_all.R sources the 5 files, and validation_utils.R
+# (%||%, with_timeout) must be sourced first as they depend on it.
 source("R/config/harmonization_config.R")
-source("R/functions/trait_lookup.R")
+source("R/functions/validation_utils.R")
+source("R/functions/trait_lookup/load_all.R")
 
 # TEST 1: Configuration loads correctly
 cat("TEST 1: Configuration Loading\n")
@@ -15,27 +18,27 @@ cat("-------------------------------------------------------------\n")
 
 if (exists("HARMONIZATION_CONFIG")) {
   cat("✓ HARMONIZATION_CONFIG exists\n")
-  
+
   # Check required fields
   required_fields <- c("size_thresholds", "foraging_patterns", "mobility_patterns",
                       "taxonomic_rules", "profiles", "active_profile")
-  
+
   missing_fields <- setdiff(required_fields, names(HARMONIZATION_CONFIG))
   if (length(missing_fields) == 0) {
     cat("✓ All required fields present\n")
   } else {
     cat("✗ Missing fields:", paste(missing_fields, collapse = ", "), "\n")
   }
-  
+
   # Check size thresholds
   cat("  Size thresholds loaded:\n")
   for (name in names(HARMONIZATION_CONFIG$size_thresholds)) {
     cat("    ", name, "=", HARMONIZATION_CONFIG$size_thresholds[[name]], "cm\n")
   }
-  
+
   # Check active profile
   cat("  Active profile:", HARMONIZATION_CONFIG$active_profile, "\n")
-  
+
 } else {
   cat("✗ HARMONIZATION_CONFIG not found\n")
 }
@@ -94,7 +97,7 @@ for (i in seq_along(test_sizes)) {
   result <- harmonize_size_class(test_sizes[i])
   match <- result == expected_classes[i]
   symbol <- if (match) "✓" else "✗"
-  cat("  ", symbol, test_sizes[i], "cm →", result, 
+  cat("  ", symbol, test_sizes[i], "cm →", result,
       if (!match) paste("(expected", expected_classes[i], ")") else "", "\n")
   if (!match) all_correct <- FALSE
 }
@@ -111,12 +114,14 @@ cat("\n")
 cat("TEST 4: Foraging Strategy Harmonization\n")
 cat("-------------------------------------------------------------\n")
 
+# Keys are comma-joined feeding terms; the loop below splits each name back into
+# a character vector via strsplit(", "). (A bare c(...) cannot be a list name.)
 test_feeding <- list(
-  c("photosynthesis", "autotroph") = "FS0",
-  c("predator", "carnivore") = "FS1",
-  c("scavenger", "detritivore") = "FS2",
-  c("grazer", "herbivore") = "FS4",
-  c("filter feeder", "suspension") = "FS6"
+  "photosynthesis, autotroph" = "FS0",
+  "predator, carnivore" = "FS1",
+  "scavenger, detritivore" = "FS2",
+  "grazer, herbivore" = "FS4",
+  "filter feeder, suspension" = "FS6"
 )
 
 cat("Testing harmonize_foraging_strategy():\n")
@@ -149,36 +154,36 @@ test_config_file <- "config/test_harmonization.json"
 cat("Saving configuration to:", test_config_file, "\n")
 tryCatch({
   save_harmonization_config(HARMONIZATION_CONFIG, test_config_file)
-  
+
   if (file.exists(test_config_file)) {
     cat("✓ Configuration file created\n")
-    
+
     # Load it back
     cat("Loading configuration...\n")
     loaded_config <- load_harmonization_config(test_config_file)
-    
+
     if (!is.null(loaded_config)) {
       cat("✓ Configuration loaded successfully\n")
-      
+
       # Compare a few key values
       if (loaded_config$size_thresholds$MS2_MS3 == HARMONIZATION_CONFIG$size_thresholds$MS2_MS3) {
         cat("✓ Loaded values match original\n")
       } else {
         cat("✗ Loaded values differ from original\n")
       }
-      
+
       # Clean up test file
       unlink(test_config_file)
       cat("✓ Test file cleaned up\n")
-      
+
     } else {
       cat("✗ Configuration load failed\n")
     }
-    
+
   } else {
     cat("✗ Configuration file not created\n")
   }
-  
+
 }, error = function(e) {
   cat("✗ Error:", e$message, "\n")
 })
