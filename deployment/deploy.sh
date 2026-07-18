@@ -33,8 +33,9 @@ fi
 log_message() {
     local level="$1"
     shift
-    local message="$@"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local message="$*"
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     if [ -w "$LOG_FILE" ] || [ "$EUID" -eq 0 ]; then
         echo "[$timestamp] [$level] $message" >> "$LOG_FILE" 2>/dev/null || true
     fi
