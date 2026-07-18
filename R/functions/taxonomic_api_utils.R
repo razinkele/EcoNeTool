@@ -973,8 +973,11 @@ classify_species_api <- function(species_name, functional_group_hint = NA, geogr
     clean_name <- split_names[1]
   }
 
-  # Check cache first (use cleaned name for cache key)
-  cache_file <- file.path(cache_dir, paste0(gsub("[^a-zA-Z0-9]", "_", clean_name), ".rds"))
+  # Check cache first (use cleaned name for cache key). The `.classify` suffix
+  # namespaces this API-classification cache away from the orchestrator's trait
+  # cache, which writes `<name>.rds` in the same dir with an incompatible
+  # `list(traits=...)` shape - sharing the filename corrupted both (#4).
+  cache_file <- file.path(cache_dir, paste0(gsub("[^a-zA-Z0-9]", "_", clean_name), ".classify.rds"))
   if (use_cache && file.exists(cache_file)) {
     cached <- readRDS(cache_file)
     # Check if cache is less than 30 days old

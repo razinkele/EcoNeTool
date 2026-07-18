@@ -466,3 +466,35 @@ validate_file_exists <- function(file_path, param_name = "file") {
 
   invisible(TRUE)
 }
+
+#' Read a validated field from an RDS cache envelope
+#'
+#' The taxonomy RDS cache (cache/taxonomy/) is written by two producers with
+#' incompatible envelope shapes keyed to the same filename: the orchestrator
+#' writes `list(traits = ...)` and classify_species_api writes `list(data = ...)`.
+#' Both carry `$timestamp`, so a bare TTL check passes and the reader used to
+#' dereference the wrong field to NULL, corrupting the result (deep-analysis #4).
+#' This returns the requested `field` only when the cached envelope actually
+#' contains it AND is fresh; a foreign shape, stale, missing, or unreadable file
+#' all return NULL so the caller treats it as a cache miss and re-queries.
+#'
+#' @param cache_file Path to the .rds cache file.
+#' @param field Name of the payload field to read (e.g. "traits" or "data").
+#' @param max_age_days Maximum cache age in days (default 30).
+#' @return The field's value, or NULL if absent/stale/missing/unreadable.
+#' @export
+read_cache_field <- function(cache_file, field, max_age_days = 30) {
+  if (!file.exists(cache_file)) return(NULL)
+  cached <- tryCatch(readRDS(cache_file), error = function(e) {
+    warning(sprintf("[cache] unreadable cache file '%s': %s",
+                    cache_file, conditionMessage(e)), call. = FALSE)
+    NULL
+  })
+  if (is.null(cached) || is.null(cached[[field]]) || is.null(cached$timestamp)) {
+    return(NULL)
+  }
+  if (difftime(Sys.time(), cached$timestamp, units = "days") >= max_age_days) {
+    return(NULL)
+  }
+  cached[[field]]
+}

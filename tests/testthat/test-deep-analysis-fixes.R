@@ -175,3 +175,46 @@ test_that("apply_diet_cell_edit rejects out-of-range diet proportions", {
   expect_equal(res$status, "invalid")
   expect_equal(res$diet[["Cod"]][1], 0.0)  # unchanged
 })
+
+# -----------------------------------------------------------------------------
+# #4 - cache envelope shape validation (traits vs data collision)
+# -----------------------------------------------------------------------------
+
+write_cache <- function(envelope) {
+  f <- tempfile(fileext = ".rds")
+  saveRDS(envelope, f)
+  f
+}
+
+test_that("read_cache_field returns the field from a fresh matching envelope", {
+  f <- write_cache(list(traits = data.frame(MS = "MS3"), timestamp = Sys.time()))
+  on.exit(unlink(f), add = TRUE)
+  got <- read_cache_field(f, "traits")
+  expect_true(is.data.frame(got))
+  expect_equal(got$MS, "MS3")
+})
+
+test_that("read_cache_field returns NULL for a foreign envelope (the #4 collision)", {
+  # classify_species_api writes {data,...}; the orchestrator asks for 'traits'.
+  # Pre-fix it dereferenced cached$traits = NULL and corrupted the row.
+  f <- write_cache(list(data = list(source = "api"), timestamp = Sys.time()))
+  on.exit(unlink(f), add = TRUE)
+  expect_null(read_cache_field(f, "traits"))
+})
+
+test_that("read_cache_field returns NULL for a stale envelope", {
+  f <- write_cache(list(traits = data.frame(MS = "MS3"),
+                        timestamp = Sys.time() - as.difftime(40, units = "days")))
+  on.exit(unlink(f), add = TRUE)
+  expect_null(read_cache_field(f, "traits"))
+})
+
+test_that("read_cache_field returns NULL for a missing file", {
+  expect_null(read_cache_field(tempfile(fileext = ".rds"), "traits"))
+})
+
+test_that("read_cache_field returns NULL for a file with no timestamp", {
+  f <- write_cache(list(traits = data.frame(MS = "MS3")))
+  on.exit(unlink(f), add = TRUE)
+  expect_null(read_cache_field(f, "traits"))
+})

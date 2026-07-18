@@ -304,8 +304,11 @@ trait_research_server <- function(input, output, session, shared_data) {
         cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species), ".rds"))
         if (file.exists(cache_file)) {
           cached <- readRDS(cache_file)
-          cache_age_days <- as.numeric(difftime(Sys.time(), cached$timestamp, units = "days"))
-          if (cache_age_days < 30) {
+          cache_age_days <- as.numeric(difftime(Sys.time(), cached$timestamp %||% Sys.time(), units = "days"))
+          # Shape guard: a classify_species_api {data,...} envelope collides on
+          # the same filename; without !is.null(cached$traits) we'd cache NULL
+          # trait rows and misalign the results list (deep-analysis #4).
+          if (cache_age_days < 30 && !is.null(cached$traits)) {
             cat("  -> Using cached data\n")
             results_list[[i]] <- cached$traits
             # cached$raw_data is only present in legacy caches written by the

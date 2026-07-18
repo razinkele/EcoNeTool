@@ -208,15 +208,15 @@ lookup_species_traits <- function(species_name,
                                   ptdb_file = NULL,
                                   cache_dir = NULL) {
 
-  # Check cache first
+  # Check cache first. read_cache_field validates envelope shape + freshness, so
+  # a classify_species_api {data,...} file colliding on the same name is treated
+  # as a miss instead of returning NULL traits (deep-analysis #4).
   if (!is.null(cache_dir) && dir.exists(cache_dir)) {
     cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species_name), ".rds"))
-    if (file.exists(cache_file)) {
-      cached <- readRDS(cache_file)
-      if (Sys.time() - cached$timestamp < as.difftime(30, units = "days")) {
-        message("Using cached traits for ", species_name)
-        return(cached$traits)
-      }
+    cached_traits <- read_cache_field(cache_file, "traits")
+    if (!is.null(cached_traits)) {
+      message("Using cached traits for ", species_name)
+      return(cached_traits)
     }
   }
 
