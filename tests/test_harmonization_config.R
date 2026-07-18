@@ -15,27 +15,27 @@ cat("-------------------------------------------------------------\n")
 
 if (exists("HARMONIZATION_CONFIG")) {
   cat("✓ HARMONIZATION_CONFIG exists\n")
-  
+
   # Check required fields
   required_fields <- c("size_thresholds", "foraging_patterns", "mobility_patterns",
                       "taxonomic_rules", "profiles", "active_profile")
-  
+
   missing_fields <- setdiff(required_fields, names(HARMONIZATION_CONFIG))
   if (length(missing_fields) == 0) {
     cat("✓ All required fields present\n")
   } else {
     cat("✗ Missing fields:", paste(missing_fields, collapse = ", "), "\n")
   }
-  
+
   # Check size thresholds
   cat("  Size thresholds loaded:\n")
   for (name in names(HARMONIZATION_CONFIG$size_thresholds)) {
     cat("    ", name, "=", HARMONIZATION_CONFIG$size_thresholds[[name]], "cm\n")
   }
-  
+
   # Check active profile
   cat("  Active profile:", HARMONIZATION_CONFIG$active_profile, "\n")
-  
+
 } else {
   cat("✗ HARMONIZATION_CONFIG not found\n")
 }
@@ -94,7 +94,7 @@ for (i in seq_along(test_sizes)) {
   result <- harmonize_size_class(test_sizes[i])
   match <- result == expected_classes[i]
   symbol <- if (match) "✓" else "✗"
-  cat("  ", symbol, test_sizes[i], "cm →", result, 
+  cat("  ", symbol, test_sizes[i], "cm →", result,
       if (!match) paste("(expected", expected_classes[i], ")") else "", "\n")
   if (!match) all_correct <- FALSE
 }
@@ -149,36 +149,36 @@ test_config_file <- "config/test_harmonization.json"
 cat("Saving configuration to:", test_config_file, "\n")
 tryCatch({
   save_harmonization_config(HARMONIZATION_CONFIG, test_config_file)
-  
+
   if (file.exists(test_config_file)) {
     cat("✓ Configuration file created\n")
-    
+
     # Load it back
     cat("Loading configuration...\n")
     loaded_config <- load_harmonization_config(test_config_file)
-    
+
     if (!is.null(loaded_config)) {
       cat("✓ Configuration loaded successfully\n")
-      
+
       # Compare a few key values
       if (loaded_config$size_thresholds$MS2_MS3 == HARMONIZATION_CONFIG$size_thresholds$MS2_MS3) {
         cat("✓ Loaded values match original\n")
       } else {
         cat("✗ Loaded values differ from original\n")
       }
-      
+
       # Clean up test file
       unlink(test_config_file)
       cat("✓ Test file cleaned up\n")
-      
+
     } else {
       cat("✗ Configuration load failed\n")
     }
-    
+
   } else {
     cat("✗ Configuration file not created\n")
   }
-  
+
 }, error = function(e) {
   cat("✗ Error:", e$message, "\n")
 })

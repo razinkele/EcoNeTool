@@ -4,10 +4,10 @@ POPULATE SQLITE DATABASE WITH LOCAL TRAIT DATABASES
 ═══════════════════════════════════════════════════════════════
 
 Warning message:
-package 'readxl' was built under R version 4.4.3 
+package 'readxl' was built under R version 4.4.3
 Warning messages:
-1: package 'RSQLite' was built under R version 4.4.3 
-2: package 'DBI' was built under R version 4.4.3 
+1: package 'RSQLite' was built under R version 4.4.3
+2: package 'DBI' was built under R version 4.4.3
 Initializing new SQLite database...
 Initializing SQLite cache database...
 Creating indexes...
@@ -135,4 +135,3 @@ medium:    757
 ═══════════════════════════════════════════════════════════════
 ✓ POPULATION COMPLETE
 ═══════════════════════════════════════════════════════════════
-

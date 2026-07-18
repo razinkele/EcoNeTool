@@ -242,11 +242,11 @@ Complete rewrite of README.md using modern GitHub markdown features.
 
 **Marine Food Web Network Analysis Tool**
 
-[![CI](https://github.com/razinkele/EcoNeTool/actions/workflows/ci.yml/badge.svg)](...) 
-[![Release](https://img.shields.io/github/v/release/razinkele/EcoNeTool)](...) 
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](...) 
-[![R >= 4.0.0](https://img.shields.io/badge/R-%E2%89%A5%204.0.0-blue.svg)](...) 
-[![Last Commit](https://img.shields.io/github/last-commit/razinkele/EcoNeTool)](...) 
+[![CI](https://github.com/razinkele/EcoNeTool/actions/workflows/ci.yml/badge.svg)](...)
+[![Release](https://img.shields.io/github/v/release/razinkele/EcoNeTool)](...)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](...)
+[![R >= 4.0.0](https://img.shields.io/badge/R-%E2%89%A5%204.0.0-blue.svg)](...)
+[![Last Commit](https://img.shields.io/github/last-commit/razinkele/EcoNeTool)](...)
 [![Issues](https://img.shields.io/github/issues/razinkele/EcoNeTool)](...)
 
 </div>

@@ -6,31 +6,31 @@ harmonization_settings_ui <- function() {
     h3(icon("sliders-h"), " Harmonization Configuration"),
     p("Configure how raw trait data is converted to categorical trait classes."),
     hr(),
-    
+
     tabsetPanel(
       id = "harm_tabs",
       type = "pills",
-      
+
       # TAB 1: SIZE THRESHOLDS
       tabPanel(
         title = tagList(icon("ruler"), " Size Thresholds"),
         value = "size_tab",
         br(),
-        
+
         fluidRow(
           column(6,
             h4("Maximum Size (MS) Class Boundaries"),
-            sliderInput("harm_thresh_MS1_MS2", "MS1/MS2 boundary:", 
+            sliderInput("harm_thresh_MS1_MS2", "MS1/MS2 boundary:",
                        min = 0.01, max = 0.5, value = 0.1, step = 0.01, post = " cm"),
-            sliderInput("harm_thresh_MS2_MS3", "MS2/MS3 boundary:", 
+            sliderInput("harm_thresh_MS2_MS3", "MS2/MS3 boundary:",
                        min = 0.1, max = 5.0, value = 1.0, step = 0.1, post = " cm"),
-            sliderInput("harm_thresh_MS3_MS4", "MS3/MS4 boundary:", 
+            sliderInput("harm_thresh_MS3_MS4", "MS3/MS4 boundary:",
                        min = 1.0, max = 20.0, value = 5.0, step = 0.5, post = " cm"),
-            sliderInput("harm_thresh_MS4_MS5", "MS4/MS5 boundary:", 
+            sliderInput("harm_thresh_MS4_MS5", "MS4/MS5 boundary:",
                        min = 5.0, max = 50.0, value = 20.0, step = 1.0, post = " cm"),
-            sliderInput("harm_thresh_MS5_MS6", "MS5/MS6 boundary:", 
+            sliderInput("harm_thresh_MS5_MS6", "MS5/MS6 boundary:",
                        min = 20.0, max = 100.0, value = 50.0, step = 5.0, post = " cm"),
-            sliderInput("harm_thresh_MS6_MS7", "MS6/MS7 boundary:", 
+            sliderInput("harm_thresh_MS6_MS7", "MS6/MS7 boundary:",
                        min = 50.0, max = 300.0, value = 150.0, step = 10.0, post = " cm")
           ),
           column(6,
@@ -41,7 +41,7 @@ harmonization_settings_ui <- function() {
           )
         )
       ),
-      
+
       # TAB 2: FORAGING PATTERNS
       tabPanel(
         title = tagList(icon("utensils"), " Foraging Patterns"),
@@ -50,24 +50,24 @@ harmonization_settings_ui <- function() {
         h4("Foraging Strategy (FS) Pattern Matching"),
         fluidRow(
           column(6,
-            textInput("harm_pattern_FS0", "FS0 - Primary Producer:", 
+            textInput("harm_pattern_FS0", "FS0 - Primary Producer:",
                      value = "photosyn|autotrop|producer|plant|algae"),
-            textInput("harm_pattern_FS1", "FS1 - Predator:", 
+            textInput("harm_pattern_FS1", "FS1 - Predator:",
                      value = "predat|carnivor|pisciv|hunter"),
-            textInput("harm_pattern_FS2", "FS2 - Scavenger:", 
+            textInput("harm_pattern_FS2", "FS2 - Scavenger:",
                      value = "scaveng|detritivor|carrion")
           ),
           column(6,
-            textInput("harm_pattern_FS4", "FS4 - Grazer:", 
+            textInput("harm_pattern_FS4", "FS4 - Grazer:",
                      value = "graz|herbiv|scraper|browser"),
-            textInput("harm_pattern_FS5", "FS5 - Deposit Feeder:", 
+            textInput("harm_pattern_FS5", "FS5 - Deposit Feeder:",
                      value = "deposit|sediment|burrower"),
-            textInput("harm_pattern_FS6", "FS6 - Filter Feeder:", 
+            textInput("harm_pattern_FS6", "FS6 - Filter Feeder:",
                      value = "filter|suspension|planktivor")
           )
         )
       ),
-      
+
       # TAB 3: TAXONOMIC RULES
       tabPanel(
         title = tagList(icon("dna"), " Taxonomic Rules"),
@@ -93,7 +93,7 @@ harmonization_settings_ui <- function() {
           )
         )
       ),
-      
+
       # TAB 4: ECOSYSTEM PROFILES
       tabPanel(
         title = tagList(icon("water"), " Ecosystem Profiles"),
@@ -123,7 +123,7 @@ harmonization_settings_ui <- function() {
           )
         )
       ),
-      
+
       # TAB 5: IMPORT/EXPORT
       tabPanel(
         title = tagList(icon("file-export"), " Import/Export"),
@@ -142,9 +142,9 @@ harmonization_settings_ui <- function() {
         )
       )
     ),
-    
+
     hr(),
-    
+
     # ACTION BUTTONS
     fluidRow(
       column(12,
@@ -155,7 +155,7 @@ harmonization_settings_ui <- function() {
         )
       )
     ),
-    
+
     br(),
     uiOutput("harm_status_message")
   )

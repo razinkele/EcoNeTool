@@ -176,5 +176,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - v1.0.20: Fix color scheme, change default dataset, fix flux network (0504dd1)
 - Re-add core R/ files and documentation (v1.1.1 complete) (4e879c1)
-
-

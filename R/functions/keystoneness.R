@@ -178,7 +178,7 @@ calculate_keystoneness <- function(net, info) {
 #' Link quality codes (MARBEFES guidance):
 #' \itemize{
 #'   \item 1 = Documented in peer-reviewed literature for these species
-#'   \item 2 = Documented for similar species or different region  
+#'   \item 2 = Documented for similar species or different region
 #'   \item 3 = Inferred from traits or body size relationships
 #'   \item 4 = Expert opinion, not validated
 #' }
