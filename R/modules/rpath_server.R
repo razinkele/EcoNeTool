@@ -781,7 +781,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
           caption = sprintf("Edit parameters for %d groups (detritus only needs Biomass)", nrow(df))
         )
       }, error = function(e) {
-        message(sprintf("  ERROR in group_params_table: %s", conditionMessage(e)))
+        warning(sprintf("[rpath] ERROR in group_params_table: %s", conditionMessage(e)), call. = FALSE)
         DT::datatable(
           data.frame(Error = paste("Error rendering table:", conditionMessage(e))),
           options = list(dom = 't'),
@@ -963,28 +963,17 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
 
     # Handle cell edits in diet matrix
     observeEvent(input$diet_matrix_table_cell_edit, {
-      info <- input$diet_matrix_table_cell_edit
+      edit <- apply_diet_cell_edit(rpath_values$params$diet,
+                                   input$diet_matrix_table_cell_edit)
 
-      row <- info$row + 1  # R uses 1-indexed
-      col <- info$col + 1  # DT is 0-indexed, R is 1-indexed
-      value <- info$value
-
-      if (col == 1) return()  # Don't edit Group column
-
-      # Convert value to numeric
-      new_value <- as.numeric(value)
-
-      # Validate
-      if (!is.na(new_value) && (new_value < 0 || new_value > 1)) {
+      if (edit$status == "invalid") {
         showNotification("Diet values must be between 0 and 1", type = "error")
         return()
       }
+      if (edit$status == "skip") return()  # Group column is not editable
 
-      # Update the diet matrix (using data.table format)
-      col_name <- names(rpath_values$params$diet)[col]
-      rpath_values$params$diet[[col_name]][row] <- new_value
-
-      showNotification(paste("Updated diet value"), type = "message", duration = 2)
+      rpath_values$params$diet <- edit$diet
+      showNotification("Updated diet value", type = "message", duration = 2)
     })
 
     # Save diet changes
@@ -1097,7 +1086,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
                           length(unique(df$Group)))
         )
       }, error = function(e) {
-        message(sprintf("ERROR in calibration_table: %s", conditionMessage(e)))
+        warning(sprintf("[rpath] ERROR in calibration_table: %s", conditionMessage(e)), call. = FALSE)
         DT::datatable(
           data.frame(Error = paste("Error rendering calibration table:", conditionMessage(e))),
           options = list(dom = 't'),
@@ -1204,7 +1193,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
                           length(unique(df$Entity_Name)))
         )
       }, error = function(e) {
-        message(sprintf("ERROR in comments_table: %s", conditionMessage(e)))
+        warning(sprintf("[rpath] ERROR in comments_table: %s", conditionMessage(e)), call. = FALSE)
         DT::datatable(
           data.frame(Error = paste("Error rendering comments table:", conditionMessage(e))),
           options = list(dom = 't'),

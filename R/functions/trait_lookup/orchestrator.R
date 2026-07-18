@@ -99,6 +99,100 @@ lookup_offline_traits <- function(species_name, db_path = "cache/offline_traits.
   })
 }
 
+#' Decide which trait databases to query for a taxon
+#'
+#' Pure routing helper extracted from lookup_species_traits(). Inputs are
+#' normalized scalars so the taxonomy comparisons cannot crash: a WoRMS timeout
+#' that returns success=TRUE with NULL phylum (#8) or NA isMarine (#10) used to
+#' hit `phylum == "chordata" && ...` / `if (is_marine == FALSE)` and error on
+#' R >= 4.3. Empty phylum or worms_ok = FALSE -> fallback (query everything).
+#'
+#' @param phylum lowercase phylum string, or NULL/NA ("" treated as unknown)
+#' @param class lowercase class string, or NULL/NA
+#' @param is_marine logical / NA / NULL from WoRMS
+#' @param worms_ok TRUE if the WoRMS classification lookup succeeded
+#' @return named list of logical query_* flags
+#' @export
+route_trait_databases <- function(phylum, class, is_marine, worms_ok) {
+  flags <- list(
+    fishbase = FALSE, sealifebase = FALSE, biotic = FALSE, freshwater = FALSE,
+    maredat = FALSE, ptdb = FALSE, algaebase = FALSE, species_enriched = FALSE,
+    bvol = FALSE, coral = FALSE, blacksea = FALSE, arctic = FALSE, cefas = FALSE,
+    pelagic = FALSE, polytraits = FALSE, emodnet = FALSE, obis = FALSE,
+    traitbank = FALSE, worms_attrs = FALSE
+  )
+
+  phylum <- if (length(phylum) == 1 && !is.na(phylum)) tolower(phylum) else ""
+  class <- if (length(class) == 1 && !is.na(class)) tolower(class) else ""
+
+  fallback <- function() {
+    for (k in c("fishbase", "sealifebase", "biotic", "freshwater", "maredat",
+                "ptdb", "algaebase", "blacksea", "arctic", "cefas", "coral",
+                "pelagic", "worms_attrs", "obis", "traitbank")) {
+      flags[[k]] <<- TRUE
+    }
+    flags
+  }
+
+  if (!isTRUE(worms_ok) || !nzchar(phylum)) {
+    return(fallback())
+  }
+
+  flags$worms_attrs <- TRUE
+  fish_classes <- c("actinopterygii", "actinopteri", "elasmobranchii", "holocephali",
+                    "myxini", "petromyzonti", "teleostei", "chondrichthyes", "osteichthyes")
+  invert_phyla <- c("mollusca", "arthropoda", "annelida", "echinodermata", "cnidaria",
+                    "porifera", "platyhelminthes", "nematoda", "bryozoa", "brachiopoda",
+                    "nemertea", "sipuncula")
+  zoo_classes <- c("copepoda", "cladocera", "ostracoda", "mysida", "euphausiacea",
+                   "chaetognatha", "appendicularia", "thaliacea")
+  phyto_phyla <- c("chlorophyta", "ochrophyta", "rhodophyta", "cyanobacteria",
+                   "bacillariophyta", "dinoflagellata", "haptophyta", "cryptophyta",
+                   "euglenozoa", "charophyta", "myzozoa", "miozoa")
+
+  if (phylum == "chordata" && class %in% fish_classes) {
+    flags$fishbase <- TRUE
+    flags$pelagic <- TRUE
+  } else if (phylum == "chordata" && class %in% c("mammalia", "ascidiacea")) {
+    flags$sealifebase <- TRUE
+  } else if (phylum == "chordata" && class == "aves") {
+    # limited data; taxonomy known but no source flagged
+  } else if (phylum %in% invert_phyla) {
+    flags$sealifebase <- TRUE
+    flags$species_enriched <- TRUE
+    flags$biotic <- TRUE
+    flags$cefas <- TRUE
+    flags$blacksea <- TRUE
+    flags$arctic <- TRUE
+    flags$emodnet <- TRUE
+    if (class == "anthozoa") flags$coral <- TRUE
+    if (class == "polychaeta") flags$polytraits <- TRUE
+  } else if (class %in% zoo_classes) {
+    flags$maredat <- TRUE
+    flags$sealifebase <- TRUE
+  } else if (phylum %in% phyto_phyla || grepl("phyceae", class)) {
+    flags$bvol <- TRUE
+    flags$ptdb <- TRUE
+    flags$algaebase <- TRUE
+    if (phylum %in% c("rhodophyta", "ochrophyta", "chlorophyta") &&
+          class %in% c("phaeophyceae", "florideophyceae", "ulvophyceae")) {
+      flags$bvol <- FALSE
+      flags$ptdb <- FALSE
+    }
+    if (isTRUE(is_marine == FALSE)) flags$freshwater <- TRUE
+  } else if (class %in% c("oligochaeta", "hirudinea", "gastropoda") &&
+               isTRUE(is_marine == FALSE)) {
+    flags$freshwater <- TRUE
+    flags$biotic <- TRUE
+  } else {
+    flags$sealifebase <- TRUE
+    flags$biotic <- TRUE
+    flags$freshwater <- TRUE
+  }
+
+  flags
+}
+
 #' Automated trait lookup using hierarchical database workflow
 #'
 #' @param species_name Scientific name
@@ -114,15 +208,15 @@ lookup_species_traits <- function(species_name,
                                   ptdb_file = NULL,
                                   cache_dir = NULL) {
 
-  # Check cache first
+  # Check cache first. read_cache_field validates envelope shape + freshness, so
+  # a classify_species_api {data,...} file colliding on the same name is treated
+  # as a miss instead of returning NULL traits (deep-analysis #4).
   if (!is.null(cache_dir) && dir.exists(cache_dir)) {
     cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species_name), ".rds"))
-    if (file.exists(cache_file)) {
-      cached <- readRDS(cache_file)
-      if (Sys.time() - cached$timestamp < as.difftime(30, units = "days")) {
-        message("Using cached traits for ", species_name)
-        return(cached$traits)
-      }
+    cached_traits <- read_cache_field(cache_file, "traits")
+    if (!is.null(cached_traits)) {
+      message("Using cached traits for ", species_name)
+      return(cached_traits)
     }
   }
 
@@ -344,127 +438,39 @@ lookup_species_traits <- function(species_name,
   query_obis <- FALSE
   query_traitbank <- FALSE
 
-  if (!is.null(worms_data) && isTRUE(worms_data$success)) {
-    query_worms_attrs <- TRUE
-    phylum <- tolower(raw_traits$worms$phylum)
-    class <- tolower(raw_traits$worms$class)
-
-    message("\n\U0001f3af SMART ROUTING based on taxonomy...")
-
-    # Fish -> FishBase only
-    if (phylum == "chordata" && class %in% c("actinopterygii", "actinopteri", "elasmobranchii",
-                                              "holocephali", "myxini", "petromyzonti",
-                                              "teleostei", "chondrichthyes", "osteichthyes")) {
-      query_fishbase <- TRUE
-      query_pelagic <- TRUE
-      message("  \u2192 Detected FISH (", class, ") \u2192 Querying: FishBase")
-      message("  \u2192 Skipping: SeaLifeBase, BIOTIC, MAREDAT, PTDB, AlgaeBase")
-
-    # Marine mammals
-    } else if (phylum == "chordata" && class %in% c("mammalia")) {
-      query_sealifebase <- TRUE
-      message("  -> Detected MARINE MAMMAL (", class, ") -> Querying: SeaLifeBase")
-
-    # Seabirds
-    } else if (phylum == "chordata" && class %in% c("aves")) {
-      message("  -> Detected SEABIRD (", class, ") -> Limited trait data available")
-
-    # Tunicates (only ascidiacea — thaliacea/appendicularia already in zooplankton branch)
-    } else if (phylum == "chordata" && class %in% c("ascidiacea")) {
-      query_sealifebase <- TRUE
-      message("  -> Detected TUNICATE (", class, ") -> Querying: SeaLifeBase")
-
-    # Marine invertebrates -> SeaLifeBase + SpeciesEnriched + BIOTIC
-    } else if (phylum %in% c("mollusca", "arthropoda", "annelida", "echinodermata",
-                             "cnidaria", "porifera", "platyhelminthes", "nematoda",
-                             "bryozoa", "brachiopoda", "nemertea", "sipuncula")) {
-      query_sealifebase <- TRUE
-      query_species_enriched <- TRUE
-      query_biotic <- TRUE
-      query_cefas <- TRUE
-      query_blacksea <- TRUE
-      query_arctic <- TRUE
-      query_emodnet <- TRUE
-      if (class == "anthozoa") {
-        query_coral <- TRUE
-        message("  -> Anthozoa detected: also querying Coral Trait DB")
-      }
-      if (class == "polychaeta") {
-        query_polytraits <- TRUE
-        message("  -> Polychaeta detected: also querying PolyTraits")
-      }
-      message("  \u2192 Detected MARINE INVERTEBRATE (", phylum, ") \u2192 Querying: SeaLifeBase, SpeciesEnriched, BIOTIC")
-      message("  \u2192 Skipping: FishBase, freshwater, MAREDAT, PTDB, AlgaeBase")
-
-    # Zooplankton -> MAREDAT + SeaLifeBase
-    } else if (class %in% c("copepoda", "cladocera", "ostracoda", "mysida", "euphausiacea",
-                            "chaetognatha", "appendicularia", "thaliacea")) {
-      query_maredat <- TRUE
-      query_sealifebase <- TRUE
-      message("  \u2192 Detected ZOOPLANKTON (", class, ") \u2192 Querying: MAREDAT, SeaLifeBase")
-      message("  \u2192 Skipping: FishBase, BIOTIC, PTDB, AlgaeBase")
-
-    # Phytoplankton / Algae -> BVOL + PTDB + AlgaeBase + freshwater (if not marine)
-    } else if (phylum %in% c("chlorophyta", "ochrophyta", "rhodophyta", "cyanobacteria",
-                             "bacillariophyta", "dinoflagellata", "haptophyta", "cryptophyta",
-                             "euglenozoa", "charophyta", "myzozoa", "miozoa") ||
-               grepl("phyceae", class)) {
-      query_bvol <- TRUE
-      query_ptdb <- TRUE
-      query_algaebase <- TRUE
-      # Macroalgae should NOT query BVOL/PTDB (unicellular databases)
-      if (phylum %in% c("rhodophyta", "ochrophyta", "chlorophyta") &&
-          class %in% c("phaeophyceae", "florideophyceae", "ulvophyceae")) {
-        query_bvol <- FALSE
-        query_ptdb <- FALSE
-        message("  -> Macroalgae detected: skipping BVOL/PTDB (unicellular only)")
-      }
-      # Also query freshwater if species is not marine (freshwater phytoplankton)
-      is_marine <- raw_traits$worms$isMarine
-      if (!is.null(is_marine) && is_marine == FALSE) {
-        query_freshwater <- TRUE
-        message("  \u2192 Detected FRESHWATER PHYTOPLANKTON/ALGAE (", phylum, ") \u2192 Querying: BVOL, PTDB, AlgaeBase, freshwater")
-      } else {
-        message("  \u2192 Detected PHYTOPLANKTON/ALGAE (", phylum, ") \u2192 Querying: BVOL, PTDB, AlgaeBase")
-      }
-      message("  \u2192 Skipping: FishBase, SeaLifeBase, BIOTIC, MAREDAT")
-
-    # Freshwater taxa -> freshwaterecology.info
-    } else if (class %in% c("oligochaeta", "hirudinea", "gastropoda") &&
-               !is.null(raw_traits$worms$isMarine) && raw_traits$worms$isMarine == FALSE) {
-      query_freshwater <- TRUE
-      query_biotic <- TRUE
-      message("  \u2192 Detected FRESHWATER (", class, ") \u2192 Querying: freshwaterecology.info, BIOTIC")
-      message("  \u2192 Skipping: FishBase, SeaLifeBase, MAREDAT, PTDB, AlgaeBase")
-
-    # Unknown/ambiguous -> Query invertebrate databases
-    } else {
-      query_sealifebase <- TRUE
-      query_biotic <- TRUE
-      query_freshwater <- TRUE
-      message("  \u26a0\ufe0f  Ambiguous taxonomy (", phylum, "/", class, ") \u2192 Querying: SeaLifeBase, BIOTIC, freshwater")
-      message("  \u2192 Skipping: FishBase (not a fish), MAREDAT, PTDB, AlgaeBase")
-    }
-
+  worms_ok <- !is.null(worms_data) && isTRUE(worms_data$success)
+  route_flags <- route_trait_databases(
+    phylum = raw_traits$worms$phylum,
+    class = raw_traits$worms$class,
+    is_marine = raw_traits$worms$isMarine,
+    worms_ok = worms_ok
+  )
+  query_fishbase <- route_flags$fishbase
+  query_sealifebase <- route_flags$sealifebase
+  query_biotic <- route_flags$biotic
+  query_freshwater <- route_flags$freshwater
+  query_maredat <- route_flags$maredat
+  query_ptdb <- route_flags$ptdb
+  query_algaebase <- route_flags$algaebase
+  query_species_enriched <- route_flags$species_enriched
+  query_bvol <- route_flags$bvol
+  query_coral <- route_flags$coral
+  query_blacksea <- route_flags$blacksea
+  query_arctic <- route_flags$arctic
+  query_cefas <- route_flags$cefas
+  query_pelagic <- route_flags$pelagic
+  query_polytraits <- route_flags$polytraits
+  query_emodnet <- route_flags$emodnet
+  query_obis <- route_flags$obis
+  query_traitbank <- route_flags$traitbank
+  query_worms_attrs <- route_flags$worms_attrs
+  if (worms_ok) {
+    message("\n\U0001f3af SMART ROUTING based on taxonomy (",
+            tolower(raw_traits$worms$phylum %||% "?"), "/",
+            tolower(raw_traits$worms$class %||% "?"), ")")
   } else {
-    # WoRMS failed -> Try all databases (fallback mode)
-    message("\n\u26a0\ufe0f  WoRMS FAILED - FALLBACK MODE: Trying all databases")
-    message("   (This will be slow - consider improving species name matching)")
-    query_fishbase <- TRUE
-    query_sealifebase <- TRUE
-    query_biotic <- TRUE
-    query_freshwater <- TRUE
-    query_maredat <- TRUE
-    query_ptdb <- TRUE
-    query_algaebase <- TRUE
-    query_blacksea <- TRUE
-    query_arctic <- TRUE
-    query_cefas <- TRUE
-    query_coral <- TRUE
-    query_pelagic <- TRUE
-    query_worms_attrs <- TRUE
-    query_obis <- TRUE
-    query_traitbank <- TRUE
+    warning("[routing] WoRMS classification failed - fallback mode (querying all sources)",
+            call. = FALSE)
   }
 
   message("")  # Blank line
@@ -1369,7 +1375,8 @@ lookup_species_traits <- function(species_name,
         }
 
       }, error = function(e) {
-        message("  \u26a0\ufe0f  ML prediction error: ", e$message)
+        warning(sprintf("[orchestrator] ML prediction failed for '%s': %s",
+                        species_name, conditionMessage(e)), call. = FALSE)
       })
     }
   }
@@ -1386,7 +1393,8 @@ lookup_species_traits <- function(species_name,
       source("R/functions/uncertainty_quantification.R")
       message("  [DEBUG] uncertainty_quantification.R sourced successfully")
     }, error = function(e) {
-      message("  \u26a0\ufe0f  Uncertainty quantification not available: ", e$message)
+      warning(sprintf("[orchestrator] uncertainty_quantification.R source failed: %s",
+                      conditionMessage(e)), call. = FALSE)
     })
   } else {
     message("  [DEBUG] calculate_all_trait_confidence already exists in environment")
@@ -1427,7 +1435,8 @@ lookup_species_traits <- function(species_name,
     confidence_data <- tryCatch(
       calculate_all_trait_confidence(trait_record),
       error = function(e) {
-        message("  Warning: Uncertainty quantification failed: ", e$message)
+        warning(sprintf("[orchestrator] confidence calc failed for '%s' (falling back to count-based): %s",
+                        species_name, conditionMessage(e)), call. = FALSE)
         list()
       }
     )
@@ -1699,6 +1708,28 @@ lookup_species_traits <- function(species_name,
 }
 
 
+#' Combine per-species trait results into one data frame
+#'
+#' lookup_species_traits() returns a path-dependent column set (an
+#' offline-complete or no-data species returns a narrow frame; a full-pipeline
+#' species appends *_confidence / interval / imputation columns). `rbind` errors
+#' the moment two rows disagree on columns, which discarded an entire multi-species
+#' run. bind_rows() unions the columns and NA-fills the gaps instead. NULL entries
+#' (failed lookups) are dropped.
+#'
+#' @param results_list List of per-species trait data frames (may contain NULL)
+#' @return Single data frame with the union of all columns, or an empty
+#'   data frame if every entry was NULL
+#' @export
+combine_trait_results <- function(results_list) {
+  results_list <- Filter(Negate(is.null), results_list)
+  if (length(results_list) == 0) return(data.frame())
+
+  results_df <- dplyr::bind_rows(results_list)
+  rownames(results_df) <- NULL
+  results_df
+}
+
 #' Batch lookup traits for multiple species
 #'
 #' @param species_list Character vector of species names
@@ -1718,9 +1749,5 @@ batch_lookup_traits <- function(species_list, ...) {
     # Rate limiting handled by api_rate_limiter.R
   }
 
-  # Combine results
-  results_df <- do.call(rbind, results_list)
-  rownames(results_df) <- NULL
-
-  return(results_df)
+  combine_trait_results(results_list)
 }

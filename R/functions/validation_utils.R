@@ -466,3 +466,72 @@ validate_file_exists <- function(file_path, param_name = "file") {
 
   invisible(TRUE)
 }
+
+#' Read a validated field from an RDS cache envelope
+#'
+#' The taxonomy RDS cache (cache/taxonomy/) is written by two producers with
+#' incompatible envelope shapes keyed to the same filename: the orchestrator
+#' writes `list(traits = ...)` and classify_species_api writes `list(data = ...)`.
+#' Both carry `$timestamp`, so a bare TTL check passes and the reader used to
+#' dereference the wrong field to NULL, corrupting the result (deep-analysis #4).
+#' This returns the requested `field` only when the cached envelope actually
+#' contains it AND is fresh; a foreign shape, stale, missing, or unreadable file
+#' all return NULL so the caller treats it as a cache miss and re-queries.
+#'
+#' @param cache_file Path to the .rds cache file.
+#' @param field Name of the payload field to read (e.g. "traits" or "data").
+#' @param max_age_days Maximum cache age in days (default 30).
+#' @return The field's value, or NULL if absent/stale/missing/unreadable.
+#' @export
+read_cache_field <- function(cache_file, field, max_age_days = 30) {
+  if (!file.exists(cache_file)) return(NULL)
+  cached <- tryCatch(readRDS(cache_file), error = function(e) {
+    warning(sprintf("[cache] unreadable cache file '%s': %s",
+                    cache_file, conditionMessage(e)), call. = FALSE)
+    NULL
+  })
+  if (is.null(cached) || is.null(cached[[field]]) || is.null(cached$timestamp)) {
+    return(NULL)
+  }
+  if (difftime(Sys.time(), cached$timestamp, units = "days") >= max_age_days) {
+    return(NULL)
+  }
+  cached[[field]]
+}
+
+#' Compute the habitat-load bounding box for a study area
+#'
+#' The habitat layer must be loaded for the WHOLE study area. The spatial module
+#' previously loaded only a fixed `center +/- 0.5 deg` (~1 deg) box, so any study
+#' area wider than a degree was silently truncated at load and the missing seabed
+#' was stamped as 'No data' (deep-analysis #9). load_regional_euseamap() reads the
+#' GDB through a wkt_filter, so passing the full extent reads only that region and
+#' is not a performance problem. This returns the study bbox expanded by a small
+#' edge buffer; only an absurdly large span (> max_span_deg) is capped, and then
+#' with a warning so the reduced coverage is never silent.
+#'
+#' @param study_bbox Numeric c(xmin, ymin, xmax, ymax) in degrees.
+#' @param buffer_deg Edge buffer added on every side (default 0.05 deg).
+#' @param max_span_deg Sanity cap on either span; beyond it, warn and cap.
+#' @return Numeric c(xmin, ymin, xmax, ymax) covering the study area.
+#' @export
+habitat_load_bbox <- function(study_bbox, buffer_deg = 0.05, max_span_deg = 30) {
+  xmin <- study_bbox[1] - buffer_deg
+  ymin <- study_bbox[2] - buffer_deg
+  xmax <- study_bbox[3] + buffer_deg
+  ymax <- study_bbox[4] + buffer_deg
+
+  if ((xmax - xmin) > max_span_deg || (ymax - ymin) > max_span_deg) {
+    warning(sprintf(paste0("[habitat] study area spans %.1f x %.1f deg, exceeding the %.0f deg ",
+                           "cap - habitat is loaded for a reduced extent and may not cover the ",
+                           "whole study area"),
+                    xmax - xmin, ymax - ymin, max_span_deg), call. = FALSE)
+    center_lon <- mean(c(study_bbox[1], study_bbox[3]))
+    center_lat <- mean(c(study_bbox[2], study_bbox[4]))
+    half <- max_span_deg / 2
+    return(unname(c(center_lon - half, center_lat - half,
+                    center_lon + half, center_lat + half)))
+  }
+
+  unname(c(xmin, ymin, xmax, ymax))
+}

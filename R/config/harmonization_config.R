@@ -18,8 +18,15 @@ HARMONIZATION_CONFIG <- list(
 
   # FORAGING STRATEGY PATTERNS
   foraging_patterns = list(
-    FS0_primary_producer = "photosyn|autotrop|producer|plant|algae|phytoplankton|diatom|dinoflagellate",
-    FS1_predator = "predat|carnivor|pisciv|hunter|predaceous|carnivore|predator",
+    # FS0 must match only producer-specific vocabulary. Diet nouns
+    # (plant|algae|phytoplankton|diatom|...) were removed 2026-07-17: because FS0
+    # is tested before FS1-FS6 and all sources are paste()-collapsed, any consumer
+    # whose diet text mentioned algae/diatoms was silently coded as an autotroph,
+    # inverting trophic structure at the base of the food web. True producers are
+    # still caught here (photosyn|autotroph|producer) and by the trophic_level<1.5
+    # guard in harmonize_foraging_strategy().
+    FS0_primary_producer = "photosyn|autotroph|autotrop|primary.?produc|producer",
+    FS1_predator = "predat|carnivor|pisciv|hunter|predaceous|carnivore|predator|parasit",
     FS2_scavenger = "scaveng|detritivor|carrion|scavenger|detritus feeder",
     FS3_omnivore = "omnivore|omnivorous|mixed diet|generalist feeder",
     FS4_grazer = "graz|herbiv|scraper|browser|grazer|herbivore|algivore",
@@ -57,8 +64,8 @@ HARMONIZATION_CONFIG <- list(
   mobility_patterns = list(
     MB1_sessile = "sessile|attached|fixed|cemented|anchored|immobile",
     MB2_burrower = "burrow|infauna|endobenthic|burrowing|sediment dweller",
-    MB3_crawler = "crawl|creep|benthic|epibenthic|slow moving|sluggish",
-    MB4_swimmer_limited = "slow swim|limited swim|weak swim|drift|plankton",
+    MB3_crawler = "crawl|creep|benthic|epibenthic|slow moving|sluggish|limited.?movement",
+    MB4_swimmer_limited = "slow swim|limited swim|weak swim|drift|plankton|limited.?swim|float",
     MB5_swimmer = "swim|pelagic|nektonic|fast|active|mobile|free-swimming"
   ),
 
@@ -75,12 +82,12 @@ HARMONIZATION_CONFIG <- list(
   # harmonize_protection had no branch, so any "mucus"-flagged species got
   # NA. Added between PR0_none and PR2_tube to fill the gap.
   protection_patterns = list(
-    PR0_none = "soft.?body|naked|unprotected|no shell|no armor|jellyfish|cephalopod",
+    PR0_none = "soft.?bod|naked|unprotected|no shell|no armor|jellyfish|cephalopod|^soft$|crustose|cushion|stalked",
     PR1_mucus = "mucus|slime|cuticle|cuticular|hagfish",
     PR2_tube = "tube|tube.?dwell|calcareous tube|parchment tube",
     PR3_burrow = "deep burrow|permanent burrow|burrow refuge",
     PR4_exoskeleton = "exoskeleton|chitinous|thin carapace|small arthropod",
-    PR5_soft_shell = "soft shell|partial shell|flexible shell|cartilage|thin shell",
+    PR5_soft_shell = "soft.?shell|partial shell|flexible shell|cartilage|thin shell",
     PR6_hard_shell = "shell|calcified|calcareous|bivalve shell|gastropod shell|hard carapace|test|barnacle",
     PR7_spines = "spine|spiny|spicule|prickle|thorn|ossicle|urchin",
     PR8_armoured = "armoured|armored|heavy carapace|thick carapace|lobster|crab carapace"

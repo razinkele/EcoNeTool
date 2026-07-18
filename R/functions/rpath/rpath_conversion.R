@@ -20,6 +20,44 @@
 # ==============================================================================
 
 # ==============================================================================
+# DIET-MATRIX CELL EDITING
+# ==============================================================================
+
+#' Apply a single diet-matrix cell edit
+#'
+#' Pure helper behind the diet_matrix_table cell-edit observer. DT's
+#' `_cell_edit` event reports `row` as a 1-based R index already; only `col`
+#' is 0-based (and only because the table renders with rownames = FALSE). The
+#' observer previously added 1 to BOTH, so every edit landed on the next prey
+#' row - silently balancing Ecopath on a diet matrix the user never entered,
+#' and growing the column to nrow+1 (a ragged data.table) when the last row
+#' was edited. Keeping this as a pure function makes the index contract
+#' testable without a Shiny session.
+#'
+#' @param diet data.table diet matrix: first column is the prey/Group name,
+#'   remaining columns are predators; rows are prey.
+#' @param edit_info The `input$..._cell_edit` list with `row`, `col`, `value`.
+#' @return list(diet = <updated or unchanged>, status = "ok"|"skip"|"invalid").
+#'   "skip" = edit targeted the non-editable Group column; "invalid" = value
+#'   outside [0, 1]; in both cases `diet` is returned unchanged.
+#' @export
+apply_diet_cell_edit <- function(diet, edit_info) {
+  row <- edit_info$row          # DT _cell_edit row is already 1-based
+  col <- edit_info$col + 1      # DT col is 0-based (rownames = FALSE)
+
+  if (col == 1) return(list(diet = diet, status = "skip"))  # Group column
+
+  new_value <- as.numeric(edit_info$value)
+  if (!is.na(new_value) && (new_value < 0 || new_value > 1)) {
+    return(list(diet = diet, status = "invalid"))
+  }
+
+  col_name <- names(diet)[col]
+  diet[[col_name]][row] <- new_value
+  list(diet = diet, status = "ok")
+}
+
+# ==============================================================================
 # PACKAGE CHECK AND INSTALLATION
 # ==============================================================================
 

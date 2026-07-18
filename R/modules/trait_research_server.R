@@ -304,8 +304,11 @@ trait_research_server <- function(input, output, session, shared_data) {
         cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species), ".rds"))
         if (file.exists(cache_file)) {
           cached <- readRDS(cache_file)
-          cache_age_days <- as.numeric(difftime(Sys.time(), cached$timestamp, units = "days"))
-          if (cache_age_days < 30) {
+          cache_age_days <- as.numeric(difftime(Sys.time(), cached$timestamp %||% Sys.time(), units = "days"))
+          # Shape guard: a classify_species_api {data,...} envelope collides on
+          # the same filename; without !is.null(cached$traits) we'd cache NULL
+          # trait rows and misalign the results list (deep-analysis #4).
+          if (cache_age_days < 30 && !is.null(cached$traits)) {
             cat("  -> Using cached data\n")
             results_list[[i]] <- cached$traits
             # cached$raw_data is only present in legacy caches written by the
@@ -1027,7 +1030,14 @@ trait_research_server <- function(input, output, session, shared_data) {
         age_text = age_text, age_color = age_color,
         status = "Available", status_color = "success"
       )
-    }, error = function(e) default)
+    }, error = function(e) {
+      # A read failure (corrupt/locked/schema-drifted DB) is NOT the same as a
+      # missing file - surface it and label it distinctly so the operator does
+      # not "rebuild" a present-but-broken DB thinking it was never built (#34).
+      warning(sprintf("[offline_db_summary] failed to read %s: %s",
+                      db_path, conditionMessage(e)), call. = FALSE)
+      modifyList(default, list(age_text = "Read error", status = "Read error"))
+    })
   })
 
   output$offline_db_species_count <- renderValueBox({
@@ -1104,7 +1114,7 @@ trait_research_server <- function(input, output, session, shared_data) {
       offline_db_trigger(offline_db_trigger() + 1)
       offline_rebuild_process(NULL)
     }), error = function(e) {
-      message("[rebuild observer] handler error: ", conditionMessage(e))
+      warning(sprintf("[rebuild observer] handler error: %s", conditionMessage(e)), call. = FALSE)
       isolate(offline_rebuild_process(NULL))
     })
   })

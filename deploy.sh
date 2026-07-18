@@ -105,6 +105,15 @@ EXCLUDE_PATTERNS=(
   "models/*"
   "archive/*"
   "data_conversion/*"
+  # Persistent server-side runtime state - MUST survive rsync --delete.
+  # These live only on the server (absent from the local repo), so without
+  # these excludes --delete would silently wipe them on every deploy.
+  ".Renviron"
+  "r-libs"
+  "r-libs/*"
+  "data/feedback"
+  "data/feedback/*"
+  "restart.txt"
 )
 
 # Flags
@@ -130,31 +139,34 @@ NC='\033[0m' # No Color
 print_msg() {
   local color=$1
   shift
-  echo -e "${color}$@${NC}"
+  # $* (not $@) joins the message args into a single string for display.
+  echo -e "${color}$*${NC}"
 }
 
 # Log message to file and console
 log() {
-  local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $@"
+  # Declare then assign so the $(date) exit status is not masked (SC2155).
+  local msg
+  msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
   echo "$msg" | tee -a "$LOG_FILE"
 }
 
 # Log info message
 log_info() {
-  log "[INFO] $@"
-  print_msg "$GREEN" "✓ $@"
+  log "[INFO] $*"
+  print_msg "$GREEN" "✓ $*"
 }
 
 # Log warning message
 log_warn() {
-  log "[WARN] $@"
-  print_msg "$YELLOW" "⚠ $@"
+  log "[WARN] $*"
+  print_msg "$YELLOW" "⚠ $*"
 }
 
 # Log error message
 log_error() {
-  log "[ERROR] $@"
-  print_msg "$RED" "✗ $@"
+  log "[ERROR] $*"
+  print_msg "$RED" "✗ $*"
 }
 
 # Print section header

@@ -228,7 +228,8 @@ if (file.exists(json_keys_file)) {
     for (key in names(json_keys)) {
       API_KEYS[[key]] <- json_keys[[key]]
     }
-  }, error = function(e) message("Could not load API keys from JSON: ", e$message))
+  }, error = function(e) warning(sprintf("[config] could not load API keys from JSON: %s",
+                                         conditionMessage(e)), call. = FALSE))
 }
 
 #' Get API key for a service

@@ -48,10 +48,12 @@ lookup_fishbase_traits <- function(species_name, timeout = 20) {
                    timeout = timeout, on_timeout = NULL),
       error = function(e) {
         if (grepl("open|connection|timeout|time limit", e$message, ignore.case = TRUE)) {
-          message("      \u26a0\ufe0f  Connection error or timeout - FishBase may be unavailable")
+          warning(sprintf("[fishbase] connection error or timeout for '%s': %s",
+                          species_name, conditionMessage(e)), call. = FALSE)
           return(NULL)
         }
-        message("      \u26a0\ufe0f  Error: ", e$message)
+        warning(sprintf("[fishbase] species() failed for '%s': %s",
+                        species_name, conditionMessage(e)), call. = FALSE)
         return(NULL)
       })
 
@@ -158,10 +160,12 @@ lookup_sealifebase_traits <- function(species_name, timeout = 20) {
                    timeout = timeout, on_timeout = NULL),
       error = function(e) {
         if (grepl("open|connection|timeout|time limit", e$message, ignore.case = TRUE)) {
-          message("      \u26a0\ufe0f  Connection error or timeout - SeaLifeBase may be unavailable")
+          warning(sprintf("[sealifebase] connection error or timeout for '%s': %s",
+                          species_name, conditionMessage(e)), call. = FALSE)
           return(NULL)
         }
-        message("      \u26a0\ufe0f  Error: ", e$message)
+        warning(sprintf("[sealifebase] species() failed for '%s': %s",
+                        species_name, conditionMessage(e)), call. = FALSE)
         return(NULL)
       })
 
@@ -1069,7 +1073,8 @@ lookup_worms_traits <- function(species_name, timeout = 10) {
     result$strategy <- successful_strategy
 
   }, error = function(e) {
-    message("      \u2192 WoRMS: Error processing species '", species_name, "': ", conditionMessage(e))
+    warning(sprintf("[worms] error processing species '%s': %s",
+                    species_name, conditionMessage(e)), call. = FALSE)
     # <<- so the error surfaces on the returned result; `<-` would only
     # mutate the closure-local copy.
     result$error <<- conditionMessage(e)
