@@ -498,3 +498,40 @@ read_cache_field <- function(cache_file, field, max_age_days = 30) {
   }
   cached[[field]]
 }
+
+#' Compute the habitat-load bounding box for a study area
+#'
+#' The habitat layer must be loaded for the WHOLE study area. The spatial module
+#' previously loaded only a fixed `center +/- 0.5 deg` (~1 deg) box, so any study
+#' area wider than a degree was silently truncated at load and the missing seabed
+#' was stamped as 'No data' (deep-analysis #9). load_regional_euseamap() reads the
+#' GDB through a wkt_filter, so passing the full extent reads only that region and
+#' is not a performance problem. This returns the study bbox expanded by a small
+#' edge buffer; only an absurdly large span (> max_span_deg) is capped, and then
+#' with a warning so the reduced coverage is never silent.
+#'
+#' @param study_bbox Numeric c(xmin, ymin, xmax, ymax) in degrees.
+#' @param buffer_deg Edge buffer added on every side (default 0.05 deg).
+#' @param max_span_deg Sanity cap on either span; beyond it, warn and cap.
+#' @return Numeric c(xmin, ymin, xmax, ymax) covering the study area.
+#' @export
+habitat_load_bbox <- function(study_bbox, buffer_deg = 0.05, max_span_deg = 30) {
+  xmin <- study_bbox[1] - buffer_deg
+  ymin <- study_bbox[2] - buffer_deg
+  xmax <- study_bbox[3] + buffer_deg
+  ymax <- study_bbox[4] + buffer_deg
+
+  if ((xmax - xmin) > max_span_deg || (ymax - ymin) > max_span_deg) {
+    warning(sprintf(paste0("[habitat] study area spans %.1f x %.1f deg, exceeding the %.0f deg ",
+                           "cap - habitat is loaded for a reduced extent and may not cover the ",
+                           "whole study area"),
+                    xmax - xmin, ymax - ymin, max_span_deg), call. = FALSE)
+    center_lon <- mean(c(study_bbox[1], study_bbox[3]))
+    center_lat <- mean(c(study_bbox[2], study_bbox[4]))
+    half <- max_span_deg / 2
+    return(unname(c(center_lon - half, center_lat - half,
+                    center_lon + half, center_lat + half)))
+  }
+
+  unname(c(xmin, ymin, xmax, ymax))
+}

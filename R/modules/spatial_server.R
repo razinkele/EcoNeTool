@@ -818,30 +818,23 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
 
         euseamap <- NULL
 
-        cat("  Loading habitat with safe minimal bbox strategy...\n")
-        cat("  This loads a small test area. Use 'Clip Habitat' button to get full coverage.\n")
+        cat("  Loading habitat for the full study-area extent (via GDB wkt_filter)...\n")
 
         minimal_bbox <- NULL
 
         if (!is.null(study_area_sf)) {
           bbox_full <- sf::st_bbox(study_area_sf)
-          center_lon <- mean(c(bbox_full["xmin"], bbox_full["xmax"]))
-          center_lat <- mean(c(bbox_full["ymin"], bbox_full["ymax"]))
+          minimal_bbox <- habitat_load_bbox(c(bbox_full["xmin"], bbox_full["ymin"],
+                                              bbox_full["xmax"], bbox_full["ymax"]))
 
-          minimal_bbox <- c(center_lon - 0.5, center_lat - 0.5,
-                           center_lon + 0.5, center_lat + 0.5)
-
-          cat(sprintf("  Centered on study area: [%.2f, %.2f] to [%.2f, %.2f]\n",
+          cat(sprintf("  Loading full study-area extent: [%.2f, %.2f] to [%.2f, %.2f]\n",
                       minimal_bbox[1], minimal_bbox[2], minimal_bbox[3], minimal_bbox[4]))
 
         } else if (!is.null(custom_bbox)) {
-          center_lon <- mean(c(custom_bbox[1], custom_bbox[3]))
-          center_lat <- mean(c(custom_bbox[2], custom_bbox[4]))
+          minimal_bbox <- habitat_load_bbox(c(custom_bbox[1], custom_bbox[2],
+                                              custom_bbox[3], custom_bbox[4]))
 
-          minimal_bbox <- c(center_lon - 0.5, center_lat - 0.5,
-                           center_lon + 0.5, center_lat + 0.5)
-
-          cat(sprintf("  Centered on custom bbox: [%.2f, %.2f] to [%.2f, %.2f]\n",
+          cat(sprintf("  Loading full custom-bbox extent: [%.2f, %.2f] to [%.2f, %.2f]\n",
                       minimal_bbox[1], minimal_bbox[2], minimal_bbox[3], minimal_bbox[4]))
 
         } else {

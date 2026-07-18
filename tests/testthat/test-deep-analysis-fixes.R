@@ -218,3 +218,35 @@ test_that("read_cache_field returns NULL for a file with no timestamp", {
   on.exit(unlink(f), add = TRUE)
   expect_null(read_cache_field(f, "traits"))
 })
+
+# -----------------------------------------------------------------------------
+# #9 - habitat load bbox must cover the whole study area, not a 1-degree box
+# -----------------------------------------------------------------------------
+
+test_that("habitat_load_bbox returns the full study extent, not a centred 1-deg box", {
+  # A 5x4 degree study area (Baltic proper). Pre-fix it was truncated to a
+  # center +/-0.5 deg (~1 deg) box, laundering ~90% of the seabed into 'No data'.
+  study <- c(18, 54, 23, 58)  # xmin, ymin, xmax, ymax
+  got <- habitat_load_bbox(study, buffer_deg = 0)
+  expect_equal(unname(got), c(18, 54, 23, 58))
+})
+
+test_that("habitat_load_bbox applies the edge buffer", {
+  got <- habitat_load_bbox(c(18, 54, 23, 58), buffer_deg = 0.1)
+  expect_equal(unname(got), c(17.9, 53.9, 23.1, 58.1))
+})
+
+test_that("habitat_load_bbox warns and caps only for absurdly large areas", {
+  # A 50-degree span exceeds the sanity cap; must warn (not silently truncate).
+  expect_warning(
+    got <- habitat_load_bbox(c(-20, 20, 30, 70), buffer_deg = 0, max_span_deg = 30),
+    "exceed"
+  )
+  # capped span is at most max_span_deg
+  expect_lte(got[3] - got[1], 30 + 1e-9)
+  expect_lte(got[4] - got[2], 30 + 1e-9)
+})
+
+test_that("habitat_load_bbox does not warn for a normal multi-degree area", {
+  expect_silent(habitat_load_bbox(c(18, 54, 23, 58), buffer_deg = 0.05))
+})
