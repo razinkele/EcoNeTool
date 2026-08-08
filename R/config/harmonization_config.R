@@ -73,7 +73,10 @@ HARMONIZATION_CONFIG <- list(
   environmental_patterns = list(
     EP1_pelagic = "pelagic|water column|planktonic|nektonic|open water",
     EP2_benthopelagic = "benthopelagic|demersal|near bottom|benthic-pelagic",
-    EP3_epibenthic = "epibenthic|epifauna|surface dwelling|on substrate",
+    # Btrait sediment-position label "Surface" -> epibenthic. Anchored ^surface$
+    # (the bare label) so it cannot match "Subsurface_deposit", which is a
+    # FEEDING label and must reach FS5, not EP3.
+    EP3_epibenthic = "epibenthic|epifauna|surface dwelling|on substrate|^surface$",
     EP4_endobenthic = "endobenthic|infauna|burrowing|within sediment|interstitial"
   ),
 
@@ -83,7 +86,8 @@ HARMONIZATION_CONFIG <- list(
   # NA. Added between PR0_none and PR2_tube to fill the gap.
   protection_patterns = list(
     PR0_none = "soft.?bod|naked|unprotected|no shell|no armor|jellyfish|cephalopod|^soft$|crustose|cushion|stalked",
-    PR1_mucus = "mucus|slime|cuticle|cuticular|hagfish",
+    # Btrait morphology label "Tunic" (the leathery ascidian covering) -> PR1.
+    PR1_mucus = "mucus|slime|cuticle|cuticular|hagfish|tunic",
     PR2_tube = "tube|tube.?dwell|calcareous tube|parchment tube",
     PR3_burrow = "deep burrow|permanent burrow|burrow refuge",
     PR4_exoskeleton = "exoskeleton|chitinous|thin carapace|small arthropod",
@@ -112,8 +116,10 @@ HARMONIZATION_CONFIG <- list(
 
   # REPRODUCTIVE STRATEGY PATTERNS
   reproductive_patterns = list(
-    RS1_broadcast = "broadcast|free.spawn|pelagic.larv|planktotrophic",
-    RS2_brooder = "brood|direct.develop|lecithotrophic|vivip|ovovivip",
+    # Btrait egg-development-location labels: Sexual_pelagic -> RS1;
+    # Sexual_benthic / Sexual_brooded -> RS2.
+    RS1_broadcast = "broadcast|free.spawn|pelagic.larv|planktotrophic|sexual_pelagic",
+    RS2_brooder = "brood|direct.develop|lecithotrophic|vivip|ovovivip|sexual_benthic|sexual_brooded",
     RS3_budding = "bud|fission|fragment|asexual|vegetat",
     RS4_mixed = "mixed|both|alternating|sequential"
   ),
