@@ -56,9 +56,10 @@ test_that("WoRMS vernacular name search works (live)", {
   result <- query_worms_vernacular("Atlantic cod")
 
   # Should find Gadus morhua
-  if (!is.null(result)) {
-    expect_equal(tolower(result$scientific_name), "gadus morhua")
-  }
+  skip_if(is.null(result),
+          "query_worms_vernacular('Atlantic cod') returned NULL; WoRMS vernacular endpoint unreachable")
+
+  expect_equal(tolower(result$scientific_name), "gadus morhua")
 })
 
 # ============================================================================
@@ -75,10 +76,11 @@ test_that("FishBase returns data for Gadus morhua (live)", {
   expect_true(result$success)
 
   # Validate biological plausibility
-  if (!is.null(result$traits$max_length_cm)) {
-    expect_gt(result$traits$max_length_cm, 50)
-    expect_lt(result$traits$max_length_cm, 250)
-  }
+  skip_if(is.null(result$traits$max_length_cm),
+          "FishBase returned no max_length_cm for Gadus morhua; cannot check plausibility")
+
+  expect_gt(result$traits$max_length_cm, 50)
+  expect_lt(result$traits$max_length_cm, 250)
 })
 
 test_that("FishBase returns data for Clupea harengus (live)", {
@@ -179,16 +181,17 @@ test_that("WoRMS API response format is stable (live)", {
     error = function(e) NULL
   )
 
-  if (!is.null(records) && length(records) > 0) {
-    rec <- records[[1]]
-    # Key fields that should always be present
-    expect_true("AphiaID" %in% names(rec))
-    expect_true("scientificname" %in% names(rec))
-    expect_true("phylum" %in% names(rec))
-    expect_true("class" %in% names(rec))
-    expect_true("order" %in% names(rec))
-    expect_true("family" %in% names(rec))
-  }
+  skip_if(is.null(records) || nrow(records) == 0,
+          "worrms::wm_records_name('Gadus morhua') returned nothing; WoRMS unreachable")
+
+  # wm_records_name() returns a tibble of matches: one row per record, fields as
+  # columns. Do NOT index with records[[1]] - that yields the first *column*.
+  expect_true("AphiaID" %in% names(records))
+  expect_true("scientificname" %in% names(records))
+  expect_true("phylum" %in% names(records))
+  expect_true("class" %in% names(records))
+  expect_true("order" %in% names(records))
+  expect_true("family" %in% names(records))
 })
 
 test_that("FishBase API response format is stable (live)", {
@@ -200,11 +203,12 @@ test_that("FishBase API response format is stable (live)", {
     error = function(e) NULL
   )
 
-  if (!is.null(species_data) && nrow(species_data) > 0) {
-    # Key fields that should always exist
-    expect_true("Length" %in% names(species_data) || "length" %in% tolower(names(species_data)),
-                info = "FishBase should return Length field")
-  }
+  skip_if(is.null(species_data) || nrow(species_data) == 0,
+          "rfishbase::species('Gadus morhua') returned nothing; FishBase unreachable")
+
+  # Key fields that should always exist
+  expect_true("Length" %in% names(species_data) || "length" %in% tolower(names(species_data)),
+              info = "FishBase should return Length field")
 })
 
 # ============================================================================
@@ -215,13 +219,13 @@ test_that("Rate limiter functions are available", {
   skip_if_no_live_tests()
 
   # Verify rate limiters can be created
-  if (exists("get_worms_limiter")) {
-    limiter <- get_worms_limiter()
-    expect_true(!is.null(limiter))
+  skip_if(!exists("get_worms_limiter"),
+          "get_worms_limiter() not loaded; api_rate_limiter.R was not sourced")
 
-    stats <- limiter$get_stats()
-    expect_true("remaining" %in% names(stats))
-  }
+  limiter <- get_worms_limiter()
+  expect_true(!is.null(limiter))
+  stats <- limiter$get_stats()
+  expect_true("remaining" %in% names(stats))
 })
 
 # ============================================================================
