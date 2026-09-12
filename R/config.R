@@ -203,6 +203,12 @@ API_KEYS <- list2env(list(
 ), parent = emptyenv())
 
 # File path for user's custom API keys
+#
+# NOTE: deliberately left working-directory-relative rather than wrapped in
+# app_path(). This is a startup-only load of user-supplied secrets; making it
+# wd-independent could start picking up a config/api_keys.R that a deployment
+# previously ignored. The guard test in
+# tests/testthat/test-deep-analysis-fixes.R excludes this file for that reason.
 API_KEYS_FILE <- "config/api_keys.R"
 
 # Load user's API keys if file exists (overrides defaults)

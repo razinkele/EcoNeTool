@@ -334,3 +334,30 @@ test_that("parallel_lookup resolves its worker function files via app_path", {
   expect_true(any(grepl("app_path(func_file)", lines, fixed = TRUE)),
               info = "parallel_lookup must resolve required_functions via app_path()")
 })
+
+test_that("trait_lookup/load_all.R is self-sufficient in a fresh session", {
+  # load_all.R is the documented entry point. Because orchestrator.R calls
+  # app_path() in top-level code, load_all.R must pull in validation_utils.R
+  # itself rather than relying on the caller having done so.
+  rscript <- file.path(R.home("bin"), "Rscript.exe")
+  if (!file.exists(rscript)) rscript <- file.path(R.home("bin"), "Rscript")
+  skip_if(!file.exists(rscript), "Rscript not found; cannot spawn a fresh session")
+
+  root <- app_path()
+  script <- tempfile(fileext = ".R")
+  on.exit(unlink(script), add = TRUE)
+  writeLines(c(
+    'setwd(commandArgs(trailingOnly = TRUE)[1])',
+    'suppressMessages(suppressWarnings(source("R/functions/trait_lookup/load_all.R")))',
+    'cat("LOADED_OK
+")'
+  ), script)
+
+  out <- suppressWarnings(
+    system2(rscript, c(shQuote(script), shQuote(root)),
+            stdout = TRUE, stderr = TRUE)
+  )
+
+  expect_true(any(grepl("LOADED_OK", out, fixed = TRUE)),
+              info = paste(utils::tail(out, 6), collapse = " | "))
+})

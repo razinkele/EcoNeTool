@@ -7,6 +7,13 @@
 # Usage: source("R/functions/trait_lookup/load_all.R")
 # =============================================================================
 
+# Core utilities first: orchestrator.R calls app_path() in top-level code, so
+# this loader must be self-sufficient rather than assuming the caller already
+# sourced validation_utils.R. Re-sourcing it is harmless (function definitions).
+if (!exists("app_path", mode = "function")) {
+  source("R/functions/validation_utils.R")
+}
+
 # Database query functions (individual DB lookups)
 source("R/functions/trait_lookup/database_lookups.R")
 
