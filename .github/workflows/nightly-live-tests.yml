@@ -80,6 +80,7 @@ jobs:
             any::DBI
             any::RSQLite
             any::digest
+            any::openssl
             any::shiny
 
       - name: Run live testthat suite (fail on any test failure)

@@ -126,6 +126,34 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   A regression test in `tests/testthat/test-deep-analysis-fixes.R`
   enforces this for every other file under `R/`.
 
+- **API key configuration can be password-gated.** The "API Key
+  Configuration" modal (`R/modules/plugin_server.R`) is protected when
+  `ECONETOOL_ADMIN_PASSWORD_HASH` is set, and behaves exactly as before
+  when it is not, so local development needs no setup.
+
+  To enable it on a deployment:
+
+  ```r
+  # locally - prints a pasteable line, writes nothing
+  source("R/functions/admin_auth.R")
+  set_admin_password("a long passphrase")
+  ```
+
+  Put the printed `ECONETOOL_ADMIN_PASSWORD_HASH=...` line in an
+  `.Renviron` in the app directory on the server, then `touch
+  restart.txt`. Only the derived key is stored - never the password.
+  Hashing is `openssl::bcrypt_pbkdf` at 12 rounds with a random
+  16-byte salt, compared in constant time.
+
+  The unlock is held in `session$userData$admin_unlocked`, never a
+  global: a global would leak one user's unlock to every concurrent
+  session in the same R process, the same hazard `get_harm_config()`
+  exists to avoid. Attempts are capped at 5 per session and every
+  failure is logged with `warning()`.
+
+  `config/api_keys.json` and `.Renviron` are both gitignored. Check
+  before committing if you touch that area.
+
 ## Commit Messages
 
 We use [Conventional Commits](https://www.conventionalcommits.org/). This drives our automatic versioning and changelog generation.

@@ -153,7 +153,15 @@ plugin_server <- function(input, output, session, plugin_states) {
   })
 
   # API KEY CONFIGURATION
-  observeEvent(input$show_api_keys, {
+  #
+  # Optionally protected by an admin password (R/functions/admin_auth.R).
+  # With ECONETOOL_ADMIN_PASSWORD_HASH unset the gate is inert and this
+  # behaves exactly as it did before. The unlock is recorded in
+  # session$userData - never a global - so one user's unlock cannot leak to
+  # other sessions sharing the same R process.
+  max_unlock_attempts <- 5L
+
+  show_api_key_modal <- function() {
     showModal(modalDialog(
       title = "API Key Configuration", size = "m",
       textInput("api_key_algaebase_user", "AlgaeBase Username:",
@@ -169,6 +177,68 @@ plugin_server <- function(input, output, session, plugin_states) {
         actionButton("save_api_keys", "Save Keys", class = "btn-primary", icon = icon("save"))
       )
     ))
+  }
+
+  show_admin_unlock_modal <- function(error_message = NULL) {
+    showModal(modalDialog(
+      title = "Admin password required", size = "s",
+      tags$p("API key configuration is protected on this instance."),
+      passwordInput("admin_password", "Password:", value = ""),
+      if (!is.null(error_message)) {
+        tags$p(class = "text-danger", role = "alert", error_message)
+      },
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("admin_unlock", "Unlock", class = "btn-primary",
+                     icon = icon("unlock"))
+      )
+    ))
+  }
+
+  observeEvent(input$show_api_keys, {
+    if (!admin_gate_enabled() || isTRUE(session$userData$admin_unlocked)) {
+      show_api_key_modal()
+    } else {
+      show_admin_unlock_modal()
+    }
+  })
+
+  observeEvent(input$admin_unlock, {
+    attempts <- session$userData$admin_attempts %||% 0L
+
+    if (attempts >= max_unlock_attempts) {
+      warning(sprintf("[admin auth] unlock attempt limit (%d) reached; refusing",
+                      max_unlock_attempts), call. = FALSE)
+      removeModal()
+      showNotification(
+        "Too many failed attempts. Reload the page to try again.",
+        type = "error", duration = 8
+      )
+      return()
+    }
+
+    if (isTRUE(verify_admin_password(input$admin_password))) {
+      session$userData$admin_unlocked <- TRUE
+      session$userData$admin_attempts <- 0L
+      removeModal()
+      show_api_key_modal()
+      return()
+    }
+
+    attempts <- attempts + 1L
+    session$userData$admin_attempts <- attempts
+    warning(sprintf("[admin auth] failed unlock attempt %d of %d",
+                    attempts, max_unlock_attempts), call. = FALSE)
+
+    remaining <- max_unlock_attempts - attempts
+    show_admin_unlock_modal(
+      error_message = if (remaining > 0L) {
+        sprintf("Incorrect password. %d attempt%s remaining.",
+                remaining, if (remaining == 1L) "" else "s")
+      } else {
+        "Incorrect password. No attempts remaining - reload the page."
+      }
+    )
   })
 
   observeEvent(input$save_api_keys, {

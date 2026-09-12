@@ -34,6 +34,7 @@ options(shiny.maxRequestSize = MAX_UPLOAD_SIZE_MB*1024^2)
 source("R/config/plugins.R")  # Plugin system configuration
 source("R/config/harmonization_config.R")  # Harmonization configuration for trait lookup
 source("R/functions/validation_utils.R")  # Core utilities (%||%, with_timeout, validators) - MUST load early
+source("R/functions/admin_auth.R")        # Optional password gate for the API key modal
 
 # =============================================================================
 # CURRENT VERSION: v1.4.4 (2026-04-14)

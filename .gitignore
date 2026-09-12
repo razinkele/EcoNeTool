@@ -40,7 +40,14 @@ Prebal/
 
 # Custom configuration files
 config/api_keys.R
+config/api_keys.json
 config/harmonization_custom.json
+
+# Secrets: plugin_server.R writes API keys to config/api_keys.json, and the
+# admin password hash (ECONETOOL_ADMIN_PASSWORD_HASH) is set via .Renviron.
+# Neither belongs in the repository.
+.Renviron
+.Rprofile.local
 
 # Large binary data files (ECOPATH databases)
 *.ewemdb
