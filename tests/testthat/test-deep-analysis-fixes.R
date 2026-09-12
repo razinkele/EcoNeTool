@@ -301,3 +301,36 @@ test_that("runtime source() of uncertainty_quantification.R is wd-independent", 
   expect_equal(offenders, character(0),
                label = "files using a wd-relative source() for uncertainty_quantification.R")
 })
+
+test_that("no runtime source() in R/ uses a wd-relative literal path", {
+  # load_all.R files are startup-only: app.R sources them from the repo root.
+  # Everything else may run at any wd, so a bare relative path is a silent
+  # failure waiting to happen. config.R's optional config/api_keys.R load is
+  # deliberately excluded - see the note there.
+  files <- list.files(app_path("R"), pattern = "[.]R$",
+                      recursive = TRUE, full.names = TRUE)
+  files <- files[!grepl("load_all[.]R$", files)]
+  files <- files[!grepl("R/config[.]R$", files)]
+
+  offenders <- character(0)
+  for (f in files) {
+    lines <- readLines(f, warn = FALSE)
+    code <- lines[!startsWith(trimws(lines), "#")]
+    idx <- which(grepl('source("', code, fixed = TRUE))
+    for (i in idx) {
+      if (!grepl("app_path(", code[i], fixed = TRUE)) {
+        offenders <- c(offenders, sprintf("%s: %s",
+                                          basename(f), trimws(code[i])))
+      }
+    }
+  }
+
+  expect_equal(offenders, character(0),
+               label = "bare wd-relative source() calls in R/")
+})
+
+test_that("parallel_lookup resolves its worker function files via app_path", {
+  lines <- readLines(app_path("R/functions/parallel_lookup.R"), warn = FALSE)
+  expect_true(any(grepl("app_path(func_file)", lines, fixed = TRUE)),
+              info = "parallel_lookup must resolve required_functions via app_path()")
+})

@@ -1153,7 +1153,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
       tryCatch({
         # Source parser functions
         if (!exists("organize_auxillary_data", mode = "function")) {
-          source("R/functions/auxillary_parser.R", local = TRUE)
+          source(app_path("R/functions/auxillary_parser.R"), local = TRUE)
         }
 
         # Organize auxillary data
@@ -1213,7 +1213,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
         if (!is.null(ecopath_data) && !is.null(ecopath_data$auxillary_data)) {
           # Source parser functions
           if (!exists("organize_auxillary_data", mode = "function")) {
-            source("R/functions/auxillary_parser.R", local = TRUE)
+            source(app_path("R/functions/auxillary_parser.R"), local = TRUE)
           }
 
           # Organize data

@@ -105,6 +105,27 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   `R/functions/trait_lookup/orchestrator.R` uses defensive
   `DBI::dbListFields()` to handle old + new schemas.
 
+- **Never `source()` a working-directory-relative path at runtime.**
+  Use `app_path()` (in `R/functions/validation_utils.R`):
+
+  ```r
+  source(app_path("R/functions/uncertainty_quantification.R"))
+  ```
+
+  A bare `source("R/functions/...")` only resolves when the working
+  directory is the repo root. Inside a function body the wd at call
+  time depends on the caller - under testthat it is `tests/testthat/`,
+  so the `source()` fails and the feature degrades silently. This bug
+  hid uncertainty quantification from every nightly run for weeks.
+  `app_path()` checks `getOption("econetool.app_root")`, then walks up
+  from `getwd()` for the `app.R` + `R/functions` marker, then falls
+  back to `getwd()`.
+
+  The `R/functions/*/load_all.R` files are the deliberate exception:
+  they run only at startup, sourced by `app.R` from the repo root.
+  A regression test in `tests/testthat/test-deep-analysis-fixes.R`
+  enforces this for every other file under `R/`.
+
 ## Commit Messages
 
 We use [Conventional Commits](https://www.conventionalcommits.org/). This drives our automatic versioning and changelog generation.

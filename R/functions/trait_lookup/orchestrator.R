@@ -27,10 +27,11 @@
 # Verify HARMONIZATION_CONFIG exists (loaded by app.R)
 if (!exists("HARMONIZATION_CONFIG")) {
   warning("HARMONIZATION_CONFIG not found. Loading from config file...")
-  if (file.exists("R/config/harmonization_config.R")) {
-    source("R/config/harmonization_config.R")
+  cfg_file <- app_path("R/config/harmonization_config.R")
+  if (file.exists(cfg_file)) {
+    source(cfg_file)
   } else {
-    stop("Cannot find R/config/harmonization_config.R - run from app root directory")
+    stop(sprintf("Cannot find harmonization_config.R (looked in %s)", cfg_file))
   }
 }
 
@@ -591,7 +592,7 @@ lookup_species_traits <- function(species_name,
 
     # Source local databases if not already loaded
     if (!exists("lookup_bvol_traits")) {
-      source("R/functions/local_trait_databases.R")
+      source(app_path("R/functions/local_trait_databases.R"))
     }
 
     # Lookup by AphiaID (preferred) with species name as fallback
@@ -637,7 +638,7 @@ lookup_species_traits <- function(species_name,
 
     # Source local databases if not already loaded
     if (!exists("lookup_species_enriched_traits")) {
-      source("R/functions/local_trait_databases.R")
+      source(app_path("R/functions/local_trait_databases.R"))
     }
 
     # Lookup by AphiaID (preferred) with species name as fallback

@@ -186,8 +186,12 @@ lookup_species_parallel <- function(species_name,
   )
 
   for (func_file in required_functions) {
-    if (file.exists(func_file)) {
-      source(func_file, local = FALSE)
+    resolved <- app_path(func_file)
+    if (file.exists(resolved)) {
+      source(resolved, local = FALSE)
+    } else {
+      warning(sprintf("[parallel_lookup] worker dependency not found: %s", resolved),
+              call. = FALSE)
     }
   }
 
