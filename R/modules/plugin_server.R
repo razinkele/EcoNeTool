@@ -196,7 +196,7 @@ plugin_server <- function(input, output, session, plugin_states) {
   }
 
   observeEvent(input$show_api_keys, {
-    if (!admin_gate_enabled() || isTRUE(session$userData$admin_unlocked)) {
+    if (admin_authorized(session$userData$admin_unlocked)) {
       show_api_key_modal()
     } else {
       show_admin_unlock_modal()
@@ -242,6 +242,18 @@ plugin_server <- function(input, output, session, plugin_states) {
   })
 
   observeEvent(input$save_api_keys, {
+    # Authorise the WRITE path independently of the modal. Input IDs are
+    # client-controlled, so a caller can fire this without ever opening the
+    # dialog the gate protects.
+    if (!admin_authorized(session$userData$admin_unlocked)) {
+      warning("[admin auth] save_api_keys fired without an unlocked session; refusing",
+              call. = FALSE)
+      removeModal()
+      showNotification("Admin password required to change API keys.",
+                       type = "error", duration = 6)
+      return()
+    }
+
     dir.create("config", showWarnings = FALSE)
     if (!requireNamespace("jsonlite", quietly = TRUE)) {
       showNotification("jsonlite package required. Install with: install.packages('jsonlite')", type = "error")

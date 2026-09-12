@@ -145,6 +145,14 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   Hashing is `openssl::bcrypt_pbkdf` at 12 rounds with a random
   16-byte salt, compared in constant time.
 
+  **Gate every observer that touches protected state, not just the
+  one that draws the modal.** Shiny input IDs are client-controlled, so
+  `Shiny.setInputValue('save_api_keys', 1)` from a browser console
+  reaches the save handler without any dialog ever opening. Both
+  `show_api_keys` (read) and `save_api_keys` (write) call
+  `admin_authorized(session$userData$admin_unlocked)`; a new protected
+  action must call it too.
+
   The unlock is held in `session$userData$admin_unlocked`, never a
   global: a global would leak one user's unlock to every concurrent
   session in the same R process, the same hazard `get_harm_config()`

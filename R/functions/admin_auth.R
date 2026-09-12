@@ -184,6 +184,24 @@ verify_admin_password <- function(password,
   constant_time_equal(actual, expected)
 }
 
+#' May this session act on protected configuration?
+#'
+#' The single decision every protected observer must consult. Shiny input IDs
+#' are client-controlled: gating only the observer that *renders* a form
+#' leaves the observer that *acts* on it reachable directly, e.g.
+#' \code{Shiny.setInputValue('save_api_keys', 1)} from a browser console. So
+#' the read path and the write path both call this, not just the one that
+#' draws the modal.
+#'
+#' @param unlocked The session's unlock flag, normally
+#'   \code{session$userData$admin_unlocked}. Anything other than TRUE is
+#'   treated as locked.
+#' @return TRUE when the gate is off, or when this session has unlocked it.
+#' @export
+admin_authorized <- function(unlocked) {
+  !admin_gate_enabled() || isTRUE(unlocked)
+}
+
 #' Print a pasteable environment line for a new admin password
 #'
 #' Deliberately writes nothing: silently creating a secrets file is worse than

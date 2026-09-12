@@ -168,3 +168,58 @@ test_that("set_admin_password prints a pasteable env line and writes nothing", {
   expect_true(any(grepl("ECONETOOL_ADMIN_PASSWORD_HASH", out, fixed = TRUE)))
   expect_true(verify_admin_password("hunter2", record))
 })
+
+# ---------------------------------------------------------------------------
+# admin_authorized: the single decision both observers must share
+# ---------------------------------------------------------------------------
+# Shiny input IDs are client-controlled. Gating only the modal that renders
+# the form leaves the save handler reachable directly via
+# Shiny.setInputValue('save_api_keys', 1), so BOTH observers must consult
+# this before acting.
+
+test_that("admin_authorized allows everything when the gate is off", {
+  with_admin_hash(NULL, {
+    expect_true(admin_authorized(FALSE))
+    expect_true(admin_authorized(TRUE))
+    expect_true(admin_authorized(NULL))
+  })
+})
+
+test_that("admin_authorized denies a locked session when the gate is on", {
+  skip_if_no_package("openssl")
+
+  with_admin_hash(hash_admin_password("hunter2"), {
+    expect_false(admin_authorized(FALSE))
+    expect_false(admin_authorized(NULL))
+    expect_false(admin_authorized(NA))
+    expect_false(admin_authorized("yes"))   # only TRUE counts
+  })
+})
+
+test_that("admin_authorized allows an unlocked session when the gate is on", {
+  skip_if_no_package("openssl")
+
+  with_admin_hash(hash_admin_password("hunter2"), {
+    expect_true(admin_authorized(TRUE))
+  })
+})
+
+# ---------------------------------------------------------------------------
+# Deployment: the record must survive the file it is delivered in
+# ---------------------------------------------------------------------------
+
+test_that("a password record survives an .Renviron round-trip intact", {
+  skip_if_no_package("openssl")
+
+  record <- hash_admin_password("correct horse battery staple")
+  tmp <- tempfile(fileext = ".Renviron")
+  on.exit(unlink(tmp), add = TRUE)
+  writeLines(sprintf("%s=%s", ENV_VAR, record), tmp)
+
+  with_admin_hash(NULL, {
+    readRenviron(tmp)
+    # The record contains "$" separators; readRenviron must not eat them.
+    expect_identical(Sys.getenv(ENV_VAR), record)
+    expect_true(verify_admin_password("correct horse battery staple"))
+  })
+})
