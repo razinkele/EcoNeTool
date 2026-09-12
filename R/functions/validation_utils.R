@@ -535,3 +535,56 @@ habitat_load_bbox <- function(study_bbox, buffer_deg = 0.05, max_span_deg = 30) 
 
   unname(c(xmin, ymin, xmax, ymax))
 }
+
+#' Resolve a path relative to the application root
+#'
+#' Returns an absolute path to a file inside the EcoNeTool repository,
+#' independent of the current working directory. Plain
+#' `source("R/functions/...")` calls only work when the working directory is
+#' the repo root; inside testthat (wd is `tests/testthat/`) or any runtime that
+#' changes directory, they fail silently and the caller degrades.
+#'
+#' Resolution order:
+#' 1. `getOption("econetool.app_root")`, when set and still a directory.
+#' 2. Walk up from `getwd()` looking for the `app.R` + `R/functions` marker.
+#' 3. Fall back to `getwd()` so behaviour matches the old relative path.
+#'
+#' @param ... Path components appended to the app root, as for [file.path()].
+#'   With no arguments, the app root itself is returned.
+#' @return Character string with the resolved path.
+#' @export
+#' @examples
+#' \dontrun{
+#' source(app_path("R/functions/uncertainty_quantification.R"))
+#' file.exists(app_path("data", "species_enriched.xlsx"))
+#' }
+app_path <- function(...) {
+  root <- getOption("econetool.app_root")
+
+  if (is.null(root) || !dir.exists(root)) {
+    root <- NULL
+    dir <- normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+
+    # Bounded upward walk; stops at the filesystem root
+    repeat {
+      if (file.exists(file.path(dir, "app.R")) &&
+            dir.exists(file.path(dir, "R", "functions"))) {
+        root <- dir
+        break
+      }
+      parent <- dirname(dir)
+      if (identical(parent, dir)) break
+      dir <- parent
+    }
+
+    if (is.null(root)) {
+      root <- normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+    }
+  }
+
+  if (...length() == 0) {
+    return(root)
+  }
+
+  file.path(root, ...)
+}

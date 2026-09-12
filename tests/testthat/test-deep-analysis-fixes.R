@@ -250,3 +250,54 @@ test_that("habitat_load_bbox warns and caps only for absurdly large areas", {
 test_that("habitat_load_bbox does not warn for a normal multi-degree area", {
   expect_silent(habitat_load_bbox(c(18, 54, 23, 58), buffer_deg = 0.05))
 })
+
+# =============================================================================
+# app_path(): resolve repo-relative paths independently of the working directory
+# =============================================================================
+# Regression: orchestrator.R and network_visualization.R sourced
+# "R/functions/uncertainty_quantification.R" with a wd-relative path, so
+# uncertainty quantification was silently skipped whenever wd != repo root
+# (e.g. under testthat, where wd is tests/testthat/).
+
+test_that("app_path resolves repo files when wd is not the repo root", {
+  # Precondition: these tests run with wd = tests/testthat, not the repo root.
+  skip_if(file.exists("R/functions/uncertainty_quantification.R"),
+          "wd is already the repo root; this test needs a non-root wd to be meaningful")
+
+  expect_true(file.exists(app_path("R/functions/uncertainty_quantification.R")))
+})
+
+test_that("app_path returns the repo root when called with no arguments", {
+  expect_true(file.exists(file.path(app_path(), "app.R")))
+  expect_true(file.exists(file.path(app_path(), "VERSION")))
+})
+
+test_that("uncertainty quantification functions load from a non-root wd", {
+  skip_if(file.exists("R/functions/uncertainty_quantification.R"),
+          "wd is already the repo root; this test needs a non-root wd to be meaningful")
+
+  env <- new.env(parent = globalenv())
+  source(app_path("R/functions/uncertainty_quantification.R"), local = env)
+
+  expect_true(exists("calculate_all_trait_confidence", envir = env, inherits = FALSE))
+  expect_true(exists("map_confidence_to_size", envir = env, inherits = FALSE))
+})
+
+test_that("runtime source() of uncertainty_quantification.R is wd-independent", {
+  # Guards the regression directly: a bare relative path here resolves against
+  # the caller's wd, so the source() fails and the feature degrades silently.
+  needle <- 'source("R/functions/uncertainty_quantification.R"'
+  offenders <- character(0)
+
+  for (rel in c("R/functions/trait_lookup/orchestrator.R",
+                "R/functions/network_visualization.R")) {
+    lines <- readLines(app_path(rel), warn = FALSE)
+    hits <- which(grepl(needle, lines, fixed = TRUE))
+    if (length(hits) > 0) {
+      offenders <- c(offenders, sprintf("%s:%s", rel, paste(hits, collapse = ",")))
+    }
+  }
+
+  expect_equal(offenders, character(0),
+               label = "files using a wd-relative source() for uncertainty_quantification.R")
+})

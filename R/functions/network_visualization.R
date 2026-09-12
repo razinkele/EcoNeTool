@@ -206,9 +206,10 @@ create_foodweb_visnetwork <- function(net,
     # Source uncertainty quantification functions if not loaded
     if (!exists("map_confidence_to_size")) {
       tryCatch({
-        source("R/functions/uncertainty_quantification.R", local = TRUE)
+        source(app_path("R/functions/uncertainty_quantification.R"), local = TRUE)
       }, error = function(e) {
-        message("⚠️  Uncertainty visualization not available: ", e$message)
+        warning(sprintf("[network_visualization] uncertainty_quantification.R source failed: %s",
+                        conditionMessage(e)), call. = FALSE)
       })
     }
 

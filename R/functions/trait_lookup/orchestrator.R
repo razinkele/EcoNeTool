@@ -1390,7 +1390,7 @@ lookup_species_traits <- function(species_name,
   if (!exists("calculate_all_trait_confidence")) {
     message("  [DEBUG] Sourcing uncertainty_quantification.R...")
     tryCatch({
-      source("R/functions/uncertainty_quantification.R")
+      source(app_path("R/functions/uncertainty_quantification.R"))
       message("  [DEBUG] uncertainty_quantification.R sourced successfully")
     }, error = function(e) {
       warning(sprintf("[orchestrator] uncertainty_quantification.R source failed: %s",
