@@ -169,7 +169,10 @@ parse_ecopath_data <- function(basic_est_file, diet_file) {
   # Create info data frame
   info <- data.frame(
     meanB = biomass_values,
-    fg = factor(functional_groups, levels = c("Benthos", "Detritus", "Fish", "Phytoplankton", "Zooplankton")),
+    # Canonical seven-level set from functional_group_utils.R. Hardcoding five
+    # here silently coerced Birds and Mammals - present in most Baltic and
+    # Arctic models - to NA while every other column stayed populated.
+    fg = factor(functional_groups, levels = get_functional_group_levels()),
     bodymasses = body_masses,
     met.types = met_types,
     efficiencies = efficiencies,

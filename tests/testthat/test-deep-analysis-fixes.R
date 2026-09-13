@@ -360,3 +360,87 @@ test_that("trait_lookup/load_all.R is self-sufficient in a fresh session", {
   expect_true(any(grepl("LOADED_OK", out, fixed = TRUE)),
               info = paste(utils::tail(out, 6), collapse = " | "))
 })
+
+# -----------------------------------------------------------------------------
+# #29 - ecopath_csv: the fg factor must carry all seven functional groups
+# -----------------------------------------------------------------------------
+# The factor levels were hardcoded to five, so a model containing seabirds or
+# marine mammals - routine in Baltic and Arctic food webs - silently coerced
+# those rows' fg to NA while every other column stayed populated.
+
+test_that("parse_ecopath_data keeps Birds and Mammals in the fg factor", {
+  basic <- tempfile(fileext = ".csv")
+  diet <- tempfile(fileext = ".csv")
+  on.exit(unlink(c(basic, diet)), add = TRUE)
+
+  writeLines(c(
+    "Group,Biomass,PB,QB",
+    "Cod,10,0.5,3",
+    "Grey seal,0.5,0.1,10",
+    "Common gull,0.2,0.2,80",
+    "Detritus,100,0,0"
+  ), basic)
+
+  writeLines(c(
+    "Prey,Cod,Grey seal,Common gull,Detritus",
+    "Cod,0,0.6,0.3,0",
+    "Grey seal,0,0,0,0",
+    "Common gull,0,0,0,0",
+    "Detritus,0,0,0,0"
+  ), diet)
+
+  res <- parse_ecopath_data(basic, diet)
+
+  expect_false(any(is.na(res$info$fg)),
+               info = paste("NA fg for:",
+                            paste(rownames(res$info)[is.na(res$info$fg)],
+                                  collapse = ", ")))
+  expect_equal(as.character(res$info["Grey seal", "fg"]), "Mammals")
+  expect_equal(as.character(res$info["Common gull", "fg"]), "Birds")
+})
+
+test_that("the fg factor uses the canonical seven-level set", {
+  basic <- tempfile(fileext = ".csv")
+  diet <- tempfile(fileext = ".csv")
+  on.exit(unlink(c(basic, diet)), add = TRUE)
+
+  writeLines(c(
+    "Group,Biomass,PB,QB",
+    "Cod,10,0.5,3",
+    "Herring,20,1.0,5",
+    "Detritus,100,0,0"
+  ), basic)
+  writeLines(c(
+    "Prey,Cod,Herring,Detritus",
+    "Cod,0,0,0",
+    "Herring,0.5,0,0",
+    "Detritus,0,0.4,0"
+  ), diet)
+
+  res <- parse_ecopath_data(basic, diet)
+
+  expect_equal(levels(res$info$fg), get_functional_group_levels())
+})
+
+# -----------------------------------------------------------------------------
+# #20 - ecopath_windows: the RODBC channel must close on every path
+# -----------------------------------------------------------------------------
+# The handle was closed only on the success path. Any stop() between connect
+# and close - an unreadable table, a missing column - leaked the ODBC channel
+# for the life of the R process, and shiny-server reuses that process.
+
+test_that("the RODBC connection is released by on.exit, not only on success", {
+  src <- readLines(app_path("R/functions/ecopath/ecopath_windows.R"), warn = FALSE)
+  code <- src[!startsWith(trimws(src), "#")]
+
+  connect_at <- which(grepl("odbcConnectAccess2007(", code, fixed = TRUE))
+  skip_if(length(connect_at) == 0, "no RODBC connect call found")
+
+  # An on.exit registration must follow the connect, before any other work,
+  # so an error between the two cannot strand the handle.
+  window <- code[connect_at[1]:min(connect_at[1] + 20L, length(code))]
+  expect_true(any(grepl("on.exit(", window, fixed = TRUE)),
+              info = "no on.exit() registered within 20 lines of odbcConnectAccess2007()")
+  expect_true(any(grepl("odbcClose", window, fixed = TRUE)),
+              info = "the on.exit near the connect does not close the channel")
+})

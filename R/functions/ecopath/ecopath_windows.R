@@ -67,6 +67,14 @@ parse_ecopath_native_windows <- function(db_file) {
       )
     }
 
+    # Release the ODBC channel on EVERY exit path. Previously it was closed
+    # only where parsing succeeded, so any stop() below - an unreadable table,
+    # a missing column - stranded the handle for the life of the R process,
+    # and shiny-server reuses that process across sessions. con_open lets the
+    # explicit close stay where it is without double-closing.
+    con_open <- TRUE
+    on.exit(if (con_open) try(RODBC::odbcClose(con), silent = TRUE), add = TRUE)
+
     # List available tables
     tables_info <- RODBC::sqlTables(con)
     tables <- tables_info$TABLE_NAME
@@ -364,6 +372,7 @@ parse_ecopath_native_windows <- function(db_file) {
 
     # Close connection
     RODBC::odbcClose(con)
+    con_open <- FALSE
     message("✓ Database connection closed")
 
     # Validate results
