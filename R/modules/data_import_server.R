@@ -163,12 +163,13 @@ data_import_server <- function(input, output, session, net_reactive, info_reacti
 
   # Helper: assign colors and finalize import into the app
   finalize_import <- function(loaded_net, loaded_info, format_label, removed_msg = NULL) {
-    fg_levels <- get_functional_group_levels()
-    loaded_info$colfg <- sapply(as.character(loaded_info$fg), function(fg) {
-      idx <- which(fg_levels == fg)
-      if (length(idx) == 0) return("gray")
-      COLOR_SCHEME[idx]
-    })
+    # finalize_network() re-keys info to V(net)$name before deriving colfg.
+    # Deriving colours off an unaligned frame - which is what happened when an
+    # uploaded Species_Info sheet went through merge(..., by = "species") and
+    # came back alphabetised - painted every node with another species' colour.
+    finalized <- finalize_network(loaded_net, loaded_info)
+    loaded_net <- finalized$net
+    loaded_info <- finalized$info
 
     net_reactive(loaded_net)
     info_reactive(loaded_info)

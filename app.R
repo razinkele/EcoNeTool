@@ -109,6 +109,7 @@ if (ENABLE_PHASE6) {
 
 # Analysis functions (organized by domain)
 source("R/functions/functional_group_utils.R")  # Shared utilities
+source("R/functions/network_finalize.R")        # finalize_network(): align info to V(net), derive colfg
 # NOTE: validation_utils.R is now sourced early (line 27) for %||% and with_timeout
 source("R/functions/trophic_levels.R")
 source("R/functions/network_visualization.R")
@@ -766,7 +767,8 @@ server <- function(input, output, session) {
   # ============================================================================
   metaweb_manager_server(input, output, session, current_metaweb,
                          net_reactive, info_reactive,
-                         metaweb_metadata, dashboard_trigger)
+                         metaweb_metadata, dashboard_trigger,
+                         refresh_data_editor)
 
   # ============================================================================
   # SPATIAL ANALYSIS

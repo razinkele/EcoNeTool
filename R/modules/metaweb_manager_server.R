@@ -12,9 +12,13 @@
 #' @param info_reactive ReactiveVal holding the species info data frame
 #' @param metaweb_metadata ReactiveVal holding metadata for dashboard
 #' @param dashboard_trigger ReactiveVal to trigger dashboard updates
+#' @param refresh_data_editor Function returned by dataeditor_inline_server(),
+#'   called after an export so the editor shows the new network. Optional so
+#'   existing callers that omit it keep working.
 metaweb_manager_server <- function(input, output, session, current_metaweb,
                                     net_reactive, info_reactive,
-                                    metaweb_metadata, dashboard_trigger) {
+                                    metaweb_metadata, dashboard_trigger,
+                                    refresh_data_editor = NULL) {
 
   # Load regional metaweb
   observeEvent(input$load_regional_btn, {
@@ -443,25 +447,21 @@ metaweb_manager_server <- function(input, output, session, current_metaweb,
       # Convert metaweb to igraph
       new_net <- metaweb_to_igraph(current_metaweb())
 
-      # Update reactive network
-      net_reactive(new_net)
+      # finalize_network() re-keys the metaweb's species table to V(net)$name,
+      # canonicalises fg and derives colfg. The hand-rolled defaults this
+      # replaced produced a frame with no colfg, no `species` column (the
+      # metaweb calls it species_name) and fg = "Other" - not one of
+      # get_functional_group_levels() - so the Food Web tab failed its
+      # required-columns check immediately after an export.
+      finalized <- finalize_network(new_net, current_metaweb()$species)
 
-      # Try to update info if it exists
-      if ("species_name" %in% colnames(current_metaweb()$species)) {
-        # Create a basic info data frame
-        info_df <- current_metaweb()$species
-        rownames(info_df) <- info_df$species_name
+      net_reactive(finalized$net)
+      info_reactive(finalized$info)
 
-        # Ensure required columns exist (with defaults if missing)
-        if (!"meanB" %in% colnames(info_df)) info_df$meanB <- 1
-        if (!"fg" %in% colnames(info_df)) info_df$fg <- factor(rep("Other", nrow(info_df)))
-        if (!"bodymasses" %in% colnames(info_df)) info_df$bodymasses <- 1
-        if (!"met.types" %in% colnames(info_df)) info_df$met.types <- "Other"
-        if (!"efficiencies" %in% colnames(info_df)) info_df$efficiencies <- 0.5
-
-        # Update reactive info
-        info_reactive(info_df)
-      }
+      # Both were missing: the data editor kept showing the previous network,
+      # and the dashboard never recomputed.
+      if (is.function(refresh_data_editor)) refresh_data_editor()
+      dashboard_trigger(dashboard_trigger() + 1)
 
       output$export_status <- renderPrint({
         cat("SUCCESS: Metaweb converted to active network!\n")
