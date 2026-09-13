@@ -202,14 +202,24 @@ API_KEYS <- list2env(list(
   worms_key = ""  # WoRMS usually doesn't require key, but rate limits apply
 ), parent = emptyenv())
 
-# File path for user's custom API keys
+# File paths for the user's custom API keys.
 #
-# NOTE: deliberately left working-directory-relative rather than wrapped in
-# app_path(). This is a startup-only load of user-supplied secrets; making it
-# wd-independent could start picking up a config/api_keys.R that a deployment
-# previously ignored. The guard test in
-# tests/testthat/test-deep-analysis-fixes.R excludes this file for that reason.
-API_KEYS_FILE <- "config/api_keys.R"
+# Resolved through app_path() so the loader here and the writer in
+# R/modules/plugin_server.R always agree, whatever the working directory is.
+# Both sides are guarded by file.exists(), so a mismatch would silently save
+# keys to one location and read them from another.
+#
+# app_path() is NOT assumed to exist: config.R is sourced at app.R:30 and
+# directly by a dozen test files, sometimes before validation_utils.R has
+# loaded. The fallback reproduces the historical wd-relative behaviour rather
+# than erroring at source time.
+.config_file <- function(relative) {
+  if (exists("app_path", mode = "function")) app_path(relative) else relative
+}
+
+API_KEYS_FILE <- .config_file("config/api_keys.R")
+API_KEYS_JSON <- .config_file("config/api_keys.json")
+API_KEYS_TEMPLATE <- .config_file("config/api_keys.R.template")
 
 # Load user's API keys if file exists (overrides defaults)
 if (file.exists(API_KEYS_FILE)) {
@@ -221,16 +231,16 @@ if (file.exists(API_KEYS_FILE)) {
   })
 } else {
   # Inform user about API key template
-  if (file.exists("config/api_keys.R.template")) {
-    message("ℹ API key template available. Copy config/api_keys.R.template to config/api_keys.R and add your credentials.")
+  if (file.exists(API_KEYS_TEMPLATE)) {
+    message("ℹ API key template available. Copy config/api_keys.R.template to ",
+            "config/api_keys.R and add your credentials.")
   }
 }
 
 # Also load from JSON format (safer, preferred)
-json_keys_file <- "config/api_keys.json"
-if (file.exists(json_keys_file)) {
+if (file.exists(API_KEYS_JSON)) {
   tryCatch({
-    json_keys <- jsonlite::fromJSON(json_keys_file)
+    json_keys <- jsonlite::fromJSON(API_KEYS_JSON)
     for (key in names(json_keys)) {
       API_KEYS[[key]] <- json_keys[[key]]
     }

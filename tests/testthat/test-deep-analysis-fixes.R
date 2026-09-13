@@ -305,12 +305,11 @@ test_that("runtime source() of uncertainty_quantification.R is wd-independent", 
 test_that("no runtime source() in R/ uses a wd-relative literal path", {
   # load_all.R files are startup-only: app.R sources them from the repo root.
   # Everything else may run at any wd, so a bare relative path is a silent
-  # failure waiting to happen. config.R's optional config/api_keys.R load is
-  # deliberately excluded - see the note there.
+  # failure waiting to happen. config.R is no longer excluded - its API key
+  # paths now resolve through app_path(); see test-api-key-paths.R.
   files <- list.files(app_path("R"), pattern = "[.]R$",
                       recursive = TRUE, full.names = TRUE)
   files <- files[!grepl("load_all[.]R$", files)]
-  files <- files[!grepl("R/config[.]R$", files)]
 
   offenders <- character(0)
   for (f in files) {

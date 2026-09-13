@@ -171,7 +171,7 @@ plugin_server <- function(input, output, session, plugin_states) {
       textInput("api_key_freshwater", "freshwaterecology.info API Key:",
                 value = if (exists("API_KEYS")) API_KEYS$freshwaterecology_key %||% "" else ""),
       tags$p(class = "text-muted",
-             "Keys saved to config/api_keys.R (gitignored). AlgaeBase: register at algaebase.org."),
+             "Keys saved to config/api_keys.json (gitignored). AlgaeBase: register at algaebase.org."),
       footer = tagList(
         modalButton("Cancel"),
         actionButton("save_api_keys", "Save Keys", class = "btn-primary", icon = icon("save"))
@@ -254,7 +254,9 @@ plugin_server <- function(input, output, session, plugin_states) {
       return()
     }
 
-    dir.create("config", showWarnings = FALSE)
+    # Write through the same constants config.R reads, so the two cannot
+    # resolve the same relative path against different working directories.
+    dir.create(dirname(API_KEYS_JSON), showWarnings = FALSE, recursive = TRUE)
     if (!requireNamespace("jsonlite", quietly = TRUE)) {
       showNotification("jsonlite package required. Install with: install.packages('jsonlite')", type = "error")
       return()
@@ -265,10 +267,10 @@ plugin_server <- function(input, output, session, plugin_states) {
       algaebase_password = input$api_key_algaebase_pass,
       freshwaterecology_key = input$api_key_freshwater
     )
-    jsonlite::write_json(keys_list, "config/api_keys.json", auto_unbox = TRUE, pretty = TRUE)
+    jsonlite::write_json(keys_list, API_KEYS_JSON, auto_unbox = TRUE, pretty = TRUE)
 
     # Remove old vulnerable .R format if it exists
-    old_file <- "config/api_keys.R"
+    old_file <- API_KEYS_FILE
     if (file.exists(old_file)) {
       file.remove(old_file)
       message("Removed legacy config/api_keys.R (replaced by config/api_keys.json)")

@@ -25,16 +25,22 @@ library(leaflet)  # Interactive mapping for spatial analysis
 # SOURCE CONFIGURATION AND FUNCTIONS
 # ============================================================================
 
+# Core utilities first: config.R resolves its API key paths through app_path()
+# when it is available, so validation_utils.R has to be loaded by then.
+# config.R still works without it (it falls back to wd-relative paths), but
+# only this order gives the app wd-independent config paths.
+source("R/functions/validation_utils.R")  # %||%, with_timeout, app_path, validators
+source("R/functions/admin_auth.R")        # Optional password gate for the API key modal
+
 # Configuration constants (COLOR_SCHEME, METAWEB_PATHS, etc.)
-# MUST be loaded first before any constants are used
+# MUST be loaded before any constants are used
 source("R/config.R")
 
 # Set Shiny upload size limit using config constant
 options(shiny.maxRequestSize = MAX_UPLOAD_SIZE_MB*1024^2)
 source("R/config/plugins.R")  # Plugin system configuration
 source("R/config/harmonization_config.R")  # Harmonization configuration for trait lookup
-source("R/functions/validation_utils.R")  # Core utilities (%||%, with_timeout, validators) - MUST load early
-source("R/functions/admin_auth.R")        # Optional password gate for the API key modal
+# validation_utils.R and admin_auth.R are sourced above, before R/config.R
 
 # =============================================================================
 # CURRENT VERSION: v1.4.4 (2026-04-14)
