@@ -298,3 +298,93 @@ run_complete_rpath_workflow <- function(ecopath_db_file,
 #   "Closure" = 0.0
 # )
 # comparison <- compare_scenarios(model, scenarios, years = 50)
+
+# =============================================================================
+# BALANCED-MODEL DIAGNOSTICS
+# =============================================================================
+# Both helpers take the BALANCED model returned by run_ecopath_balance(), not
+# the Rpath params object. The params object comes from create.rpath.params()
+# and is input-side: it carries uppercase $Type and has no $TL. Trophic level
+# only exists after balancing, where the column set is $TL with lowercase
+# $type. Reading TL off params$model yields NULL, so mean() returned NA and
+# max() returned -Inf.
+
+#' Require a balanced model that actually carries trophic levels
+#'
+#' @param model Candidate model frame.
+#' @param scope Caller label used in the warning.
+#' @return TRUE when usable; FALSE (with a warning) otherwise.
+#' @keywords internal
+.require_balanced_model <- function(model, scope) {
+  if (is.null(model) || !is.data.frame(model) || nrow(model) == 0) {
+    warning(sprintf("[%s] no model supplied", scope), call. = FALSE)
+    return(FALSE)
+  }
+  if (!"TL" %in% names(model)) {
+    msg <- paste0(
+      "[%s] model has no TL column - this looks like the Rpath params ",
+      "object rather than the balanced model from run_ecopath_balance()"
+    )
+    warning(sprintf(msg, scope), call. = FALSE)
+    return(FALSE)
+  }
+  if (!"type" %in% names(model)) {
+    warning(sprintf("[%s] model has no lowercase 'type' column", scope),
+            call. = FALSE)
+    return(FALSE)
+  }
+  TRUE
+}
+
+#' Summary diagnostics for a balanced Ecopath model
+#'
+#' @param model Balanced model from run_ecopath_balance().
+#' @return Named list of metrics, or NULL (with a warning) if `model` is not a
+#'   balanced model.
+#' @export
+calculate_ecopath_diagnostics <- function(model) {
+  if (!.require_balanced_model(model, "diagnostics")) {
+    return(NULL)
+  }
+
+  living <- model$type < 3
+
+  list(
+    total_biomass = sum(model$Biomass[living], na.rm = TRUE),
+    mean_trophic_level = mean(model$TL[living], na.rm = TRUE),
+    primary_production = sum(model$Biomass[model$type == 1] *
+                               model$PB[model$type == 1], na.rm = TRUE),
+    n_groups = sum(living, na.rm = TRUE),
+    n_producers = sum(model$type == 1, na.rm = TRUE),
+    n_consumers = sum(model$type == 0, na.rm = TRUE)
+  )
+}
+
+#' Biomass aggregated into half-unit trophic level bins
+#'
+#' @param model Balanced model from run_ecopath_balance().
+#' @return Named numeric vector of biomass per TL bin, lowest bin first, or
+#'   NULL (with a warning) if `model` is not a balanced model.
+#' @export
+trophic_pyramid_bins <- function(model) {
+  if (!.require_balanced_model(model, "trophic pyramid")) {
+    return(NULL)
+  }
+
+  living <- model[model$type < 3, , drop = FALSE]
+  tl <- living$TL
+  if (all(is.na(tl))) {
+    warning("[trophic pyramid] no non-NA trophic levels", call. = FALSE)
+    return(NULL)
+  }
+
+  # ceiling(max(TL)) can equal the lower bound (every group at TL 1), which
+  # makes seq() a single point and cut() unusable. Always leave one full bin.
+  upper <- max(ceiling(max(tl, na.rm = TRUE)), 1.5)
+  breaks <- seq(1, upper, by = 0.5)
+
+  # include.lowest keeps the primary producers sitting at exactly TL 1.0 -
+  # the base of the pyramid - which cut()'s right-closed default discarded.
+  bins <- cut(tl, breaks = breaks, include.lowest = TRUE)
+  tapply(living$Biomass, bins, sum, na.rm = TRUE)
+}

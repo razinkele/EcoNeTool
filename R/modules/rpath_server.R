@@ -1609,22 +1609,20 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
       tryCatch({
         showNotification("Calculating model diagnostics...", type = "message")
 
-        # Store diagnostics
-        model <- rpath_values$params$model
+        # The BALANCED model, not rpath_values$params$model: trophic level is
+        # produced by balancing, so the params object has no $TL at all and
+        # every metric below came back NA.
+        diagnostics <- calculate_ecopath_diagnostics(rpath_values$ecopath_model)
 
-        # Calculate key metrics
-        total_biomass <- sum(model$Biomass[model$Type < 3], na.rm = TRUE)
-        mean_tl <- mean(model$TL[model$Type < 3], na.rm = TRUE)
-        total_pp <- sum(model$Biomass[model$Type == 1] * model$PB[model$Type == 1], na.rm = TRUE)
+        if (is.null(diagnostics)) {
+          showNotification(
+            "Diagnostics unavailable: the balanced model has no trophic levels.",
+            type = "error"
+          )
+          return()
+        }
 
-        rpath_values$diagnostics <- list(
-          total_biomass = total_biomass,
-          mean_trophic_level = mean_tl,
-          primary_production = total_pp,
-          n_groups = sum(model$Type < 3),
-          n_producers = sum(model$Type == 1),
-          n_consumers = sum(model$Type == 0)
-        )
+        rpath_values$diagnostics <- diagnostics
 
         showNotification("Diagnostics calculated!", type = "message", duration = 3)
 
@@ -1658,18 +1656,24 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
 
     # Trophic pyramid plot
     output$trophic_pyramid <- renderPlot({
-      if (is.null(rpath_values$params)) {
+      # Guard on what this plot actually consumes. Checking params instead let
+      # a loaded-but-unbalanced model fall through to the TL code below.
+      if (is.null(rpath_values$ecopath_model)) {
         plot.new()
-        text(0.5, 0.5, "Run model to see trophic structure", cex = 1.5)
+        text(0.5, 0.5, "Run mass balance to see trophic structure", cex = 1.5)
         return()
       }
 
-      model <- rpath_values$params$model
-      living <- model[model$Type < 3, ]
+      # Balanced model again: params$model has no $TL, so max(NULL) was -Inf
+      # and seq(1, ceiling(-Inf)) threw "'to' must be a finite number",
+      # breaking this plot for every model.
+      biomass_by_tl <- trophic_pyramid_bins(rpath_values$ecopath_model)
 
-      # Calculate biomass by trophic level
-      tl_bins <- cut(living$TL, breaks = seq(1, ceiling(max(living$TL, na.rm = TRUE)), by = 0.5))
-      biomass_by_tl <- tapply(living$Biomass, tl_bins, sum, na.rm = TRUE)
+      if (is.null(biomass_by_tl)) {
+        plot.new()
+        text(0.5, 0.5, "Trophic levels unavailable - run mass balance", cex = 1.2)
+        return()
+      }
 
       barplot(
         rev(biomass_by_tl),
