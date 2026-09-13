@@ -183,9 +183,26 @@ deploy_shiny_server() {
         cd "$BACKUP_DIR" && ls -t *.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm
     fi
 
-    # Remove old deployment contents
-    print_status "Removing old deployment contents..."
-    rm -rf /srv/shiny-server/EcoNeTool/*
+    # Remove old deployment contents, preserving server-only state.
+    #
+    # A bare `rm -rf /srv/shiny-server/EcoNeTool/*` deleted everything and then
+    # copied back only CRITICAL_ITEMS. r-libs/ (app-local packages such as
+    # icesSAG, made discoverable at app.R:9) is in neither list and has no
+    # counterpart in the repo, so every run destroyed it - recoverable only by
+    # unpacking the backup tar above by hand.
+    #
+    # Dotfiles are preserved explicitly. The old glob never matched them, so a
+    # find-based delete that removed .Renviron would be a regression
+    # introduced by this very fix.
+    print_status "Removing old deployment contents (preserving server state)..."
+    PRESERVE_ITEMS=("r-libs" "cache" "restart.txt")
+    FIND_KEEP=()
+    for KEEP in "${PRESERVE_ITEMS[@]}"; do
+        FIND_KEEP+=(! -name "$KEEP")
+    done
+    find /srv/shiny-server/EcoNeTool -mindepth 1 -maxdepth 1 \
+         ! -name '.*' "${FIND_KEEP[@]}" -exec rm -rf {} +
+    print_success "Old contents removed (kept: ${PRESERVE_ITEMS[*]} and dotfiles)"
 
     # List of critical files and directories to copy
     CRITICAL_ITEMS=(
@@ -201,6 +218,10 @@ deploy_shiny_server() {
         "metawebs"
         "data"
         "config"
+        # Tracked in git and loaded at runtime by ml_trait_prediction.R:83.
+        # Omitting it meant the wipe above removed the trait ML models and
+        # nothing put them back, silently disabling the ML tier.
+        "models"
     )
 
     ERRORS=()
