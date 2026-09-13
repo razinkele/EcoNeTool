@@ -100,3 +100,60 @@ test_that("config.R sources without error when app_path is absent", {
   expect_true(any(grepl("CONFIG_OK", out, fixed = TRUE)),
               info = paste(utils::tail(out, 6), collapse = " | "))
 })
+
+# ---------------------------------------------------------------------------
+# Harmonization custom config: same reader/writer pairing as the API keys
+# ---------------------------------------------------------------------------
+# harmonization_config.R defines save_/load_harmonization_config(); the
+# sliders in harmonization_settings_server.R call both. All three used a bare
+# "config/harmonization_custom.json", so off-root the sliders would save to
+# one place and reload from another.
+
+local({
+  root <- get_app_root()
+  source(file.path(root, "R/config/harmonization_config.R"), local = FALSE)
+})
+
+test_that("harmonization_config.R exposes a path constant", {
+  expect_true(exists("HARMONIZATION_CONFIG_FILE"))
+})
+
+test_that("harmonization save/load default to the same resolved path", {
+  skip_if(!exists("HARMONIZATION_CONFIG_FILE"),
+          "HARMONIZATION_CONFIG_FILE not defined yet")
+
+  expect_identical(formals(save_harmonization_config)$file,
+                   formals(load_harmonization_config)$file)
+  expect_equal(basename(HARMONIZATION_CONFIG_FILE), "harmonization_custom.json")
+})
+
+test_that("the harmonization path is repo-absolute when app_path is available", {
+  skip_if(!exists("HARMONIZATION_CONFIG_FILE"),
+          "HARMONIZATION_CONFIG_FILE not defined yet")
+  skip_if(!exists("app_path", mode = "function"), "app_path not loaded")
+
+  expect_identical(dirname(HARMONIZATION_CONFIG_FILE), app_path("config"))
+})
+
+test_that("harmonization_settings_server.R uses the constant, not a literal", {
+  lines <- readLines(app_path("R/modules/harmonization_settings_server.R"),
+                     warn = FALSE)
+  code <- lines[!startsWith(trimws(lines), "#")]
+  hits <- which(grepl('"config/harmonization_custom.json"', code, fixed = TRUE))
+
+  expect_equal(length(hits), 0L,
+               label = "literal harmonization config paths in the server module")
+})
+
+test_that("a corrupt harmonization config warns instead of silently reverting", {
+  skip_if(!exists("load_harmonization_config"), "loader not available")
+
+  bad <- tempfile(fileext = ".json")
+  on.exit(unlink(bad), add = TRUE)
+  writeLines("{ this is not valid json", bad)
+
+  expect_warning(result <- load_harmonization_config(bad),
+                 regexp = "harmoni", ignore.case = TRUE)
+  # Falling back to defaults is correct; doing it silently is not.
+  expect_true(is.list(result))
+})

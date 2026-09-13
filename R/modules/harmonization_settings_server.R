@@ -16,8 +16,8 @@ harmonization_settings_server <- function(input, output, session) {
 
   # INITIALIZE
   observe({
-    if (file.exists("config/harmonization_custom.json")) {
-      rv$config <- load_harmonization_config("config/harmonization_custom.json")
+    if (file.exists(HARMONIZATION_CONFIG_FILE)) {
+      rv$config <- load_harmonization_config(HARMONIZATION_CONFIG_FILE)
       session$userData$harm_config <- rv$config
     }
     updateSliderInput(session, "harm_thresh_MS1_MS2", value = rv$config$size_thresholds$MS1_MS2)
@@ -53,7 +53,7 @@ harmonization_settings_server <- function(input, output, session) {
   observeEvent(input$harm_save_config, {
     tryCatch({
       session$userData$harm_config <- rv$config
-      save_harmonization_config(rv$config, "config/harmonization_custom.json")
+      save_harmonization_config(rv$config, HARMONIZATION_CONFIG_FILE)
       rv$unsaved_changes <- FALSE
 
       output$harm_status_message <- renderUI({

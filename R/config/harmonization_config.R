@@ -278,16 +278,34 @@ check_taxonomic_rule <- function(rule_name) {
   return(rule)
 }
 
-save_harmonization_config <- function(config = HARMONIZATION_CONFIG, file = "config/harmonization_custom.json") {
+# Shared by the writer, the reader, and the slider module, so all three
+# resolve to the same file whatever the working directory is. app_path() is
+# not assumed to exist: this file is sourced directly by test helpers before
+# validation_utils.R in some paths, so it falls back to the historical
+# wd-relative value rather than erroring at source time.
+HARMONIZATION_CONFIG_FILE <- if (exists("app_path", mode = "function")) {
+  app_path("config/harmonization_custom.json")
+} else {
+  "config/harmonization_custom.json"
+}
+
+save_harmonization_config <- function(config = HARMONIZATION_CONFIG,
+                                      file = HARMONIZATION_CONFIG_FILE) {
   dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
   json_data <- jsonlite::toJSON(config, pretty = TRUE, auto_unbox = TRUE)
   writeLines(json_data, file)
   message("✓ Harmonization configuration saved to: ", file)
 }
 
-load_harmonization_config <- function(file = "config/harmonization_custom.json") {
+load_harmonization_config <- function(file = HARMONIZATION_CONFIG_FILE) {
   if (!file.exists(file)) return(HARMONIZATION_CONFIG)
   tryCatch({
     jsonlite::fromJSON(file, simplifyVector = FALSE)
-  }, error = function(e) HARMONIZATION_CONFIG)
+  }, error = function(e) {
+    # Falling back to defaults is right; doing it silently is not - the user
+    # would see their saved settings quietly revert with no explanation.
+    warning(sprintf("[harmonization] could not parse '%s', using defaults: %s",
+                    file, conditionMessage(e)), call. = FALSE)
+    HARMONIZATION_CONFIG
+  })
 }
