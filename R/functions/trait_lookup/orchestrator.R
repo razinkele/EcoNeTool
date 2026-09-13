@@ -100,6 +100,34 @@ lookup_offline_traits <- function(species_name, db_path = "cache/offline_traits.
   })
 }
 
+#' Assign a harmonized trait only when the harmoniser actually resolved it
+#'
+#' RS/TT/ST are written by several sources in a fixed order (BlackSea ->
+#' ArcticTraits -> Cefas -> CoralTraits -> WoRMS_Traits -> PolyTraits). Guarding
+#' only on "the raw field was non-NULL" meant a later source carrying free text
+#' the harmoniser cannot map wrote NA over a code an earlier source had already
+#' resolved, and rewrote <trait>_source to itself - so the row advertised a
+#' provenance for a value that source never produced.
+#'
+#' Last-writer-wins still holds between sources that DO resolve; only
+#' unresolved writes are suppressed.
+#'
+#' @param result The one-row result frame being assembled.
+#' @param trait Trait column name, e.g. "RS".
+#' @param value The harmonised value; NULL, NA, "" or length != 1 count as
+#'   unresolved.
+#' @param source Provenance label to record alongside a resolved value.
+#' @return `result`, modified only when `value` resolved.
+#' @export
+assign_trait_if_resolved <- function(result, trait, value, source) {
+  if (length(value) != 1L || is.na(value) || !nzchar(as.character(value))) {
+    return(result)
+  }
+  result[[trait]] <- value
+  result[[paste0(trait, "_source")]] <- source
+  result
+}
+
 #' Decide which trait databases to query for a taxon
 #'
 #' Pure routing helper extracted from lookup_species_traits(). Inputs are
@@ -853,16 +881,19 @@ lookup_species_traits <- function(species_name,
       if (!is.null(blacksea_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, blacksea_data$traits$feeding_mode)
       if (!is.null(blacksea_data$traits$mobility_info)) mobility_info <- c(mobility_info, blacksea_data$traits$mobility_info)
       if (!is.null(blacksea_data$traits$reproductive_mode)) {
-        result$RS <- harmonize_reproductive_strategy(blacksea_data$traits$reproductive_mode)
-        result$RS_source <- "BlackSea"
+        result <- assign_trait_if_resolved(
+          result, "RS", harmonize_reproductive_strategy(blacksea_data$traits$reproductive_mode),
+          "BlackSea")
       }
       if (!is.null(blacksea_data$traits$temperature_affinity)) {
-        result$TT <- harmonize_temperature_tolerance(blacksea_data$traits$temperature_affinity)
-        result$TT_source <- "BlackSea"
+        result <- assign_trait_if_resolved(
+          result, "TT", harmonize_temperature_tolerance(blacksea_data$traits$temperature_affinity),
+          "BlackSea")
       }
       if (!is.null(blacksea_data$traits$salinity_affinity)) {
-        result$ST <- harmonize_salinity_tolerance(blacksea_data$traits$salinity_affinity)
-        result$ST_source <- "BlackSea"
+        result <- assign_trait_if_resolved(
+          result, "ST", harmonize_salinity_tolerance(blacksea_data$traits$salinity_affinity),
+          "BlackSea")
       }
       message("    Found: ", paste(names(blacksea_data$traits), collapse = ", "))
     }
@@ -880,12 +911,14 @@ lookup_species_traits <- function(species_name,
       if (!is.null(arctic_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, arctic_data$traits$feeding_mode)
       if (!is.null(arctic_data$traits$mobility_info)) mobility_info <- c(mobility_info, arctic_data$traits$mobility_info)
       if (!is.null(arctic_data$traits$reproductive_mode)) {
-        result$RS <- harmonize_reproductive_strategy(arctic_data$traits$reproductive_mode)
-        result$RS_source <- "ArcticTraits"
+        result <- assign_trait_if_resolved(
+          result, "RS", harmonize_reproductive_strategy(arctic_data$traits$reproductive_mode),
+          "ArcticTraits")
       }
       if (!is.null(arctic_data$traits$temperature_preference)) {
-        result$TT <- harmonize_temperature_tolerance(arctic_data$traits$temperature_preference)
-        result$TT_source <- "ArcticTraits"
+        result <- assign_trait_if_resolved(
+          result, "TT", harmonize_temperature_tolerance(arctic_data$traits$temperature_preference),
+          "ArcticTraits")
       }
       message("    Found: ", paste(names(arctic_data$traits), collapse = ", "))
     }
@@ -904,8 +937,9 @@ lookup_species_traits <- function(species_name,
       if (!is.null(cefas_data$traits$mobility_info)) mobility_info <- c(mobility_info, cefas_data$traits$mobility_info)
       if (!is.null(cefas_data$traits$longevity_years)) result$longevity_years <- cefas_data$traits$longevity_years
       if (!is.null(cefas_data$traits$reproductive_mode)) {
-        result$RS <- harmonize_reproductive_strategy(cefas_data$traits$reproductive_mode)
-        result$RS_source <- "Cefas"
+        result <- assign_trait_if_resolved(
+          result, "RS", harmonize_reproductive_strategy(cefas_data$traits$reproductive_mode),
+          "Cefas")
       }
       message("    Found: ", paste(names(cefas_data$traits), collapse = ", "))
     }
@@ -921,8 +955,9 @@ lookup_species_traits <- function(species_name,
       raw_traits$coral <- coral_data$traits
       sources_used <- c(sources_used, "CoralTraits")
       if (!is.null(coral_data$traits$reproductive_mode)) {
-        result$RS <- harmonize_reproductive_strategy(coral_data$traits$reproductive_mode)
-        result$RS_source <- "CoralTraits"
+        result <- assign_trait_if_resolved(
+          result, "RS", harmonize_reproductive_strategy(coral_data$traits$reproductive_mode),
+          "CoralTraits")
       }
       tt_code <- coral_thermal_to_tt(coral_data$traits$thermal_tolerance)
       if (!is.na(tt_code)) {
@@ -973,8 +1008,9 @@ lookup_species_traits <- function(species_name,
         if (!is.null(worms_attr_data$traits$feeding_type)) feeding_mode <- c(feeding_mode, worms_attr_data$traits$feeding_type)
         if (!is.null(worms_attr_data$traits$zone)) habitat_info <- c(habitat_info, worms_attr_data$traits$zone)
         if (!is.null(worms_attr_data$traits$salinity)) {
-          result$ST <- harmonize_salinity_tolerance(worms_attr_data$traits$salinity)
-          result$ST_source <- "WoRMS_Traits"
+          result <- assign_trait_if_resolved(
+            result, "ST", harmonize_salinity_tolerance(worms_attr_data$traits$salinity),
+            "WoRMS_Traits")
         }
         message("    Found: ", paste(names(worms_attr_data$traits), collapse = ", "))
       }
@@ -995,8 +1031,9 @@ lookup_species_traits <- function(species_name,
       if (!is.null(poly_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, poly_data$traits$feeding_mode)
       if (!is.null(poly_data$traits$mobility_info)) mobility_info <- c(mobility_info, poly_data$traits$mobility_info)
       if (!is.null(poly_data$traits$reproductive_mode)) {
-        result$RS <- harmonize_reproductive_strategy(poly_data$traits$reproductive_mode)
-        result$RS_source <- "PolyTraits"
+        result <- assign_trait_if_resolved(
+          result, "RS", harmonize_reproductive_strategy(poly_data$traits$reproductive_mode),
+          "PolyTraits")
       }
       message("    Found: ", paste(names(poly_data$traits), collapse = ", "))
     }
@@ -1084,7 +1121,15 @@ lookup_species_traits <- function(species_name,
     else message("     (> 150 cm = Giant - MS7)")
   } else {
     message("  \u274c No size data available")
-    result$MS <- NA_character_
+    # Guard mirrors the size_cm branch above. Without it, a species whose MS
+    # came from the offline DB had that value cleared here whenever the online
+    # sources returned no size, while MS_source stayed "OfflineDB" - a row
+    # claiming an offline provenance for a value it no longer held.
+    if (!"MS" %in% offline_prefilled) {
+      result$MS <- NA_character_
+    } else {
+      message("  Kept offline value: ", result$MS)
+    }
   }
 
   # 2. FS - Foraging Strategy

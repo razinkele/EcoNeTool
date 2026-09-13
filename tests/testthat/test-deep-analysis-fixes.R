@@ -444,3 +444,80 @@ test_that("the RODBC connection is released by on.exit, not only on success", {
   expect_true(any(grepl("odbcClose", window, fixed = TRUE)),
               info = "the on.exit near the connect does not close the channel")
 })
+
+# -----------------------------------------------------------------------------
+# #15 - RS/TT/ST: an unmappable later source must not erase a resolved code
+# -----------------------------------------------------------------------------
+# The extended modalities were assigned whenever the RAW field was non-NULL,
+# with no check that the harmoniser actually resolved it. Sources run in a
+# fixed order (BlackSea -> Arctic -> Cefas -> Coral -> WoRMS -> PolyTraits),
+# so a later source carrying free text the harmoniser cannot map returns NA
+# and overwrites a good code from an earlier source - while *_source is
+# rewritten to the later source, so the result claims provenance it lacks.
+
+test_that("assign_trait_if_resolved keeps the existing value when the new one is NA", {
+  result <- list(RS = "RS1", RS_source = "BlackSea")
+  out <- assign_trait_if_resolved(result, "RS", NA_character_, "PolyTraits")
+
+  expect_equal(out$RS, "RS1")
+  expect_equal(out$RS_source, "BlackSea",
+               info = "provenance must not be rewritten by a source that resolved nothing")
+})
+
+test_that("assign_trait_if_resolved writes a resolved value and its source", {
+  result <- list(RS = NA_character_, RS_source = NA_character_)
+  out <- assign_trait_if_resolved(result, "RS", "RS2", "Cefas")
+
+  expect_equal(out$RS, "RS2")
+  expect_equal(out$RS_source, "Cefas")
+})
+
+test_that("assign_trait_if_resolved lets a later resolved value win", {
+  # Last-writer-wins among sources that actually resolve is the existing
+  # semantic for these traits; only NA writes are suppressed.
+  result <- list(TT = "TT2", TT_source = "BlackSea")
+  out <- assign_trait_if_resolved(result, "TT", "TT4", "ArcticTraits")
+
+  expect_equal(out$TT, "TT4")
+  expect_equal(out$TT_source, "ArcticTraits")
+})
+
+test_that("assign_trait_if_resolved treats empty and zero-length values as unresolved", {
+  result <- list(ST = "ST3", ST_source = "BlackSea")
+
+  expect_equal(assign_trait_if_resolved(result, "ST", NULL, "X")$ST, "ST3")
+  expect_equal(assign_trait_if_resolved(result, "ST", character(0), "X")$ST, "ST3")
+  expect_equal(assign_trait_if_resolved(result, "ST", NA, "X")$ST_source, "BlackSea")
+})
+
+test_that("no RS/TT/ST assignment in orchestrator.R bypasses the guard", {
+  code <- readLines(app_path("R/functions/trait_lookup/orchestrator.R"), warn = FALSE)
+  code <- code[!startsWith(trimws(code), "#")]
+
+  # A bare `result$RS <- harmonize_...` writes whatever the harmoniser returned,
+  # NA included. Every such site must go through assign_trait_if_resolved().
+  offenders <- grep("result[$](RS|TT|ST) *<- *harmonize_", code, value = TRUE)
+
+  expect_equal(length(offenders), 0L,
+               label = paste("unguarded RS/TT/ST assignments:",
+                             paste(trimws(offenders), collapse = " | ")))
+})
+
+# -----------------------------------------------------------------------------
+# #14 - MS must not be wiped when it came from the offline DB
+# -----------------------------------------------------------------------------
+# The inner branch (size_cm present) is guarded by offline_prefilled; the outer
+# else (no size data) was not, so it set MS to NA while MS_source stayed
+# "OfflineDB" - a row claiming an offline provenance for a missing value.
+
+test_that("the no-size branch does not clear an offline-prefilled MS", {
+  code <- readLines(app_path("R/functions/trait_lookup/orchestrator.R"), warn = FALSE)
+  hit <- grep("result[$]MS <- NA_character_", code)
+  skip_if(length(hit) == 0, "MS reset line not found; orchestrator restructured")
+
+  # Walk back to the nearest enclosing guard and require it to consult
+  # offline_prefilled.
+  window <- code[max(1L, hit[1] - 6L):hit[1]]
+  expect_true(any(grepl("offline_prefilled", window, fixed = TRUE)),
+              info = paste("unguarded MS reset at line", hit[1]))
+})
