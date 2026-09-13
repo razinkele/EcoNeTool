@@ -111,6 +111,9 @@ EXCLUDE_PATTERNS=(
   ".Renviron"
   "r-libs"
   "r-libs/*"
+  # Vestigial since 2026-09-13: the feedback DB moved to
+  # /srv/shiny-server-data/EcoNeTool/feedback.db, outside the deploy tree,
+  # so no rsync can reach it. Kept as defence in case it ever moves back.
   "data/feedback"
   "data/feedback/*"
   "restart.txt"
