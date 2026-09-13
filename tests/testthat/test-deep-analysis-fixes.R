@@ -521,3 +521,29 @@ test_that("the no-size branch does not clear an offline-prefilled MS", {
   expect_true(any(grepl("offline_prefilled", window, fixed = TRUE)),
               info = paste("unguarded MS reset at line", hit[1]))
 })
+
+# -----------------------------------------------------------------------------
+# #35 - the batch cache read must go through read_cache_field()
+# -----------------------------------------------------------------------------
+# parallel_lookup.R read <species>.rds straight off disk: no TTL, so a stale
+# entry was served forever; no shape check, so it returned the raw envelope
+# written by the orchestrator (list(traits=, timestamp=)) where callers expect
+# the payload - the same envelope-collision that #4 fixed elsewhere; and no
+# error handling, so a truncated file killed the whole batch worker.
+
+test_that("parallel_lookup.R does not readRDS a cache file directly", {
+  code <- readLines(app_path("R/functions/parallel_lookup.R"), warn = FALSE)
+  code <- code[!startsWith(trimws(code), "#")]
+
+  offenders <- grep("readRDS", code, value = TRUE)
+
+  expect_equal(length(offenders), 0L,
+               label = paste("direct readRDS in parallel_lookup.R:",
+                             paste(trimws(offenders), collapse = " | ")))
+})
+
+test_that("parallel_lookup.R resolves cached traits via read_cache_field", {
+  code <- readLines(app_path("R/functions/parallel_lookup.R"), warn = FALSE)
+  expect_true(any(grepl("read_cache_field(", code, fixed = TRUE)),
+              info = "the batch cache read must reuse the shared helper")
+})

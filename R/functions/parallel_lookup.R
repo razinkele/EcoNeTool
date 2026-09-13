@@ -370,9 +370,19 @@ batch_lookup_parallel <- function(species_list,
   results <- future_lapply(seq_along(species_list), function(i) {
     species <- species_list[i]
 
-    # Check cache first
-    if (!is.null(cache_dir) && file.exists(file.path(cache_dir, paste0(gsub(" ", "_", species), ".rds")))) {
-      result <- readRDS(file.path(cache_dir, paste0(gsub(" ", "_", species), ".rds")))
+    # Check cache first. read_cache_field() applies the TTL, requires the
+    # envelope shape the orchestrator writes (list(traits =, timestamp =)) and
+    # warns rather than aborting the worker on a truncated file. Reading the
+    # .rds directly returned the envelope itself, never expired, and let one
+    # corrupt file kill the whole batch.
+    cached <- NULL
+    if (!is.null(cache_dir)) {
+      cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species), ".rds"))
+      cached <- read_cache_field(cache_file, "traits")
+    }
+
+    if (!is.null(cached)) {
+      result <- cached
       result$from_cache <- TRUE
     } else {
       # Lookup species
