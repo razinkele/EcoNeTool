@@ -22,6 +22,79 @@
   if (length(aid) == 1 && !is.na(aid) && aid > 0) aid else NA_real_
 }
 
+# =============================================================================
+# TRAIT TABLE RENDERING HELPERS
+# =============================================================================
+# At file scope, not nested in the server function, so they can be unit tested.
+# They close over nothing.
+
+#' Badge colour for a trait provenance label
+#'
+#' Always returns a hex colour from a fixed palette. An unrecognised label -
+#' including anything attacker-supplied - falls back to grey, so the value
+#' interpolated into the style attribute is never caller-controlled.
+#'
+#' @param source Provenance label.
+#' @return Character hex colour.
+#' @export
+source_badge_color <- function(source) {
+  if (is.na(source) || source == "") return("#9e9e9e")  # gray
+  colors <- c(
+    "FishBase" = "#1565c0", "SeaLifeBase" = "#0277bd", "WoRMS" = "#00695c",
+    "WoRMS_Traits" = "#00695c", "BIOTIC" = "#2e7d32", "PTDB" = "#558b2f",
+    "MAREDAT" = "#33691e", "AlgaeBase" = "#827717", "BVOL" = "#9e9d24",
+    "SpeciesEnriched" = "#f57f17", "Ontology" = "#e65100",
+    "BlackSea" = "#4a148c", "ArcticTraits" = "#1a237e", "Cefas" = "#006064",
+    "CoralTraits" = "#880e4f", "PelagicTraits" = "#311b92",
+    "PolyTraits" = "#1b5e20", "EMODnet" = "#0d47a1", "OBIS" = "#01579b",
+    "OfflineDB" = "#37474f", "ML" = "#ff6f00",
+    "Depth-based" = "#5d4037", "Taxonomy" = "#455a64",
+    "Harmonized" = "#616161"
+  )
+  col <- colors[source]
+  if (is.na(col)) "#9e9e9e" else col
+}
+
+#' Format a trait value with its provenance badge
+#'
+#' The trait columns are rendered unescaped so the badge markup survives, so
+#' every value interpolated here must be escaped at the point of assembly -
+#' trait values and source labels can both originate in an uploaded CSV.
+#'
+#' @param value Harmonised trait code.
+#' @param source Provenance label.
+#' @return HTML string.
+#' @export
+format_trait_badge <- function(value, source) {
+  if (is.na(value) || value == "") {
+    return('<span style="color:#bdbdbd">-</span>')
+  }
+  color <- source_badge_color(source)
+  safe_value <- htmltools::htmlEscape(value)
+  badge <- if (!is.na(source) && source != "") {
+    sprintf(
+      paste0('<span style="background:%s;color:white;padding:1px 4px;',
+             'border-radius:3px;font-size:9px;margin-left:3px">%s</span>'),
+      color, htmltools::htmlEscape(source)
+    )
+  } else ""
+  paste0("<strong>", safe_value, "</strong>", badge)
+}
+
+#' Column indices that must be HTML-escaped in the trait results table
+#'
+#' Only the badge columns carry markup we generate; everything else may hold
+#' user-supplied text and must be escaped. Returns indices suitable for DT's
+#' `escape` argument with `rownames = FALSE`.
+#'
+#' @param display_df The frame passed to DT::datatable().
+#' @param badge_cols Names of the columns rendered as badge HTML.
+#' @return Integer vector of column indices to escape.
+#' @export
+badge_escape_columns <- function(display_df, badge_cols) {
+  which(!names(display_df) %in% badge_cols)
+}
+
 trait_research_server <- function(input, output, session, shared_data) {
 
   # ============================================================================
@@ -619,38 +692,6 @@ trait_research_server <- function(input, output, session, shared_data) {
   # OUTPUT: TRAIT TABLE
   # ============================================================================
 
-  # Badge color mapping for trait sources
-  source_badge_color <- function(source) {
-    if (is.na(source) || source == "") return("#9e9e9e")  # gray
-    colors <- c(
-      "FishBase" = "#1565c0", "SeaLifeBase" = "#0277bd", "WoRMS" = "#00695c",
-      "WoRMS_Traits" = "#00695c", "BIOTIC" = "#2e7d32", "PTDB" = "#558b2f",
-      "MAREDAT" = "#33691e", "AlgaeBase" = "#827717", "BVOL" = "#9e9d24",
-      "SpeciesEnriched" = "#f57f17", "Ontology" = "#e65100",
-      "BlackSea" = "#4a148c", "ArcticTraits" = "#1a237e", "Cefas" = "#006064",
-      "CoralTraits" = "#880e4f", "PelagicTraits" = "#311b92",
-      "PolyTraits" = "#1b5e20", "EMODnet" = "#0d47a1", "OBIS" = "#01579b",
-      "OfflineDB" = "#37474f", "ML" = "#ff6f00",
-      "Depth-based" = "#5d4037", "Taxonomy" = "#455a64",
-      "Harmonized" = "#616161"
-    )
-    col <- colors[source]
-    if (is.na(col)) "#9e9e9e" else col
-  }
-
-  # Format a trait value with source badge
-  format_trait_badge <- function(value, source) {
-    if (is.na(value) || value == "") {
-      return('<span style="color:#bdbdbd">-</span>')
-    }
-    color <- source_badge_color(source)
-    badge <- if (!is.na(source) && source != "") {
-      sprintf('<span style="background:%s;color:white;padding:1px 4px;border-radius:3px;font-size:9px;margin-left:3px">%s</span>',
-              color, source)
-    } else ""
-    paste0('<strong>', value, '</strong>', badge)
-  }
-
   output$trait_research_table <- DT::renderDataTable({
     req(rv$trait_results)
 
@@ -661,8 +702,11 @@ trait_research_server <- function(input, output, session, shared_data) {
       stringsAsFactors = FALSE
     )
 
-    # Add trait columns with provenance badges
-    for (trait in c("MS", "FS", "MB", "EP", "PR", "RS", "TT", "ST")) {
+    # Add trait columns with provenance badges. One list drives both the badge
+    # rendering and the escape exemption below, so the two cannot drift apart
+    # and silently leave a column unescaped.
+    trait_badge_cols <- c("MS", "FS", "MB", "EP", "PR", "RS", "TT", "ST")
+    for (trait in trait_badge_cols) {
       source_col <- paste0(trait, "_source")
       vals <- df[[trait]]
       srcs <- if (source_col %in% names(df)) df[[source_col]] else rep(NA_character_, nrow(df))
@@ -681,9 +725,13 @@ trait_research_server <- function(input, output, session, shared_data) {
       if (cc %in% names(df)) display_df[[cc]] <- df[[cc]]
     }
 
+    # Only the badge columns skip escaping. A blanket escape = FALSE also
+    # unescaped `species` and `sources`, which carry values from the uploaded
+    # CSV - a species name containing markup was stored in the results and
+    # executed in the browser of anyone who viewed this table.
     dt <- DT::datatable(
       display_df,
-      escape = FALSE,  # Allow HTML in cells
+      escape = badge_escape_columns(display_df, trait_badge_cols),
       options = list(pageLength = 15, scrollX = TRUE, dom = 'Bfrtip',
                      buttons = c('copy', 'csv', 'excel')),
       rownames = FALSE, class = 'stripe hover compact'
