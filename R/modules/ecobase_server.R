@@ -243,12 +243,10 @@ ecobase_server <- function(input, output, session, net_reactive, info_reactive,
 
       ecobase_net <- igraph::upgrade_graph(ecobase_net)
 
-      fg_levels <- get_functional_group_levels()
-      ecobase_info$colfg <- sapply(as.character(ecobase_info$fg), function(fg) {
-        idx <- which(fg_levels == fg)
-        if (length(idx) == 0) return("gray")
-        COLOR_SCHEME[idx]
-      })
+      # One derivation, shared with finalize_network() (see
+      # R/functions/network_finalize.R). Four copies of this loop existed;
+      # two of them drifted into findings #18 and #27.
+      ecobase_info$colfg <- fg_to_color(ecobase_info$fg)
 
       net_reactive(ecobase_net)
       info_reactive(ecobase_info)

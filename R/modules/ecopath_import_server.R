@@ -846,12 +846,10 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
       ecopath_net <- igraph::upgrade_graph(ecopath_net)
 
       # Assign colors by matching functional group names to COLOR_SCHEME
-      fg_levels <- get_functional_group_levels()
-      ecopath_info$colfg <- sapply(as.character(ecopath_info$fg), function(fg) {
-        idx <- which(fg_levels == fg)
-        if (length(idx) == 0) return("gray")
-        COLOR_SCHEME[idx]
-      })
+      # One derivation, shared with finalize_network() (see
+      # R/functions/network_finalize.R). Four copies of this loop existed;
+      # two of them drifted into findings #18 and #27.
+      ecopath_info$colfg <- fg_to_color(ecopath_info$fg)
 
       # Update reactive values
       net_reactive(ecopath_net)
@@ -1681,12 +1679,10 @@ install.packages('Hmisc')</pre>
       native_net <- igraph::upgrade_graph(native_net)
 
       # Assign colors by matching functional group names to COLOR_SCHEME
-      fg_levels <- get_functional_group_levels()
-      native_info$colfg <- sapply(as.character(native_info$fg), function(fg) {
-        idx <- which(fg_levels == fg)
-        if (length(idx) == 0) return("gray")
-        COLOR_SCHEME[idx]
-      })
+      # One derivation, shared with finalize_network() (see
+      # R/functions/network_finalize.R). Four copies of this loop existed;
+      # two of them drifted into findings #18 and #27.
+      native_info$colfg <- fg_to_color(native_info$fg)
 
       # Update reactive values for dashboard
       net_reactive(native_net)

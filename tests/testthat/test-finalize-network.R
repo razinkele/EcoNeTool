@@ -204,3 +204,55 @@ test_that("metaweb_manager_server.R finalises and refreshes on export (#27)", {
   expect_false(any(grepl('fg <- factor(rep("Other"', code, fixed = TRUE)),
                info = "non-canonical fg default reintroduced")
 })
+
+# ---------------------------------------------------------------------------
+# fg_to_color(): the one derivation, replacing four copy-pasted blocks
+# ---------------------------------------------------------------------------
+# The same sapply-over-COLOR_SCHEME loop was written out in five modules. Two
+# of those copies drifted into #18 and #27. These pin fg_to_color() against
+# the exact legacy formula so the consolidation is provably behaviour-neutral.
+
+legacy_colfg <- function(fg_vec) {
+  fg_levels <- get_functional_group_levels()
+  unname(sapply(as.character(fg_vec), function(fg) {
+    idx <- which(fg_levels == fg)
+    if (length(idx) == 0) return("gray")
+    COLOR_SCHEME[idx]
+  }))
+}
+
+test_that("fg_to_color reproduces the legacy per-module derivation exactly", {
+  cases <- list(
+    c("Fish", "Phytoplankton", "Benthos"),
+    c("Birds", "Mammals", "Detritus", "Zooplankton"),
+    c("Other", "Unknown", "Fish"),
+    factor(c("Fish", "Benthos"), levels = get_functional_group_levels()),
+    c(NA, "Fish")
+  )
+  for (case in cases) {
+    expect_identical(unname(fg_to_color(case)), legacy_colfg(case),
+                     info = paste("differs for:", paste(case, collapse = "/")))
+  }
+})
+
+test_that("fg_to_color returns one colour per input, unnamed", {
+  out <- fg_to_color(c("Fish", "Benthos", "Other"))
+  expect_length(out, 3L)
+  expect_null(names(out))
+})
+
+test_that("no module still hand-rolls the colfg derivation", {
+  modules <- list.files(app_path("R/modules"), pattern = "[.]R$",
+                        full.names = TRUE)
+  offenders <- character(0)
+  for (f in modules) {
+    code <- readLines(f, warn = FALSE)
+    code <- code[!startsWith(trimws(code), "#")]
+    if (any(grepl("colfg <- sapply", code, fixed = TRUE))) {
+      offenders <- c(offenders, basename(f))
+    }
+  }
+
+  expect_equal(offenders, character(0),
+               label = "modules still deriving colfg by hand")
+})

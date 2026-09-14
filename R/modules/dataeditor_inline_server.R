@@ -120,12 +120,10 @@ dataeditor_inline_server <- function(input, output, session, net_reactive, info_
       }
 
       # Reassign colors by matching functional group names to COLOR_SCHEME
-      fg_levels <- get_functional_group_levels()
-      edited_info$colfg <- sapply(as.character(edited_info$fg), function(fg) {
-        idx <- which(fg_levels == fg)
-        if (length(idx) == 0) return("gray")
-        COLOR_SCHEME[idx]
-      })
+      # One derivation, shared with finalize_network() (see
+      # R/functions/network_finalize.R). Four copies of this loop existed;
+      # two of them drifted into findings #18 and #27.
+      edited_info$colfg <- fg_to_color(edited_info$fg)
 
       # Update reactive value
       info_reactive(edited_info)
