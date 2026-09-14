@@ -11,6 +11,15 @@ source(file.path(app_root, "R/functions/trait_lookup/database_lookups.R"))
 source(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"))
 
 test_that("orchestrator result template has expanded columns", {
+  # lookup_species_traits() queries WoRMS, FishBase and SeaLifeBase even for a
+  # name that cannot exist, so this is a live test and belongs behind the gate
+  # (CLAUDE.md: anything hitting a real API runs under RUN_LIVE_TESTS=true).
+  # Ungated, a slow FishBase day aborted the WHOLE suite with "reached elapsed
+  # time limit" rather than failing this one file - it did so three times in
+  # one session.
+  skip_if_no_live_tests()
+  skip_if_offline("www.marinespecies.org")
+
   # Call with a nonexistent species — returns the default NA template
   result <- lookup_species_traits("__test_nonexistent_species_xyz__")
   expected_cols <- c("species", "MS", "FS", "MB", "EP", "PR",
