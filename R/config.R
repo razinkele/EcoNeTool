@@ -221,20 +221,19 @@ API_KEYS_FILE <- .config_file("config/api_keys.R")
 API_KEYS_JSON <- .config_file("config/api_keys.json")
 API_KEYS_TEMPLATE <- .config_file("config/api_keys.R.template")
 
-# Load user's API keys if file exists (overrides defaults)
+# Legacy .R key file. DEPRECATED: it is source()d, so whatever it contains is
+# executed at startup. plugin_server.R writes JSON precisely to remove that
+# path. Still read so existing installs keep working; re-saving the keys from
+# the Plugins tab migrates them and deletes this file.
 if (file.exists(API_KEYS_FILE)) {
   tryCatch({
     source(API_KEYS_FILE, local = TRUE)
-    message("✓ Loaded custom API keys from ", API_KEYS_FILE)
+    message("⚠ Loaded API keys from the deprecated ", API_KEYS_FILE,
+            " (executed as R code). Re-save them from the Plugins tab to ",
+            "migrate to config/api_keys.json.")
   }, error = function(e) {
     warning("Failed to load API keys from ", API_KEYS_FILE, ": ", e$message)
   })
-} else {
-  # Inform user about API key template
-  if (file.exists(API_KEYS_TEMPLATE)) {
-    message("ℹ API key template available. Copy config/api_keys.R.template to ",
-            "config/api_keys.R and add your credentials.")
-  }
 }
 
 # Also load from JSON format (safer, preferred)
@@ -246,6 +245,14 @@ if (file.exists(API_KEYS_JSON)) {
     }
   }, error = function(e) warning(sprintf("[config] could not load API keys from JSON: %s",
                                          conditionMessage(e)), call. = FALSE))
+}
+
+# Only now, with both sources considered, can we say nothing is configured.
+# The old hint fired whenever the .R file was absent - including when JSON
+# keys were loaded - and pointed users at the deprecated format.
+if (!file.exists(API_KEYS_FILE) && !file.exists(API_KEYS_JSON)) {
+  message("ℹ No API keys configured. Add them from the Plugins tab; ",
+          "they are saved to config/api_keys.json (gitignored).")
 }
 
 #' Get API key for a service

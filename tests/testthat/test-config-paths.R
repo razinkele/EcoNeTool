@@ -157,3 +157,43 @@ test_that("a corrupt harmonization config warns instead of silently reverting", 
   # Falling back to defaults is correct; doing it silently is not.
   expect_true(is.list(result))
 })
+
+# ---------------------------------------------------------------------------
+# The startup hint must not advertise the deprecated .R key format
+# ---------------------------------------------------------------------------
+# config/api_keys.R is source()d as code at startup. plugin_server.R was
+# migrated to write config/api_keys.json specifically to remove that
+# execution path, but the startup hint still told users to create the .R
+# file - and fired even when JSON keys were already configured.
+#
+# Source guards: exercising the branch means re-sourcing config.R with files
+# present or absent, which has global side effects (API_KEYS, METAWEB_PATHS,
+# validate_metaweb_paths()) that would leak into other tests in this process.
+
+config_r <- function() readLines(app_path("R/config.R"), warn = FALSE)
+
+test_that("startup does not instruct users to create config/api_keys.R", {
+  code <- config_r()
+  code <- code[!startsWith(trimws(code), "#")]
+
+  offenders <- grep("Copy config/api_keys.R.template", code,
+                    value = TRUE, fixed = TRUE)
+
+  expect_equal(length(offenders), 0L,
+               label = "startup hint still advertises the deprecated .R format")
+})
+
+test_that("the no-keys hint accounts for the JSON file", {
+  code <- paste(config_r(), collapse = "
+")
+
+  expect_true(grepl("API_KEYS_JSON", code, fixed = TRUE),
+              info = "the hint branch must consider JSON before claiming nothing is configured")
+})
+
+test_that("loading the legacy .R format is flagged as deprecated", {
+  code <- paste(config_r(), collapse = "
+")
+  expect_true(grepl("deprecated", code, ignore.case = TRUE),
+              info = "the legacy source() path should say it is deprecated")
+})
