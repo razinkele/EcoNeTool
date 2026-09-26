@@ -26,7 +26,7 @@
 #'    - Birds: bird, gull, tern, cormorant, duck, goose, albatross, petrel, penguin, etc.
 #'    - Fish: fish, cod, herring, sprat, flounder, shark, ray
 #'    - Benthos: benthos, benthic, mussel, clam, worm, shrimp, crab, bottom, macrobent, meiobent
-#'    - Detritus: detritus, det., debris
+#'    - Detritus: detrit* (not detritivor*), det (word), debris
 #' 2. Network topology (if use_topology = TRUE)
 #'    - No prey (in-degree 0) + high P/B → Phytoplankton
 #'    - Has prey, no predators (out-degree 0) → Top predator (Fish)
@@ -39,7 +39,7 @@ assign_functional_group <- function(sp_name, pb = NA, indegree = NA, outdegree =
 
   # Priority 1: Name-based pattern matching
   # Check detritus first (most specific)
-  if (grepl("detritus|det\\.|debris", sp_lower)) {
+  if (grepl("detrit($|[^i])|\\bdet\\b|debris", sp_lower)) {
     return("Detritus")
   }
 
@@ -180,6 +180,68 @@ assign_functional_groups <- function(species_names, pb_values = NULL, indegrees 
   })
 
   return(functional_groups)
+}
+
+#' Assign functional groups to EwE groups, honouring the EwE Type code
+#'
+#' EwE's Type column is authoritative for what the name classifier can only
+#' guess: 2 = detritus, 1 = primary producer, 0 < Type < 1 = mixotroph,
+#' 0 = consumer. Rules:
+#' \itemize{
+#'   \item Type 2 -> "Detritus".
+#'   \item Type 1 -> "Phytoplankton", unless the classifier returns "Benthos"
+#'         (benthic macrophytes / seagrass).
+#'   \item 0 < Type < 1 -> the classifier result without topology.
+#'   \item Type 0 -> the classifier result with topology, but never
+#'         "Detritus" or "Phytoplankton": a consumer that the heuristics call
+#'         basal becomes "Benthos" if it has both prey and predators, else
+#'         "Fish".
+#'   \item Type NA (column absent) -> assign_functional_groups() with topology,
+#'         i.e. the pre-existing behaviour.
+#' }
+#'
+#' @param species_names Character vector of group names.
+#' @param ewe_type Numeric vector of EwE Type codes (NULL if the table has none).
+#' @param pb_values,indegrees,outdegrees Optional numeric vectors for the
+#'   topology heuristics (in-degree = number of prey under the prey -> predator
+#'   edge contract).
+#' @param base_fg Optional character vector of pre-computed classifications
+#'   (e.g. from the taxonomic API); used instead of the topology classifier.
+#' @return Character vector of functional groups, one per group.
+#' @export
+assign_ewe_functional_groups <- function(species_names, ewe_type = NULL, pb_values = NULL,
+                                         indegrees = NULL, outdegrees = NULL, base_fg = NULL) {
+  n <- length(species_names)
+  if (is.null(ewe_type)) ewe_type <- rep(NA_real_, n)
+  ewe_type <- suppressWarnings(as.numeric(ewe_type))
+  if (length(ewe_type) != n) {
+    stop("assign_ewe_functional_groups(): ewe_type must have one value per group", call. = FALSE)
+  }
+  if (is.null(indegrees)) indegrees <- rep(NA_real_, n)
+  if (is.null(outdegrees)) outdegrees <- rep(NA_real_, n)
+
+  fg <- if (is.null(base_fg)) {
+    assign_functional_groups(species_names, pb_values, indegrees, outdegrees, use_topology = TRUE)
+  } else {
+    as.character(base_fg)
+  }
+  by_name <- assign_functional_groups(species_names, use_topology = FALSE)
+
+  is_det <- !is.na(ewe_type) & ewe_type == 2
+  is_prod <- !is.na(ewe_type) & ewe_type == 1
+  is_mixo <- !is.na(ewe_type) & ewe_type > 0 & ewe_type < 1
+  is_cons <- !is.na(ewe_type) & ewe_type == 0
+
+  fg[is_det] <- "Detritus"
+  fg[is_prod] <- ifelse(by_name[is_prod] == "Benthos" | fg[is_prod] == "Benthos",
+                        "Benthos", "Phytoplankton")
+  if (is.null(base_fg)) fg[is_mixo] <- by_name[is_mixo]
+
+  basal <- is_cons & fg %in% c("Detritus", "Phytoplankton")
+  has_both <- !is.na(indegrees) & !is.na(outdegrees) & indegrees > 0 & outdegrees > 0
+  fg[basal] <- ifelse(has_both[basal], "Benthos", "Fish")
+
+  unname(fg)
 }
 
 #' Get Functional Group Levels

@@ -114,3 +114,59 @@ test_that("ecobase_server.R finalises the EcoBase import (F50)", {
   code <- code[!startsWith(trimws(code), "#")]
   expect_true(any(grepl("finalize_network(ecobase_net, ecobase_info)", code, fixed = TRUE)))
 })
+
+# ---------------------------------------------------------------------------
+# F49 - EwE Type drives Detritus / producer assignment
+# ---------------------------------------------------------------------------
+
+test_that("EwE Type 1/2/0 gives Phytoplankton / Detritus / Fish (F49)", {
+  fg <- assign_ewe_functional_groups(c("Phyto", "Rdetrit", "Cod"), ewe_type = c(1, 2, 0))
+  expect_equal(fg, c("Phytoplankton", "Detritus", "Fish"))
+})
+
+test_that("Type 2 is Detritus even when the name says nothing about detritus", {
+  fg <- assign_ewe_functional_groups("Dead organic matter", ewe_type = 2)
+  expect_equal(fg, "Detritus")
+})
+
+test_that("Type 1 benthic macrophytes stay Benthos", {
+  fg <- assign_ewe_functional_groups("Benthic macrophytes", ewe_type = 1)
+  expect_equal(fg, "Benthos")
+})
+
+test_that("a Type 0 consumer is never made a producer or detritus", {
+  # Topology alone (no prey, P/B > 1) would call this Phytoplankton.
+  fg <- assign_ewe_functional_groups("Group X", ewe_type = 0, pb_values = 50,
+                                     indegrees = 0, outdegrees = 2)
+  expect_false(fg %in% c("Phytoplankton", "Detritus"))
+  # The name classifier calls this Detritus; EwE says it is a consumer.
+  fg2 <- assign_ewe_functional_groups("Detritus feeders", ewe_type = 0,
+                                      indegrees = 2, outdegrees = 1)
+  expect_equal(fg2, "Benthos")
+})
+
+test_that("without a Type column the classifier behaves as before", {
+  names_in <- c("Phytoplankton", "Herring", "Group X")
+  expect_equal(
+    assign_ewe_functional_groups(names_in, ewe_type = NULL, pb_values = c(100, 1, 50),
+                                 indegrees = c(0, 1, 0), outdegrees = c(1, 0, 1)),
+    unname(assign_functional_groups(names_in, c(100, 1, 50), c(0, 1, 0), c(1, 0, 1),
+                                    use_topology = TRUE))
+  )
+})
+
+test_that("the widened detritus regex catches EwE spellings", {
+  expect_equal(assign_functional_group("Detritu"), "Detritus")
+  expect_equal(assign_functional_group("Rdetrit"), "Detritus")
+  expect_equal(assign_functional_group("Pelagic det."), "Detritus")
+  expect_equal(assign_functional_group("Debris"), "Detritus")
+  # Detritivores are consumers, not detritus - also for EcoBase, which has no Type.
+  expect_equal(assign_functional_group("Detritivorous fish"), "Fish")
+  expect_false(assign_functional_group("Benthic detritivores") == "Detritus")
+})
+
+test_that("ecopath_import_server.R reads the EwE Type column (F49)", {
+  code <- readLines(app_path("R/modules/ecopath_import_server.R"), warn = FALSE)
+  code <- code[!startsWith(trimws(code), "#")]
+  expect_true(any(grepl("assign_ewe_functional_groups(", code, fixed = TRUE)))
+})

@@ -177,6 +177,15 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
       pb_values <- pb_values[valid_idx]
       qb_values <- qb_values[valid_idx]
 
+      # EwE Type (0 consumer, 1 producer, 2 detritus, 0-1 mixotroph) drives
+      # functional-group assignment where present; NULL keeps name + topology.
+      type_col <- which(col_names == "type")[1]
+      ewe_types <- if (!is.na(type_col)) {
+        suppressWarnings(as.numeric(group_table[[type_col]]))[valid_idx]
+      } else {
+        NULL
+      }
+
       n_species <- length(species_names)
 
       # Process diet composition
@@ -476,12 +485,12 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
           message(sprintf("  [%d/%d] Querying: %s", i, total_species, sp))
 
           # Get pattern-based hint first (fast, used to optimize API queries)
-          pattern_hint <- assign_functional_group(
+          pattern_hint <- assign_ewe_functional_groups(
             sp,
-            pb_values[i],
-            indegrees[i],
-            outdegrees[i],
-            use_topology = TRUE
+            ewe_type = if (is.null(ewe_types)) NULL else ewe_types[i],
+            pb_values = pb_values[i],
+            indegrees = indegrees[i],
+            outdegrees = outdegrees[i]
           )
 
           # Detect birds by name patterns
@@ -629,6 +638,14 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
         # Extract functional groups vector
         functional_groups <- taxonomic_report_data$functional_group
 
+        # The API result is re-checked against the EwE Type code: a Type 2
+        # group is Detritus and a Type 0 group is never a producer.
+        functional_groups <- assign_ewe_functional_groups(
+          species_names, ewe_type = ewe_types, pb_values = pb_values,
+          indegrees = indegrees, outdegrees = outdegrees, base_fg = functional_groups
+        )
+        taxonomic_report_data$functional_group <- functional_groups
+
         # Store report for display
         taxonomic_report(taxonomic_report_data)
 
@@ -661,12 +678,12 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
         }
       } else {
         # Standard pattern matching (faster, offline)
-        functional_groups <- assign_functional_groups(
+        functional_groups <- assign_ewe_functional_groups(
           species_names,
-          pb_values,
-          indegrees,
-          outdegrees,
-          use_topology = TRUE  # Use network topology for ECOPATH imports
+          ewe_type = ewe_types,
+          pb_values = pb_values,
+          indegrees = indegrees,
+          outdegrees = outdegrees
         )
       }
 
