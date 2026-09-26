@@ -226,9 +226,9 @@ test_that("trait network stats label in-degree as prey and out-degree as predato
 # F64 - metaweb_to_igraph, and the bundled metawebs it reads
 # ---------------------------------------------------------------------------
 
-# Vertex labels by species name. metaweb_to_igraph() names vertices by
-# species_id today (A3 renames them to species_name); species_name travels as
-# a vertex attribute, so this works either way.
+# Vertex labels by species name. Since A3, metaweb_to_igraph() names vertices
+# by make.unique(species_name); species_name also travels as a vertex
+# attribute, so this helper reads that attribute when it is present.
 vertex_labels <- function(g) {
   if (!is.null(V(g)$species_name)) V(g)$species_name else V(g)$name
 }
@@ -365,4 +365,58 @@ test_that("the example metaweb generator writes interactions through the shared 
   expect_true(any(grepl("igraph_to_metaweb_interactions(", code, fixed = TRUE)))
   # The old inline writer labelled the edge tail (the prey) as the predator.
   expect_false(any(grepl("predator_id *= *.*edgelist[[], *1[]]", code)))
+})
+
+# ---------------------------------------------------------------------------
+# H-4 - diet_prop survives the EwE -> metaweb -> network round trip
+# ---------------------------------------------------------------------------
+
+test_that("diet_prop is carried through the metaweb round trip (H-4)", {
+  net <- make_graph(c("Phyto", "Zoo", "Detritus", "Zoo", "Zoo", "Cod", "Phyto", "Cod"), directed = TRUE)
+  E(net)$diet_prop <- c(0.7, 0.3, 0.9, 0.1)
+  interactions <- igraph_to_metaweb_interactions(net, quality_code = 3, source = "test")
+  expect_true("diet_prop" %in% names(interactions))
+
+  sp <- V(net)$name
+  mw <- create_metaweb(
+    species = data.frame(species_id = sp, species_name = sp, stringsAsFactors = FALSE),
+    interactions = interactions
+  )
+  back <- metaweb_to_igraph(mw)
+  key <- function(g) apply(as_edgelist(g), 1, paste, collapse = "->")
+  original <- setNames(E(net)$diet_prop, key(net))
+  restored <- setNames(E(back)$diet_prop, key(back))
+  expect_equal(restored[names(original)], original)
+})
+
+test_that("metawebs without diet_prop still convert, with no diet_prop attribute (H-4)", {
+  mw <- create_metaweb(
+    species = data.frame(species_id = c("a", "b"), species_name = c("Phyto", "Zoo"), stringsAsFactors = FALSE),
+    interactions = data.frame(predator_id = "b", prey_id = "a", stringsAsFactors = FALSE)
+  )
+  back <- metaweb_to_igraph(mw)
+  expect_equal(ecount(back), 1)
+  expect_null(E(back)$diet_prop)
+})
+
+test_that("diet_prop is subset with the kept links when an id is unknown (H-4)", {
+  mw <- suppressWarnings(create_metaweb(
+    species = data.frame(species_id = c("a", "b"), species_name = c("Phyto", "Zoo"), stringsAsFactors = FALSE),
+    interactions = data.frame(predator_id = c("x", "b"), prey_id = c("a", "a"), diet_prop = c(0.4, 1),
+                              stringsAsFactors = FALSE)
+  ))
+  back <- suppressWarnings(metaweb_to_igraph(mw))
+  expect_equal(E(back)$diet_prop, 1)
+})
+
+# ---------------------------------------------------------------------------
+# H-6 - metaweb species -> info keeps P/B and Q/B
+# ---------------------------------------------------------------------------
+
+test_that("metaweb_species_to_info maps pb_ratio -> PB and qb_ratio -> QB (H-6)", {
+  species <- data.frame(species_id = c("s1", "s2"), species_name = c("Cod", "Herring"),
+                        pb_ratio = c(0.5, 1.2), qb_ratio = c(2.5, 8), stringsAsFactors = FALSE)
+  info <- metaweb_species_to_info(species)
+  expect_equal(info$PB, c(0.5, 1.2))
+  expect_equal(info$QB, c(2.5, 8))
 })

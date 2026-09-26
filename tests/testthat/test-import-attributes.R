@@ -168,6 +168,14 @@ test_that("the widened detritus regex catches EwE spellings", {
   expect_false(assign_functional_group("Benthic detritivores") == "Detritus")
 })
 
+test_that("detritus regex: pools vs detritus feeders (H-3)", {
+  pools <- c("Detritus", "Detritu", "Rdetrit", "Pelagic det.", "Debris", "Detritus (POM)",
+             "Detritos", "detritic matter")
+  for (p in pools) expect_equal(assign_functional_group(p), "Detritus", info = p)
+  feeders <- c("Detritivores", "Detritivorous fish", "Detritophagous", "Detritovores")
+  for (f in feeders) expect_false(assign_functional_group(f) == "Detritus", info = f)
+})
+
 test_that("ecopath_import_server.R reads the EwE Type column (F49)", {
   code <- readLines(app_path("R/modules/ecopath_import_server.R"), warn = FALSE)
   code <- code[!startsWith(trimws(code), "#")]

@@ -101,7 +101,20 @@ finalize_network <- function(net, info) {
 
   # Name-key join: match by NAME, never by position. This is the whole point -
   # merge() and hand-built frames both arrive in arbitrary order.
-  idx <- match(vertex_names, as.character(info[[key]]))
+  # match() gives every copy of a name the FIRST matching row; say so rather
+  # than silently attaching one species' attributes to another.
+  dup_vertices <- unique(vertex_names[duplicated(vertex_names)])
+  if (length(dup_vertices) > 0) {
+    warning(sprintf("[finalize_network] duplicated vertex name(s) share one info row: %s",
+                    paste(utils::head(dup_vertices, 10), collapse = ", ")), call. = FALSE)
+  }
+  info_keys <- as.character(info[[key]])
+  dup_info <- intersect(unique(info_keys[duplicated(info_keys)]), vertex_names)
+  if (length(dup_info) > 0) {
+    warning(sprintf("[finalize_network] duplicated species in info, using the first row for: %s",
+                    paste(utils::head(dup_info, 10), collapse = ", ")), call. = FALSE)
+  }
+  idx <- match(vertex_names, info_keys)
   aligned <- info[idx, , drop = FALSE]
   rownames(aligned) <- NULL
 

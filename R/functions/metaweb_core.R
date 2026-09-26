@@ -184,6 +184,9 @@ metaweb_to_igraph <- function(metaweb) {
   if ("source" %in% colnames(interactions)) {
     igraph::E(g)$source <- interactions$source[keep]
   }
+  if ("diet_prop" %in% colnames(interactions)) {
+    igraph::E(g)$diet_prop <- suppressWarnings(as.numeric(interactions$diet_prop[keep]))
+  }
 
   g
 }
@@ -240,17 +243,23 @@ metaweb_species_to_info <- function(species) {
 #' @param net igraph network following the edge contract, vertices named
 #' @param quality_code Link quality code (1-4) for every row
 #' @param source Source string for every row
-#' @return data.frame with predator_id, prey_id, quality_code, source
+#' @return data.frame with predator_id, prey_id, quality_code, source, plus
+#'   diet_prop when the edges carry E(net)$diet_prop
 #' @export
 igraph_to_metaweb_interactions <- function(net, quality_code = 3, source = "unspecified") {
   edges <- igraph::as_edgelist(net, names = TRUE)
-  data.frame(
+  out <- data.frame(
     predator_id = edges[, 2],
     prey_id = edges[, 1],
     quality_code = rep(quality_code, nrow(edges)),
     source = rep(source, nrow(edges)),
     stringsAsFactors = FALSE
   )
+  # Keep the EwE diet fractions so calculate_mti() on the network rebuilt by
+  # metaweb_to_igraph() does not fall back to an equal split.
+  diet_prop <- igraph::edge_attr(net, "diet_prop")
+  if (!is.null(diet_prop)) out$diet_prop <- as.numeric(diet_prop)
+  out
 }
 
 #' Get link quality description

@@ -365,3 +365,26 @@ test_that("metaweb_manager_server.R exports through metaweb_species_to_info (F67
   code <- code[!startsWith(trimws(code), "#")]
   expect_true(any(grepl("finalize_network(new_net, metaweb_species_to_info(", code, fixed = TRUE)))
 })
+
+# ---------------------------------------------------------------------------
+# H-5 - duplicated names are warned about, not silently joined to one row
+# ---------------------------------------------------------------------------
+
+test_that("finalize_network warns naming duplicated vertex names (H-5)", {
+  net <- make_net(c("Cod", "Herring", "Cod"))
+  info <- data.frame(species = c("Cod", "Herring"), fg = c("Fish", "Fish"), stringsAsFactors = FALSE)
+  expect_warning(finalize_network(net, info), "duplicated vertex name.*Cod")
+})
+
+test_that("finalize_network warns when info repeats a species (H-5)", {
+  net <- make_net(c("Cod", "Herring"))
+  info <- data.frame(species = c("Cod", "Herring", "Cod"), meanB = c(1, 2, 3), stringsAsFactors = FALSE)
+  expect_warning(res <- finalize_network(net, info), "duplicated species.*Cod")
+  expect_equal(res$info$meanB, c(1, 2))  # join unchanged: first row wins
+})
+
+test_that("finalize_network is silent on unique names (H-5)", {
+  net <- make_net(c("Cod", "Herring"))
+  info <- data.frame(species = c("Herring", "Cod"), fg = c("Fish", "Fish"), stringsAsFactors = FALSE)
+  expect_no_warning(finalize_network(net, info))
+})

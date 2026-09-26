@@ -26,7 +26,8 @@
 #'    - Birds: bird, gull, tern, cormorant, duck, goose, albatross, petrel, penguin, etc.
 #'    - Fish: fish, cod, herring, sprat, flounder, shark, ray
 #'    - Benthos: benthos, benthic, mussel, clam, worm, shrimp, crab, bottom, macrobent, meiobent
-#'    - Detritus: detrit* (not detritivor*), det (word), debris
+#'    - Detritus: detrit* except detritiv*, detrit(o)pha*, detritov* (detritus feeders),
+#'      det (word), debris; Iberian 'detritos' and 'detritic' count as detritus
 #' 2. Network topology (if use_topology = TRUE)
 #'    - No prey (in-degree 0) + high P/B → Phytoplankton
 #'    - Has prey, no predators (out-degree 0) → Top predator (Fish)
@@ -39,7 +40,8 @@ assign_functional_group <- function(sp_name, pb = NA, indegree = NA, outdegree =
 
   # Priority 1: Name-based pattern matching
   # Check detritus first (most specific)
-  if (grepl("detrit($|[^i])|\\bdet\\b|debris", sp_lower)) {
+  # Lookahead, not [^io]: keeps "Detritos"/"detritic" pools, drops detritus feeders.
+  if (grepl("detrit(?!iv|o?pha|ov)|\\bdet\\b|debris", sp_lower, perl = TRUE)) {
     return("Detritus")
   }
 
