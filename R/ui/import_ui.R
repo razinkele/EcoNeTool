@@ -172,9 +172,9 @@ import_ui <- function() {
                               numericInput(
                                 "sampling_latitude",
                                 "Latitude (°N)",
-                                value = 54.5189,
-                                min = 53,
-                                max = 66,
+                                value = NA,
+                                min = -90,
+                                max = 90,
                                 step = 0.0001
                               )
                             ),
@@ -182,14 +182,17 @@ import_ui <- function() {
                               numericInput(
                                 "sampling_longitude",
                                 "Longitude (°E)",
-                                value = 18.6466,
-                                min = 10,
-                                max = 31,
+                                value = NA,
+                                min = -180,
+                                max = 180,
                                 step = 0.0001
                               )
                             )
                           ),
-                          HTML("<p style='font-size: 11px; color: #888; margin: 0;'><em>Default: Gdansk Bay</em></p>")
+                          tags$p(
+                            style = "font-size: 11px; color: #888; margin: 0;",
+                            tags$em("Required: the habitat layer is loaded around this point at import")
+                          )
                         )
                       )
                     ),

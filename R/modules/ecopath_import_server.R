@@ -95,7 +95,16 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
 
       # Extract data
       species_names <- as.character(group_table[[name_col]])
-      biomass_values <- if (!is.na(biomass_col)) as.numeric(group_table[[biomass_col]]) else rep(1, length(species_names))
+      # Habitat area fraction column (EwE "Area"); ewe_group_biomass() turns
+      # biomass-in-habitat-area into total-area biomass, exactly as the Rpath
+      # conversion does.
+      area_col <- which(grepl("^area$|habitat.*prop|^habarea$|^habprop$", col_names))[1]
+      biomass_values <- if (!is.na(biomass_col)) {
+        ewe_group_biomass(group_table, biomass_col = col_names_orig[biomass_col],
+                          area_col = if (!is.na(area_col)) col_names_orig[area_col] else NULL)
+      } else {
+        rep(1, length(species_names))
+      }
       pb_values <- if (!is.na(pb_col)) as.numeric(group_table[[pb_col]]) else rep(0.5, length(species_names))
       qb_values <- if (!is.na(qb_col)) as.numeric(group_table[[qb_col]]) else rep(1.5, length(species_names))
       bodymass_values_raw <- if (!is.na(bodymass_col)) as.numeric(group_table[[bodymass_col]]) else NULL
@@ -126,17 +135,8 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
       # Clean biomass values (default to 1 if missing)
       biomass_values <- clean_ecopath_value(biomass_values, 1, "Biomass")
 
-      # Apply habitat area proportion if available
-      # ECOPATH biomass is given per unit area, but organisms may use only fraction of total habitat
-      # Area column contains habitat area proportion (0-1), representing fraction of habitat used
-      area_col <- which(grepl("^area$|habitat.*prop|^habarea$|^habprop$", col_names))[1]
       if (!is.na(area_col)) {
-        area_proportions <- as.numeric(group_table[[area_col]])
-        area_proportions <- clean_ecopath_value(area_proportions, 1, "")  # Default to 1 (full area)
-        # Multiply biomass by area proportion to get actual biomass
-        biomass_values <- biomass_values * area_proportions
-        message("  Applied habitat area proportions to biomass")
-        message("    Range: ", round(min(area_proportions, na.rm = TRUE), 3), " - ", round(max(area_proportions, na.rm = TRUE), 3))
+        message("  Biomass = Biomass in habitat area x ", col_names_orig[area_col], " (ewe_group_biomass)")
       }
 
       # Clean P/B values (default to 0.5 if missing)
@@ -176,6 +176,19 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
       biomass_values <- biomass_values[valid_idx]
       pb_values <- pb_values[valid_idx]
       qb_values <- qb_values[valid_idx]
+
+      if (!is.null(bodymass_values_raw)) {
+        bodymass_values_raw <- bodymass_values_raw[valid_idx]
+      }
+
+      # EwE Type (0 consumer, 1 producer, 2 detritus, 0-1 mixotroph) drives
+      # functional-group assignment where present; NULL keeps name + topology.
+      type_col <- which(col_names == "type")[1]
+      ewe_types <- if (!is.na(type_col)) {
+        suppressWarnings(as.numeric(group_table[[type_col]]))[valid_idx]
+      } else {
+        NULL
+      }
 
       n_species <- length(species_names)
 
@@ -476,12 +489,12 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
           message(sprintf("  [%d/%d] Querying: %s", i, total_species, sp))
 
           # Get pattern-based hint first (fast, used to optimize API queries)
-          pattern_hint <- assign_functional_group(
+          pattern_hint <- assign_ewe_functional_groups(
             sp,
-            pb_values[i],
-            indegrees[i],
-            outdegrees[i],
-            use_topology = TRUE
+            ewe_type = if (is.null(ewe_types)) NULL else ewe_types[i],
+            pb_values = pb_values[i],
+            indegrees = indegrees[i],
+            outdegrees = outdegrees[i]
           )
 
           # Detect birds by name patterns
@@ -629,6 +642,14 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
         # Extract functional groups vector
         functional_groups <- taxonomic_report_data$functional_group
 
+        # The API result is re-checked against the EwE Type code: a Type 2
+        # group is Detritus and a Type 0 group is never a producer.
+        functional_groups <- assign_ewe_functional_groups(
+          species_names, ewe_type = ewe_types, pb_values = pb_values,
+          indegrees = indegrees, outdegrees = outdegrees, base_fg = functional_groups
+        )
+        taxonomic_report_data$functional_group <- functional_groups
+
         # Store report for display
         taxonomic_report(taxonomic_report_data)
 
@@ -661,12 +682,12 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
         }
       } else {
         # Standard pattern matching (faster, offline)
-        functional_groups <- assign_functional_groups(
+        functional_groups <- assign_ewe_functional_groups(
           species_names,
-          pb_values,
-          indegrees,
-          outdegrees,
-          use_topology = TRUE  # Use network topology for ECOPATH imports
+          ewe_type = ewe_types,
+          pb_values = pb_values,
+          indegrees = indegrees,
+          outdegrees = outdegrees
         )
       }
 
@@ -1586,68 +1607,72 @@ install.packages('Hmisc')</pre>
   # EMODnet Habitat Integration
   # ======================================================================
 
-  # Observer to load EUSeaMap data when EMODnet habitat enrichment is enabled
+  # Load EUSeaMap for a WGS84 bbox into euseamap_data(); returns the layer, or
+  # NULL (with a warning + error notification, and the checkbox cleared) when
+  # the load fails. Shared by the enable observer and the import step, which
+  # reloads when the sampling point lies outside the layer already loaded.
+  load_euseamap_for_bbox <- function(custom_bbox) {
+    showNotification("Loading EUSeaMap habitat data (optimized regional loading)...",
+                     type = "message", duration = NULL, id = "emodnet_loading")
+    tryCatch({
+      euseamap <- load_regional_euseamap(
+        bbt_name = NULL,
+        custom_bbox = custom_bbox,
+        path = app_path("data/EUSeaMap_2025/EUSeaMap_2025.gdb")
+      )
+      euseamap_data(euseamap)
+
+      region <- attr(euseamap, "region") %||% "custom"
+
+      removeNotification("emodnet_loading")
+      showNotification(
+        sprintf("✓ EUSeaMap loaded: %d polygons (%s region)", nrow(euseamap), toupper(region)),
+        type = "message",
+        duration = 5
+      )
+      euseamap
+    }, error = function(e) {
+      warning(sprintf("[EMODnet] EUSeaMap load failed for bbox %s: %s",
+                      paste(round(custom_bbox, 3), collapse = ", "), conditionMessage(e)),
+              call. = FALSE)
+      removeNotification("emodnet_loading")
+      showNotification(
+        paste("Failed to load EUSeaMap:", conditionMessage(e),
+              "\nPlease ensure EUSeaMap_2025.gdb exists in data/ directory"),
+        type = "error",
+        duration = 10
+      )
+      # Disable checkbox if loading failed
+      updateCheckboxInput(session, "enable_emodnet_habitat", value = FALSE)
+      NULL
+    })
+  }
+
+  # Observer to pre-load EUSeaMap when EMODnet habitat enrichment is enabled.
+  # The bbox comes from the sampling location the user entered (the same
+  # inputs the import step uses), else from the imported model's metadata
+  # bounding box. With neither, loading waits for the import step (the
+  # coordinates are only visible once the box is ticked, so do not untick it).
   observeEvent(input$enable_emodnet_habitat, {
-    if (input$enable_emodnet_habitat && is.null(euseamap_data())) {
-      showNotification("Loading EUSeaMap habitat data (optimized regional loading)...",
-                       type = "message", duration = NULL, id = "emodnet_loading")
-
-      tryCatch({
-        # Determine region from sampling location if available
-        bbt_name <- NULL
-        custom_bbox <- NULL
-
-        # Check if there's a sampling location in the data
-        if (!is.null(current_network()) && "sampling_lon" %in% names(current_network()$nodes)) {
-          # Use first valid sampling location
-          sampling_lon <- current_network()$nodes$sampling_lon[1]
-          sampling_lat <- current_network()$nodes$sampling_lat[1]
-
-          if (!is.na(sampling_lon) && !is.na(sampling_lat)) {
-            # Create bbox around sampling point (±2 degrees = small area, avoids geometry errors)
-            custom_bbox <- c(
-              sampling_lon - 2, sampling_lat - 2,
-              sampling_lon + 2, sampling_lat + 2
-            )
-            cat("\n🗺️  Loading habitat for sampling location:", sampling_lon, ",", sampling_lat, "\n")
-          }
-        }
-
-        # If no custom bbox determined, default to small test area (Baltic)
-        if (is.null(custom_bbox)) {
-          cat("\n⚠️  No sampling location found, using default Baltic test area\n")
-          custom_bbox <- c(20, 55, 21, 56)  # Small 1x1 degree test area
-        }
-
-        # Load regional EUSeaMap data with custom bbox (avoids large regional bbox!)
-        euseamap <- load_regional_euseamap(
-          bbt_name = bbt_name,
-          custom_bbox = custom_bbox,
-          path = "data/EUSeaMap_2025/EUSeaMap_2025.gdb"
-        )
-        euseamap_data(euseamap)
-
-        # Get region info
-        region <- attr(euseamap, "region") %||% "baltic"
-
-        removeNotification("emodnet_loading")
-        showNotification(
-          sprintf("✓ EUSeaMap loaded: %d polygons (%s region)", nrow(euseamap), toupper(region)),
-          type = "message",
-          duration = 5
-        )
-      }, error = function(e) {
-        removeNotification("emodnet_loading")
-        showNotification(
-          paste("Failed to load EUSeaMap:", e$message,
-                "\nPlease ensure EUSeaMap_2025.gdb exists in data/ directory"),
-          type = "error",
-          duration = 10
-        )
-        # Disable checkbox if loading failed
-        updateCheckboxInput(session, "enable_emodnet_habitat", value = FALSE)
-      })
+    if (!isTRUE(input$enable_emodnet_habitat) || !is.null(euseamap_data())) {
+      return()
     }
+
+    custom_bbox <- resolve_emodnet_bbox(
+      lon = input$sampling_longitude,
+      lat = input$sampling_latitude,
+      meta = ecopath_native_metadata()$metadata
+    )
+    if (is.null(custom_bbox)) {
+      showNotification(
+        paste("Enter the sampling latitude and longitude: the EMODnet habitat layer is",
+              "loaded around that point at import."),
+        type = "message", duration = 10
+      )
+      return()
+    }
+
+    load_euseamap_for_bbox(custom_bbox)
   })
 
   # Handle ECOPATH native import when button clicked
@@ -1767,7 +1792,7 @@ install.packages('Hmisc')</pre>
         # ============================================================
         # Add EMODnet habitat data if enabled
         # ============================================================
-        if (isTRUE(input$enable_emodnet_habitat) && !is.null(euseamap_data())) {
+        if (isTRUE(input$enable_emodnet_habitat)) {
           tryCatch({
             # Get sampling location from inputs
             sampling_lon <- input$sampling_longitude
@@ -1777,21 +1802,40 @@ install.packages('Hmisc')</pre>
             if (!is.null(sampling_lon) && !is.null(sampling_lat) &&
                 !is.na(sampling_lon) && !is.na(sampling_lat)) {
 
-              # Add habitat data to all species
-              species_data <- add_habitat_to_species(
-                species_data,
-                sampling_lon,
-                sampling_lat,
-                euseamap_data()
-              )
+              # The layer loaded when the box was ticked may not cover this
+              # point (other coordinates, or none loaded yet): reload around it.
+              layer <- euseamap_data()
+              if (euseamap_needs_reload(euseamap_layer_bbox(layer), sampling_lon, sampling_lat)) {
+                layer <- load_euseamap_for_bbox(resolve_emodnet_bbox(
+                  lon = sampling_lon, lat = sampling_lat,
+                  meta = ecopath_native_metadata()$metadata
+                ))
+              }
 
-              showNotification(
-                sprintf("✓ Added habitat data at %.4f°E, %.4f°N", sampling_lon, sampling_lat),
-                type = "message",
-                duration = 3
-              )
+              if (!is.null(layer)) {
+                species_data <- add_habitat_to_species(species_data, sampling_lon, sampling_lat, layer)
+                if (emodnet_habitat_assigned(species_data)) {
+                  showNotification(
+                    sprintf("✓ Added habitat data at %.4f°E, %.4f°N", sampling_lon, sampling_lat),
+                    type = "message",
+                    duration = 3
+                  )
+                } else {
+                  showNotification(
+                    sprintf(paste("No EMODnet habitat at %.4f°E, %.4f°N (location outside EUSeaMap",
+                                  "coverage); habitat columns left empty."), sampling_lon, sampling_lat),
+                    type = "warning",
+                    duration = 8
+                  )
+                }
+              }
             } else {
-              warning("Invalid sampling coordinates for habitat enrichment")
+              warning("Invalid sampling coordinates for habitat enrichment", call. = FALSE)
+              showNotification(
+                "EMODnet habitat skipped: enter the sampling latitude and longitude before importing.",
+                type = "warning",
+                duration = 8
+              )
             }
           }, error = function(e) {
             warning("Failed to add habitat data: ", e$message)

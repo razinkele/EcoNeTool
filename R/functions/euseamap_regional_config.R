@@ -346,3 +346,89 @@ print_regional_summary <- function() {
   cat("  - Loading time: 3-10x faster\n")
   cat("  - Memory usage: 3-10x lower\n")
 }
+
+#' Bounding box for EMODnet habitat loading
+#'
+#' @param lon,lat Sampling location (decimal degrees); NULL/NA when unset.
+#' @param meta Imported model metadata with min_lon, max_lon, min_lat, max_lat
+#'   (EwE EcopathModel MinLon..MaxLat); may be NULL.
+#' @param pad Half-width in degrees of the box around a sampling point.
+#' @return c(xmin, ymin, xmax, ymax), or NULL when neither a sampling point
+#'   nor a valid metadata box is available.
+#' @export
+resolve_emodnet_bbox <- function(lon = NULL, lat = NULL, meta = NULL, pad = 2) {
+  num <- function(x) {
+    if (is.null(x) || length(x) == 0) return(NA_real_)
+    v <- suppressWarnings(as.numeric(x[1]))
+    if (!is.finite(v) || v == -9999) NA_real_ else v
+  }
+  lon <- num(lon)
+  lat <- num(lat)
+  if (!is.na(lon) && !is.na(lat)) {
+    return(c(lon - pad, lat - pad, lon + pad, lat + pad))
+  }
+  if (!is.null(meta)) {
+    box <- c(num(meta$min_lon), num(meta$min_lat), num(meta$max_lon), num(meta$max_lat))
+    if (!anyNA(box) && box[1] < box[3] && box[2] < box[4]) {
+      return(box)
+    }
+  }
+  NULL
+}
+
+#' Is a point inside a bounding box?
+#'
+#' @param lon,lat Point in decimal degrees (WGS84).
+#' @param bbox c(xmin, ymin, xmax, ymax) in WGS84, or NULL.
+#' @return TRUE when the point lies inside (or on the edge of) the box; FALSE
+#'   when the box is NULL or the point is missing.
+#' @export
+point_in_bbox <- function(lon, lat, bbox) {
+  if (is.null(bbox) || length(bbox) != 4 || length(lon) != 1 || length(lat) != 1) return(FALSE)
+  lon <- suppressWarnings(as.numeric(lon))
+  lat <- suppressWarnings(as.numeric(lat))
+  bbox <- suppressWarnings(as.numeric(bbox))
+  if (anyNA(c(lon, lat, bbox))) return(FALSE)
+  lon >= bbox[1] && lon <= bbox[3] && lat >= bbox[2] && lat <= bbox[4]
+}
+
+#' WGS84 bounding box of a loaded EUSeaMap layer
+#'
+#' Uses the `bbox_filter` attribute that load_regional_euseamap() records
+#' (the box the layer was cut to, in WGS84); otherwise the layer's own
+#' extent transformed to EPSG:4326.
+#'
+#' @param layer sf layer from load_regional_euseamap(), or NULL.
+#' @return c(xmin, ymin, xmax, ymax), or NULL when there is no layer.
+#' @export
+euseamap_layer_bbox <- function(layer) {
+  if (is.null(layer)) return(NULL)
+  box <- attr(layer, "bbox_filter")
+  if (!is.null(box)) return(as.numeric(box))
+  bb <- sf::st_bbox(layer)
+  if (!is.na(sf::st_crs(layer)) && sf::st_crs(layer) != sf::st_crs(4326)) {
+    bb <- sf::st_bbox(sf::st_transform(sf::st_as_sfc(bb), 4326))
+  }
+  as.numeric(bb)
+}
+
+#' Does the EUSeaMap layer have to be (re)loaded for this sampling point?
+#'
+#' @param layer_bbox WGS84 box of the loaded layer (euseamap_layer_bbox()),
+#'   or NULL when nothing is loaded.
+#' @param lon,lat Sampling point.
+#' @return TRUE when no layer is loaded or the point lies outside it.
+#' @export
+euseamap_needs_reload <- function(layer_bbox, lon, lat) {
+  is.null(layer_bbox) || !point_in_bbox(lon, lat, layer_bbox)
+}
+
+#' Were habitats actually assigned from EMODnet?
+#'
+#' @param species_df Output of add_habitat_to_species().
+#' @return TRUE when any row's habitat_source is "EMODnet EUSeaMap".
+#' @export
+emodnet_habitat_assigned <- function(species_df) {
+  if (!is.data.frame(species_df) || !"habitat_source" %in% names(species_df)) return(FALSE)
+  any(species_df$habitat_source == "EMODnet EUSeaMap", na.rm = TRUE)
+}

@@ -447,13 +447,15 @@ metaweb_manager_server <- function(input, output, session, current_metaweb,
       # Convert metaweb to igraph
       new_net <- metaweb_to_igraph(current_metaweb())
 
-      # finalize_network() re-keys the metaweb's species table to V(net)$name,
-      # canonicalises fg and derives colfg. The hand-rolled defaults this
-      # replaced produced a frame with no colfg, no `species` column (the
-      # metaweb calls it species_name) and fg = "Other" - not one of
+      # metaweb_species_to_info() renames the metaweb columns (species_name,
+      # biomass, body_mass, ...) to the info columns, and finalize_network()
+      # then joins them to V(net)$name, which is the same
+      # make.unique(species_name). The hand-rolled defaults this replaced
+      # produced a frame with no colfg, no `species` column (the metaweb
+      # calls it species_name) and fg = "Other" - not one of
       # get_functional_group_levels() - so the Food Web tab failed its
       # required-columns check immediately after an export.
-      finalized <- finalize_network(new_net, current_metaweb()$species)
+      finalized <- finalize_network(new_net, metaweb_species_to_info(current_metaweb()$species))
 
       net_reactive(finalized$net)
       info_reactive(finalized$info)

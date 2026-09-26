@@ -322,7 +322,8 @@ convert_ecopath_to_rpath <- function(ecopath_data, model_name = "EcoNeTool Model
   }
 
   # Biomass (B) - tons/km²
-  params$model$Biomass <- clean_ecopath_missing(living_groups$Biomass)
+  # Total-area biomass (Biomass in habitat area x Area); see ewe_group_biomass().
+  params$model$Biomass <- ewe_group_biomass(living_groups)
 
   # Production/Biomass ratio (P/B) - per year
   params$model$PB <- clean_ecopath_missing(living_groups$ProdBiom)

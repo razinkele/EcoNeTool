@@ -243,10 +243,12 @@ ecobase_server <- function(input, output, session, net_reactive, info_reactive,
 
       ecobase_net <- igraph::upgrade_graph(ecobase_net)
 
-      # One derivation, shared with finalize_network() (see
-      # R/functions/network_finalize.R). Four copies of this loop existed;
-      # two of them drifted into findings #18 and #27.
-      ecobase_info$colfg <- fg_to_color(ecobase_info$fg)
+      # finalize_network() aligns info to V(net), canonicalises fg, derives
+      # colfg and estimates met.types, bodymasses and efficiencies by fg
+      # (EcoBase carries none of them).
+      finalized <- finalize_network(ecobase_net, ecobase_info)
+      ecobase_net <- finalized$net
+      ecobase_info <- finalized$info
 
       net_reactive(ecobase_net)
       info_reactive(ecobase_info)

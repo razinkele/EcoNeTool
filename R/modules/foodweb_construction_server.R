@@ -364,39 +364,46 @@ foodweb_construction_server <- function(input, output, session, shared_data) {
       return()
     }
 
-    withProgress(message = 'Constructing food web...', value = 0, {
+    tryCatch({
+      withProgress(message = 'Constructing food web...', value = 0, {
 
-      incProgress(0.3, detail = "Calculating interaction probabilities")
+        incProgress(0.3, detail = "Calculating interaction probabilities")
 
-      # Get probability matrix
-      rv$prob_matrix <- construct_trait_foodweb(
-        rv$trait_data,
-        threshold = 0,
-        return_probs = TRUE
-      )
+        # Get probability matrix
+        rv$prob_matrix <- construct_trait_foodweb(
+          rv$trait_data,
+          threshold = 0,
+          return_probs = TRUE
+        )
 
-      incProgress(0.3, detail = "Creating adjacency matrix")
+        incProgress(0.3, detail = "Creating adjacency matrix")
 
-      # Get adjacency matrix with threshold
-      rv$adjacency_matrix <- construct_trait_foodweb(
-        rv$trait_data,
-        threshold = input$foodweb_threshold,
-        return_probs = FALSE
-      )
+        # Get adjacency matrix with threshold
+        rv$adjacency_matrix <- construct_trait_foodweb(
+          rv$trait_data,
+          threshold = input$foodweb_threshold,
+          return_probs = FALSE
+        )
 
-      incProgress(0.2, detail = "Building network graph")
+        incProgress(0.2, detail = "Building network graph")
 
-      # Create igraph object
-      rv$network_igraph <- trait_foodweb_to_igraph(
-        rv$trait_data,
-        threshold = input$foodweb_threshold,
-        include_probs = TRUE
-      )
+        # Create igraph object
+        rv$network_igraph <- trait_foodweb_to_igraph(
+          rv$trait_data,
+          threshold = input$foodweb_threshold,
+          include_probs = TRUE
+        )
 
-      incProgress(0.2, detail = "Done")
+        incProgress(0.2, detail = "Done")
+      })
+
+      showNotification("Food web constructed successfully!", type = "message", duration = 3)
+    }, error = function(e) {
+      warning(sprintf("[foodweb construction] network construction failed: %s",
+                      conditionMessage(e)), call. = FALSE)
+      showNotification(paste("Food web construction failed:", conditionMessage(e)),
+                       type = "error", duration = 10)
     })
-
-    showNotification("Food web constructed successfully!", type = "message", duration = 3)
   })
 
   # ============================================================================
