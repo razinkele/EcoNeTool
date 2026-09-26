@@ -77,3 +77,40 @@ test_that("both biomass paths call ewe_group_biomass (F52)", {
   expect_true(any(grepl("ewe_group_biomass(living_groups)", rpath, fixed = TRUE)))
   expect_false(any(grepl("biomass_values * area_proportions", server, fixed = TRUE)))
 })
+
+# ---------------------------------------------------------------------------
+# F50 - EcoBase: no biomass*100 body mass, met.types filled by finalize
+# ---------------------------------------------------------------------------
+
+convert_403_offline <- function() {
+  input <- load_fixture("ecobase_model_403_input")
+  output <- load_fixture("ecobase_model_403_output")
+  meta <- load_fixture("ecobase_model_403_metadata")
+  with_mocked_function(globalenv(), "get_ecobase_model_input", function(model_id) input, {
+    with_mocked_function(globalenv(), "get_ecobase_model_output", function(model_id) output, {
+      with_mocked_function(globalenv(), "get_ecobase_model_metadata", function(model_id) meta, {
+        suppressWarnings(suppressMessages(convert_ecobase_to_econetool_hybrid(403)))
+      })
+    })
+  })
+}
+
+test_that("EcoBase converter no longer emits proxy body mass / efficiency / losses (F50)", {
+  result <- convert_403_offline()
+  expect_false(any(c("bodymasses", "efficiencies", "losses") %in% names(result$info)))
+})
+
+test_that("EcoBase import finalised carries met.types and a real body-mass estimate (F50)", {
+  result <- convert_403_offline()
+  out <- finalize_network(result$net, result$info)
+
+  expect_false(anyNA(out$info$met.types))
+  expect_false(isTRUE(all.equal(out$info$bodymasses, out$info$meanB * 100)))
+  expect_false(all(out$info$efficiencies == 0.8))
+})
+
+test_that("ecobase_server.R finalises the EcoBase import (F50)", {
+  code <- readLines(app_path("R/modules/ecobase_server.R"), warn = FALSE)
+  code <- code[!startsWith(trimws(code), "#")]
+  expect_true(any(grepl("finalize_network(ecobase_net, ecobase_info)", code, fixed = TRUE)))
+})

@@ -462,9 +462,6 @@ convert_ecobase_to_econetool <- function(model_id, use_output = TRUE) {
     PB = pb_values,
     QB = qb_values,
     EE = ee_values,
-    bodymasses = biomass_values * 100,  # Rough estimate
-    losses = 0.1,  # Default
-    efficiencies = 0.8,  # Default
     stringsAsFactors = FALSE
   )
 
@@ -650,9 +647,6 @@ convert_ecobase_to_econetool_hybrid <- function(model_id) {
     PB = pb_values,
     QB = qb_values,
     EE = ee_values,
-    bodymasses = biomass_values * 100,
-    losses = 0.1,
-    efficiencies = 0.8,
     stringsAsFactors = FALSE
   )
 
