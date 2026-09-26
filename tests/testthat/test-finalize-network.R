@@ -271,3 +271,97 @@ test_that("finalize_network infers fg per vertex when info has no fg column (F66
   expect_equal(as.character(out$info$fg), c("Fish", "Zooplankton", "Phytoplankton"))
   expect_equal(length(unique(out$info$colfg)), 3L)
 })
+
+# ---------------------------------------------------------------------------
+# F67 - metaweb export keeps its real attributes
+# ---------------------------------------------------------------------------
+
+local({
+  root <- get_app_root()
+  source(file.path(root, "R/functions/metaweb_core.R"), local = FALSE)
+})
+
+template_metaweb <- function() {
+  create_metaweb(
+    species = data.frame(
+      species_id = c("SP001", "SP002", "SP003"),
+      species_name = c("Gadus morhua", "Clupea harengus", "Calanus finmarchicus"),
+      functional_group = c("Fish", "Fish", "Zooplankton"),
+      biomass = c(1, 5, 20),
+      stringsAsFactors = FALSE
+    ),
+    interactions = data.frame(
+      predator_id = c("SP001", "SP002"),
+      prey_id = c("SP002", "SP003"),
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+test_that("metaweb_to_igraph names vertices by species name, prey -> predator (F67)", {
+  g <- metaweb_to_igraph(template_metaweb())
+
+  expect_equal(igraph::V(g)$name, c("Gadus morhua", "Clupea harengus", "Calanus finmarchicus"))
+  expect_equal(igraph::V(g)$species_id, c("SP001", "SP002", "SP003"))
+  assert_prey_to_predator(g, "Clupea harengus", "Gadus morhua")
+  assert_prey_to_predator(g, "Calanus finmarchicus", "Clupea harengus")
+})
+
+test_that("metaweb_to_igraph keeps duplicate species names distinct", {
+  mw <- template_metaweb()
+  mw$species$species_name[3] <- "Clupea harengus"
+  g <- metaweb_to_igraph(mw)
+
+  expect_equal(igraph::V(g)$name, c("Gadus morhua", "Clupea harengus", "Clupea harengus.1"))
+  expect_equal(igraph::ecount(g), 2L)
+  info <- metaweb_species_to_info(mw$species)
+  expect_equal(info$species, igraph::V(g)$name)
+})
+
+test_that("metaweb_to_igraph drops links to unknown ids with a warning", {
+  mw <- template_metaweb()
+  mw$interactions <- rbind(mw$interactions,
+                           data.frame(predator_id = "SP001", prey_id = "SP999",
+                                      quality_code = 1, source = "x"))
+  expect_warning(g <- metaweb_to_igraph(mw), "SP999")
+  expect_equal(igraph::ecount(g), 2L)
+})
+
+test_that("metaweb_species_to_info maps the metaweb columns onto info columns", {
+  species <- data.frame(
+    species_id = c("SP001", "SP002"), species_name = c("Cod", "Mixed plankton"),
+    functional_group = c("Fish", "pelagic"), biomass = c(2.5, 7),
+    body_mass = c(1000, 0.001), metabolic_type = c("ectotherm vertebrates", "invertebrates"),
+    efficiency = c(0.85, 0.75), stringsAsFactors = FALSE
+  )
+
+  info <- metaweb_species_to_info(species)
+
+  expect_equal(info$species, c("Cod", "Mixed plankton"))
+  expect_equal(info$fg, c("Fish", NA))  # "pelagic" is not canonical -> inferred later
+  expect_equal(info$meanB, c(2.5, 7))
+  expect_equal(info$bodymasses, c(1000, 0.001))
+  expect_equal(info$met.types, c("ectotherm vertebrates", "invertebrates"))
+  expect_equal(info$efficiencies, c(0.85, 0.75))
+  expect_equal(info$species_id, c("SP001", "SP002"))
+})
+
+test_that("the bundled Baltic metaweb exports with real biomass and several fg (F67)", {
+  rds <- app_path("metawebs/baltic/baltic_kortsch2021.rds")
+  skip_if_not(file.exists(rds), "Baltic metaweb .rds not found")
+  mw <- readRDS(rds)
+
+  net <- metaweb_to_igraph(mw)
+  out <- finalize_network(net, metaweb_species_to_info(mw$species))
+
+  expect_equal(out$info$species, make.unique(mw$species$species_name))
+  expect_equal(out$info$meanB, as.numeric(mw$species$biomass))
+  expect_false(all(out$info$meanB == 1))
+  expect_gt(length(unique(as.character(out$info$fg))), 1)
+})
+
+test_that("metaweb_manager_server.R exports through metaweb_species_to_info (F67)", {
+  code <- readLines(app_path("R/modules/metaweb_manager_server.R"), warn = FALSE)
+  code <- code[!startsWith(trimws(code), "#")]
+  expect_true(any(grepl("finalize_network(new_net, metaweb_species_to_info(", code, fixed = TRUE)))
+})

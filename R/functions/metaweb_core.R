@@ -126,36 +126,110 @@ print.metaweb <- function(x, ...) {
 
 #' Convert metaweb to igraph network
 #'
-#' Edges follow the app-wide contract (R/functions/network_finalize.R):
-#' `prey_id -> predator_id`, i.e. an edge A -> B means B eats A.
+#' Edge contract (see R/functions/network_finalize.R): an edge A -> B means B
+#' eats A, so edges run prey_id -> predator_id.
+#'
+#' Vertices are named by species NAME (made unique with make.unique()), so the
+#' graph joins by name with an info frame from metaweb_species_to_info() in
+#' finalize_network(). The metaweb id is kept as V(g)$species_id. Interaction
+#' ids are resolved against species_id first and species_name second; links
+#' whose endpoints resolve to neither are dropped with a warning().
 #'
 #' @param metaweb Metaweb object
-#' @return igraph object; vertices are named by `species_id`
+#' @return igraph object
 #' @export
 metaweb_to_igraph <- function(metaweb) {
   if (!requireNamespace("igraph", quietly = TRUE)) {
     stop("Package 'igraph' is required")
   }
 
-  # Create edge list: prey -> predator
-  edges <- metaweb$interactions[, c("prey_id", "predator_id")]
+  species <- as.data.frame(metaweb$species, stringsAsFactors = FALSE)
+  interactions <- as.data.frame(metaweb$interactions, stringsAsFactors = FALSE)
 
-  # Create igraph object
-  g <- igraph::graph_from_data_frame(
-    d = edges,
-    directed = TRUE,
-    vertices = metaweb$species
-  )
+  species_names <- as.character(species$species_name)
+  vertex_names <- make.unique(species_names)
+  species_ids <- as.character(species$species_id)
 
-  # Add edge attributes
-  if ("quality_code" %in% colnames(metaweb$interactions)) {
-    igraph::E(g)$quality_code <- metaweb$interactions$quality_code
+  resolve <- function(x) {
+    x <- as.character(x)
+    out <- vertex_names[match(x, species_ids)]
+    by_name <- is.na(out)
+    out[by_name] <- vertex_names[match(x[by_name], species_names)]
+    out
   }
-  if ("source" %in% colnames(metaweb$interactions)) {
-    igraph::E(g)$source <- metaweb$interactions$source
+  from <- resolve(interactions$prey_id)
+  to <- resolve(interactions$predator_id)
+
+  keep <- !is.na(from) & !is.na(to)
+  if (any(!keep)) {
+    unknown <- unique(c(as.character(interactions$prey_id)[is.na(from)],
+                        as.character(interactions$predator_id)[is.na(to)]))
+    warning(sprintf(
+      "[metaweb_to_igraph] dropped %d interaction(s) with ids not in the species table: %s",
+      sum(!keep), paste(utils::head(unknown, 10), collapse = ", ")
+    ), call. = FALSE)
   }
 
-  return(g)
+  edges <- data.frame(from = from[keep], to = to[keep], stringsAsFactors = FALSE)
+  vertices <- data.frame(name = vertex_names,
+                         species[, setdiff(names(species), "name"), drop = FALSE],
+                         stringsAsFactors = FALSE)
+
+  g <- igraph::graph_from_data_frame(d = edges, directed = TRUE, vertices = vertices)
+
+  # Add edge attributes (only for the links that were kept)
+  if ("quality_code" %in% colnames(interactions)) {
+    igraph::E(g)$quality_code <- interactions$quality_code[keep]
+  }
+  if ("source" %in% colnames(interactions)) {
+    igraph::E(g)$source <- interactions$source[keep]
+  }
+
+  g
+}
+
+#' Map a metaweb species table onto the info-frame columns
+#'
+#' The companion of metaweb_to_igraph(): `species` is make.unique(species_name)
+#' exactly as the vertex names are, so finalize_network() matches every row.
+#' A functional_group outside get_functional_group_levels() becomes NA so that
+#' finalize_network() infers it instead of colouring the node grey.
+#'
+#' @param species The metaweb species data frame.
+#' @return Data frame with `species` plus whichever of fg, meanB, bodymasses,
+#'   met.types, efficiencies, PB, QB and species_id the metaweb carries.
+#' @export
+metaweb_species_to_info <- function(species) {
+  species <- as.data.frame(species, stringsAsFactors = FALSE)
+  if (!"species_name" %in% names(species)) {
+    stop("metaweb_species_to_info(): species table has no 'species_name' column",
+         call. = FALSE)
+  }
+
+  info <- data.frame(species = make.unique(as.character(species$species_name)),
+                     stringsAsFactors = FALSE)
+
+  if ("functional_group" %in% names(species)) {
+    fg <- as.character(species$functional_group)
+    fg[!fg %in% get_functional_group_levels()] <- NA_character_
+    info$fg <- fg
+  }
+
+  numeric_map <- c(biomass = "meanB", body_mass = "bodymasses",
+                   efficiency = "efficiencies", pb_ratio = "PB", qb_ratio = "QB")
+  for (src in names(numeric_map)) {
+    if (src %in% names(species)) {
+      info[[numeric_map[[src]]]] <- suppressWarnings(as.numeric(species[[src]]))
+    }
+  }
+  if ("metabolic_type" %in% names(species)) {
+    info$met.types <- as.character(species$metabolic_type)
+  }
+  if ("species_id" %in% names(species)) {
+    info$species_id <- as.character(species$species_id)
+  }
+
+  info
 }
 
 #' Build a metaweb interactions table from a prey -> predator igraph
