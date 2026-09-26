@@ -223,8 +223,11 @@ analysis_server <- function(input, output, session, net_reactive, info_reactive,
       )
 
       # Add text annotations
-      text(0.001, ks_cut, "Top-quartile KS", pos = 3, cex = 0.7, col = "gray50")
-      text(0.05, max(ks_results$keystoneness, na.rm = TRUE) * 0.9,
+      # Place annotations inside the plotted range. KS = log10(...) is usually
+      # negative, so "max(KS) * 0.9" put the label above the plot (F-3).
+      usr <- par("usr")  # x limits are log10 units because log = "x"
+      text(10^usr[1], ks_cut, "Top-quartile KS", pos = 4, offset = 0.2, cex = 0.7, col = "gray50")
+      text(0.05, usr[4] - 0.05 * (usr[4] - usr[3]),
            "5% biomass threshold", pos = 4, cex = 0.7, col = "gray50")
 
     }, error = function(e) {

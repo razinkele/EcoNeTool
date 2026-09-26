@@ -111,7 +111,8 @@ calculate_mti <- function(net, info) {
 #'   \item{species}{Species name}
 #'   \item{overall_effect}{epsilon_i = sqrt(sum over j != i of MTI[i, j]^2)}
 #'   \item{relative_biomass}{p_i = B_i / sum(B)}
-#'   \item{keystoneness}{KS_i = log(epsilon_i * (1 - p_i)); NA when undefined}
+#'   \item{keystoneness}{KS_i = log10(epsilon_i * (1 - p_i)), base-10 log as
+#'     reported by EwE; NA when undefined}
 #'   \item{keystone_status}{"Keystone", "Dominant", "Other" or "Undefined"}
 #'   \item{ks_rank}{Rank by KS, 1 = highest; NA when KS is NA}
 #' }
@@ -153,7 +154,7 @@ calculate_keystoneness <- function(net, info) {
     }
     relative_biomass <- biomass / total_biomass
 
-    keystoneness <- suppressWarnings(log(overall_effect * (1 - relative_biomass)))
+    keystoneness <- suppressWarnings(log10(overall_effect * (1 - relative_biomass)))
     keystoneness[!is.finite(keystoneness)] <- NA_real_
 
     ks_cut <- if (all(is.na(keystoneness))) {

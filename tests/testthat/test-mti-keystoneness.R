@@ -63,13 +63,17 @@ test_that("diet_prop on the edges replaces the equal diet split", {
   expect_equal(mti["P1", "Z"] / mti["P2", "Z"], 4, tolerance = 1e-8)
 })
 
-test_that("keystoneness uses Libralato's epsilon and log(eps * (1 - p))", {
+test_that("keystoneness uses Libralato's epsilon and log10(eps * (1 - p)), as in EwE", {
   ks <- calculate_keystoneness(chain(), chain_info())
   ks <- ks[match(c("P", "Z", "F"), ks$species), ]
 
   expect_equal(ks$overall_effect, rep(sqrt(2 / 9), 3), tolerance = 1e-7)
   expect_equal(ks$relative_biomass, c(10, 5, 1) / 16, tolerance = 1e-8)
-  expect_equal(ks$keystoneness, c(-1.7328680, -1.1267321, -0.8165772), tolerance = 1e-7)
+  # EwE reports KS with log10 (F-3). The natural-log values were
+  # -1.7328680, -1.1267321, -0.8165772.
+  expected <- log10(sqrt(2 / 9) * (1 - c(10, 5, 1) / 16))
+  expect_equal(ks$keystoneness, expected, tolerance = 1e-7)
+  expect_equal(ks$keystoneness, c(-1.7328680, -1.1267321, -0.8165772) / log(10), tolerance = 1e-7)
 })
 
 test_that("keystoneness returns the documented columns, statuses and ranks", {
@@ -78,7 +82,7 @@ test_that("keystoneness returns the documented columns, statuses and ranks", {
   expect_named(ks, c("species", "overall_effect", "relative_biomass",
                      "keystoneness", "keystone_status", "ks_rank"))
   expect_true(all(ks$keystone_status %in% c("Keystone", "Dominant", "Other", "Undefined")))
-  # Sorted by KS descending; F (-0.817) is the only one in the top quartile
+  # Sorted by KS descending; F (-0.355) is the only one in the top quartile
   # and holds 6.25% of biomass, so it is Dominant, not Keystone.
   expect_equal(ks$species, c("F", "Z", "P"))
   expect_equal(ks$ks_rank, 1:3)

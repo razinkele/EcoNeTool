@@ -28,8 +28,9 @@ keystoneness_ui <- function() {
                 on their consumers, and predators negative impacts on their prey.</li>
                 <li><strong>Overall Effect (&epsilon;):</strong> sqrt of the sum of squared MTI values of a
                 species on all others (its own self-impact excluded)</li>
-                <li><strong>Keystoneness Index (KS):</strong> log(&epsilon; &times; (1 - p)), where p is the species'
-                share of total biomass (Libralato et al. 2006). Higher KS = larger impact for its biomass.</li>
+                <li><strong>Keystoneness Index (KS):</strong> log<sub>10</sub>(&epsilon; &times; (1 - p)),
+                where p is the species' share of total biomass (Libralato et al. 2006; base-10 log, as
+                reported by EwE). Higher KS = larger impact for its biomass.</li>
               </ul>
 
               <h5>Species Classifications:</h5>
