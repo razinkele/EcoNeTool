@@ -256,3 +256,18 @@ test_that("no module still hand-rolls the colfg derivation", {
   expect_equal(offenders, character(0),
                label = "modules still deriving colfg by hand")
 })
+
+# ---------------------------------------------------------------------------
+# F66 - fg inferred per vertex, not recycled from the first one
+# ---------------------------------------------------------------------------
+
+test_that("finalize_network infers fg per vertex when info has no fg column (F66)", {
+  net <- make_net(c("Gadus morhua", "Calanus finmarchicus", "Diatoma"))
+  info <- data.frame(species = c("Gadus morhua", "Calanus finmarchicus", "Diatoma"),
+                     meanB = c(1, 2, 3), stringsAsFactors = FALSE)
+
+  out <- finalize_network(net, info)
+
+  expect_equal(as.character(out$info$fg), c("Fish", "Zooplankton", "Phytoplankton"))
+  expect_equal(length(unique(out$info$colfg)), 3L)
+})

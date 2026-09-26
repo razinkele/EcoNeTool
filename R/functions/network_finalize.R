@@ -113,7 +113,11 @@ finalize_network <- function(net, info) {
   }
 
   # Functional group: canonical levels, inferred where absent.
-  fg_char <- if ("fg" %in% names(aligned)) as.character(aligned$fg) else NA_character_
+  fg_char <- if ("fg" %in% names(aligned)) {
+    as.character(aligned$fg)
+  } else {
+    rep(NA_character_, length(vertex_names))
+  }
   needs_fg <- is.na(fg_char)
   if (any(needs_fg)) {
     inferred <- tryCatch(
