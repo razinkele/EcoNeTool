@@ -1603,68 +1603,63 @@ install.packages('Hmisc')</pre>
   # EMODnet Habitat Integration
   # ======================================================================
 
-  # Observer to load EUSeaMap data when EMODnet habitat enrichment is enabled
+  # Observer to load EUSeaMap data when EMODnet habitat enrichment is enabled.
+  # The bbox comes from the sampling location the user entered (the same
+  # inputs the import step uses), else from the imported model's metadata
+  # bounding box. With neither there is nothing sensible to load.
   observeEvent(input$enable_emodnet_habitat, {
-    if (input$enable_emodnet_habitat && is.null(euseamap_data())) {
-      showNotification("Loading EUSeaMap habitat data (optimized regional loading)...",
-                       type = "message", duration = NULL, id = "emodnet_loading")
-
-      tryCatch({
-        # Determine region from sampling location if available
-        bbt_name <- NULL
-        custom_bbox <- NULL
-
-        # Check if there's a sampling location in the data
-        if (!is.null(current_network()) && "sampling_lon" %in% names(current_network()$nodes)) {
-          # Use first valid sampling location
-          sampling_lon <- current_network()$nodes$sampling_lon[1]
-          sampling_lat <- current_network()$nodes$sampling_lat[1]
-
-          if (!is.na(sampling_lon) && !is.na(sampling_lat)) {
-            # Create bbox around sampling point (±2 degrees = small area, avoids geometry errors)
-            custom_bbox <- c(
-              sampling_lon - 2, sampling_lat - 2,
-              sampling_lon + 2, sampling_lat + 2
-            )
-            cat("\n🗺️  Loading habitat for sampling location:", sampling_lon, ",", sampling_lat, "\n")
-          }
-        }
-
-        # If no custom bbox determined, default to small test area (Baltic)
-        if (is.null(custom_bbox)) {
-          cat("\n⚠️  No sampling location found, using default Baltic test area\n")
-          custom_bbox <- c(20, 55, 21, 56)  # Small 1x1 degree test area
-        }
-
-        # Load regional EUSeaMap data with custom bbox (avoids large regional bbox!)
-        euseamap <- load_regional_euseamap(
-          bbt_name = bbt_name,
-          custom_bbox = custom_bbox,
-          path = "data/EUSeaMap_2025/EUSeaMap_2025.gdb"
-        )
-        euseamap_data(euseamap)
-
-        # Get region info
-        region <- attr(euseamap, "region") %||% "baltic"
-
-        removeNotification("emodnet_loading")
-        showNotification(
-          sprintf("✓ EUSeaMap loaded: %d polygons (%s region)", nrow(euseamap), toupper(region)),
-          type = "message",
-          duration = 5
-        )
-      }, error = function(e) {
-        removeNotification("emodnet_loading")
-        showNotification(
-          paste("Failed to load EUSeaMap:", e$message,
-                "\nPlease ensure EUSeaMap_2025.gdb exists in data/ directory"),
-          type = "error",
-          duration = 10
-        )
-        # Disable checkbox if loading failed
-        updateCheckboxInput(session, "enable_emodnet_habitat", value = FALSE)
-      })
+    if (!isTRUE(input$enable_emodnet_habitat) || !is.null(euseamap_data())) {
+      return()
     }
+
+    custom_bbox <- resolve_emodnet_bbox(
+      lon = input$sampling_longitude,
+      lat = input$sampling_latitude,
+      meta = ecopath_native_metadata()$metadata
+    )
+    if (is.null(custom_bbox)) {
+      showNotification(
+        paste("EMODnet habitat enrichment needs a sampling location: enter latitude and",
+              "longitude, or import a model whose metadata has a bounding box."),
+        type = "warning", duration = 10
+      )
+      updateCheckboxInput(session, "enable_emodnet_habitat", value = FALSE)
+      return()
+    }
+
+    showNotification("Loading EUSeaMap habitat data (optimized regional loading)...",
+                     type = "message", duration = NULL, id = "emodnet_loading")
+
+    tryCatch({
+      euseamap <- load_regional_euseamap(
+        bbt_name = NULL,
+        custom_bbox = custom_bbox,
+        path = app_path("data/EUSeaMap_2025/EUSeaMap_2025.gdb")
+      )
+      euseamap_data(euseamap)
+
+      region <- attr(euseamap, "region") %||% "custom"
+
+      removeNotification("emodnet_loading")
+      showNotification(
+        sprintf("✓ EUSeaMap loaded: %d polygons (%s region)", nrow(euseamap), toupper(region)),
+        type = "message",
+        duration = 5
+      )
+    }, error = function(e) {
+      warning(sprintf("[EMODnet] EUSeaMap load failed for bbox %s: %s",
+                      paste(round(custom_bbox, 3), collapse = ", "), conditionMessage(e)),
+              call. = FALSE)
+      removeNotification("emodnet_loading")
+      showNotification(
+        paste("Failed to load EUSeaMap:", conditionMessage(e),
+              "\nPlease ensure EUSeaMap_2025.gdb exists in data/ directory"),
+        type = "error",
+        duration = 10
+      )
+      # Disable checkbox if loading failed
+      updateCheckboxInput(session, "enable_emodnet_habitat", value = FALSE)
+    })
   })
 
   # Handle ECOPATH native import when button clicked

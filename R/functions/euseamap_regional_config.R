@@ -346,3 +346,32 @@ print_regional_summary <- function() {
   cat("  - Loading time: 3-10x faster\n")
   cat("  - Memory usage: 3-10x lower\n")
 }
+
+#' Bounding box for EMODnet habitat loading
+#'
+#' @param lon,lat Sampling location (decimal degrees); NULL/NA when unset.
+#' @param meta Imported model metadata with min_lon, max_lon, min_lat, max_lat
+#'   (EwE EcopathModel MinLon..MaxLat); may be NULL.
+#' @param pad Half-width in degrees of the box around a sampling point.
+#' @return c(xmin, ymin, xmax, ymax), or NULL when neither a sampling point
+#'   nor a valid metadata box is available.
+#' @export
+resolve_emodnet_bbox <- function(lon = NULL, lat = NULL, meta = NULL, pad = 2) {
+  num <- function(x) {
+    if (is.null(x) || length(x) == 0) return(NA_real_)
+    v <- suppressWarnings(as.numeric(x[1]))
+    if (!is.finite(v) || v == -9999) NA_real_ else v
+  }
+  lon <- num(lon)
+  lat <- num(lat)
+  if (!is.na(lon) && !is.na(lat)) {
+    return(c(lon - pad, lat - pad, lon + pad, lat + pad))
+  }
+  if (!is.null(meta)) {
+    box <- c(num(meta$min_lon), num(meta$min_lat), num(meta$max_lon), num(meta$max_lat))
+    if (!anyNA(box) && box[1] < box[3] && box[2] < box[4]) {
+      return(box)
+    }
+  }
+  NULL
+}

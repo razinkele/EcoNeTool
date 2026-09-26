@@ -10,6 +10,7 @@ local({
   source(file.path(root, "R/functions/network_finalize.R"), local = FALSE)
   source(file.path(root, "R/functions/ecopath/ecopath_group_biomass.R"), local = FALSE)
   source(file.path(root, "R/functions/data_editor_utils.R"), local = FALSE)
+  source(file.path(root, "R/functions/euseamap_regional_config.R"), local = FALSE)
 })
 
 # ---------------------------------------------------------------------------
@@ -229,4 +230,33 @@ test_that("dataeditor_inline_server.R routes edits through apply_cell_edit (F68)
   expect_true(any(grepl("apply_cell_edit(", code, fixed = TRUE)))
   expect_true(any(grepl("non_numeric_info_columns(", code, fixed = TRUE)))
   expect_false(any(grepl("<- info_edit$value", code, fixed = TRUE)))
+})
+
+# ---------------------------------------------------------------------------
+# F51 - EMODnet enrichment wired to the sampling location
+# ---------------------------------------------------------------------------
+
+test_that("resolve_emodnet_bbox prefers the sampling point (F51)", {
+  expect_equal(resolve_emodnet_bbox(21, 55.5, NULL), c(19, 53.5, 23, 57.5))
+})
+
+test_that("resolve_emodnet_bbox falls back to the model metadata box", {
+  meta <- list(min_lon = 20.7, max_lon = 21.1, min_lat = 55.3, max_lat = 56.1)
+  expect_equal(resolve_emodnet_bbox(NA, NA, meta), c(20.7, 55.3, 21.1, 56.1))
+  expect_equal(resolve_emodnet_bbox(NULL, NULL, meta), c(20.7, 55.3, 21.1, 56.1))
+})
+
+test_that("resolve_emodnet_bbox returns NULL with no location at all", {
+  expect_null(resolve_emodnet_bbox(NA, NA, NULL))
+  expect_null(resolve_emodnet_bbox(NA, NA, list(min_lon = 0, max_lon = 0, min_lat = 0, max_lat = 0)))
+  expect_null(resolve_emodnet_bbox(NA, NA, list(min_lon = -9999, max_lon = 1, min_lat = 1, max_lat = 2)))
+})
+
+test_that("EMODnet observer has no current_network() and an app_path() GDB path (F51)", {
+  code <- readLines(app_path("R/modules/ecopath_import_server.R"), warn = FALSE)
+  code <- code[!startsWith(trimws(code), "#")]
+  expect_false(any(grepl("current_network(", code, fixed = TRUE)))
+  expect_true(any(grepl('app_path("data/EUSeaMap_2025/EUSeaMap_2025.gdb")', code, fixed = TRUE)))
+  expect_false(any(grepl("custom_bbox <- c(20, 55, 21, 56)", code, fixed = TRUE)))
+  expect_true(any(grepl("resolve_emodnet_bbox(", code, fixed = TRUE)))
 })
