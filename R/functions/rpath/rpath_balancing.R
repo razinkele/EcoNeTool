@@ -1,116 +1,19 @@
 # ==============================================================================
 # RPATH MASS BALANCE AND ECOPATH MODELING
 # ==============================================================================
-# Run Ecopath mass-balance models and calculate trophic levels for Rpath models
+# Run Ecopath mass-balance models and return trophic levels exactly as Rpath solves them
 #
 # Features:
-#   - Iterative trophic level calculation for Rpath models
+#   - Trophic levels exactly as Rpath solves them (never recomputed here)
 #   - Ecopath mass-balance model execution
 #   - Parameter validation and fixing
 #   - Balance checking and reporting
 #
-# Note: This file contains calculate_rpath_trophic_levels() which is specific
-#       to Rpath model objects. This is different from calculate_trophic_levels()
-#       in R/functions/trophic_levels.R which works on igraph networks.
+# Trophic levels: Rpath::rpath() solves TL as a linear system over the
+#       prey x predator diet matrix (loops and cannibalism included). That TL
+#       is kept exactly as Rpath returns it; this file never recomputes it.
 #
 # ==============================================================================
-
-# ==============================================================================
-# TROPHIC LEVEL CALCULATION FOR RPATH MODELS
-# ==============================================================================
-
-calculate_rpath_trophic_levels <- function(rpath_model) {
-  #' Calculate Trophic Levels for Rpath Model with Proper Handling of Circular Feeding
-  #'
-  #' Uses iterative algorithm to calculate TL even with circular loops.
-  #' This function is specific to Rpath model objects.
-  #'
-  #' Formula: TL_i = 1 + sum(DC_ij * TL_j) where DC_ij is diet contribution
-  #'
-  #' @param rpath_model Balanced Rpath model object (from Rpath::rpath())
-  #' @return Vector of trophic levels for each group
-  #' @export
-  #'
-  #' @details
-  #' This function works on Rpath model objects which have a different structure
-  #' than igraph networks. For igraph networks, use calculate_trophic_levels()
-  #' from R/functions/trophic_levels.R instead.
-  #'
-  #' The algorithm:
-  #' - Detritus (type 2) and producers (type 1) have TL = 1
-  #' - Consumers (type 0) have TL = 1 + weighted mean of prey TL
-  #' - Iterates until convergence or max iterations reached
-
-  n_groups <- rpath_model$NUM_GROUPS
-  types <- rpath_model$type  # lowercase
-  diet_matrix <- rpath_model$DC  # Diet composition matrix
-
-  # Check dimensions
-  if (is.null(n_groups) || is.null(types) || is.null(diet_matrix)) {
-    stop("Invalid Rpath model structure")
-  }
-
-  # Initialize TL
-  TL <- rep(1.0, n_groups)
-  names(TL) <- rpath_model$Group
-
-  # Set TL = 1 for detritus (type 2) and producers (type 1)
-  TL[types == 2] <- 1.0  # Detritus
-  TL[types == 1] <- 1.0  # Producers
-
-  # Iteratively calculate TL for consumers
-  max_iter <- 100
-  tolerance <- 0.001
-
-  for (iter in 1:max_iter) {
-    TL_old <- TL
-
-    # For each consumer (type 0)
-    for (i in 1:n_groups) {
-      if (!is.na(types[i]) && types[i] == 0) {  # Consumer
-        # TL_i = 1 + weighted average of prey TL
-        # DC[i, j] = proportion of prey j in diet of predator i
-
-        prey_tl_weighted <- 0
-        total_diet <- 0
-
-        # Check if diet_matrix has right dimensions
-        if (is.matrix(diet_matrix) && nrow(diet_matrix) >= i) {
-          for (j in 1:ncol(diet_matrix)) {
-            if (j <= length(TL_old)) {
-              diet_prop <- diet_matrix[i, j]
-              if (!is.na(diet_prop) && diet_prop > 0) {
-                prey_tl_weighted <- prey_tl_weighted + (diet_prop * TL_old[j])
-                total_diet <- total_diet + diet_prop
-              }
-            }
-          }
-        }
-
-        if (total_diet > 0) {
-          TL[i] <- 1.0 + (prey_tl_weighted / total_diet)
-        } else {
-          TL[i] <- 2.0  # Default for consumers with no diet
-        }
-      }
-    }
-
-    # Check convergence
-    max_change <- max(abs(TL - TL_old))
-    if (max_change < tolerance) {
-      message(sprintf("  → TL calculation converged after %d iterations (max change: %.6f)",
-                     iter, max_change))
-      break
-    }
-
-    if (iter == max_iter) {
-      warning(sprintf("TL calculation did not converge after %d iterations (max change: %.6f)",
-                     max_iter, max_change))
-    }
-  }
-
-  return(TL)
-}
 
 # ==============================================================================
 # ECOPATH MASS-BALANCE MODEL
@@ -263,31 +166,11 @@ run_ecopath_balance <- function(rpath_params, balance = TRUE) {
       message("✓ Model created and balanced successfully")
     }
 
-    # CRITICAL FIX: Recalculate trophic levels using proper iterative algorithm
-    # Rpath's TL calculation fails with circular feeding loops
-    message("\nRecalculating trophic levels (fixing circular loop issues)...")
-
-    TL_corrected <- calculate_rpath_trophic_levels(model)
-
-    # Check if TL values changed significantly
-    tl_diff <- abs(model$TL - TL_corrected)
-    n_changed <- sum(tl_diff > 0.5, na.rm = TRUE)
-
-    if (n_changed > 0) {
-      message(sprintf("  → Fixed %d groups with incorrect TL values", n_changed))
-      message(sprintf("  → Max TL correction: %.2f", max(tl_diff, na.rm = TRUE)))
-
-      # Update TL in model
-      model$TL <- TL_corrected
-    } else {
-      message("  ✓ TL values verified (no corrections needed)")
-    }
-
     # Print summary
     message("\nModel Summary:")
     message("  Groups: ", length(model$Group))
-    message("  Living groups: ", sum(model$Type <= 1))
-    message("  Detritus: ", sum(model$Type == 2))
+    message("  Living groups: ", sum(model$type < 2, na.rm = TRUE))
+    message("  Detritus: ", sum(model$type == 2, na.rm = TRUE))
     message("  Total system throughput: ",
             round(sum(model$Q, na.rm = TRUE), 2), " tons/km²/year")
 

@@ -19,6 +19,14 @@
 #
 # ==============================================================================
 
+#' Diet-column sum tolerance shared by the converter and the UI diet panel
+#'
+#' EwE exports round-trip diet fractions with small residues above 1 (e.g.
+#' 1.000500). 1e-3 clears those rounding residues (up to 5e-4 seen in
+#' examples/LT2022_0.5ST_final7.eweaccdb) while still catching real
+#' over-full diets.
+RPATH_DIET_SUM_TOL <- 1e-3
+
 # ==============================================================================
 # DIET-MATRIX CELL EDITING
 # ==============================================================================
@@ -55,6 +63,119 @@ apply_diet_cell_edit <- function(diet, edit_info) {
   col_name <- names(diet)[col]
   diet[[col_name]][row] <- new_value
   list(diet = diet, status = "ok")
+}
+
+# ==============================================================================
+# DIET-MATRIX CONSTRUCTION (pure: no Rpath needed)
+# ==============================================================================
+
+#' Build the Rpath diet data frame from EwE group and diet tables
+#'
+#' Rows are prey groups (Type < 3) plus "Import"; columns are "Group" followed
+#' by one column per predator (Type < 2). Cell [prey, predator] is the diet
+#' proportion; absent links are 0. Cannibalism (a group eating itself) is
+#' KEPT as entered: Rpath solves trophic levels as a linear system, so a
+#' self-loop is well defined, and zeroing it without renormalising left the
+#' predator's diet summing to less than 1.
+#'
+#' @param living_groups EwE group table (GroupName, Type, GroupID), fleets and
+#'   any dummy fleet already appended.
+#' @param diet EwE diet table with PredID, PreyID, Diet (may be NULL/empty).
+#' @return data.frame with a "Group" column plus one numeric column per
+#'   predator.
+#' @export
+build_rpath_diet_frame <- function(living_groups, diet) {
+  # Get predator groups (Type < 2: consumers and producers)
+  predator_groups <- living_groups[!is.na(living_groups$Type) & living_groups$Type < 2, ]
+
+  # Get prey groups (Type < 3: all except fleets)
+  prey_groups <- living_groups[!is.na(living_groups$Type) & living_groups$Type < 3, ]
+
+  if (nrow(predator_groups) == 0) {
+    stop("No predator groups found (Type < 2). Check that Type column is correctly set.")
+  }
+  if (nrow(prey_groups) == 0) {
+    stop("No prey groups found (Type < 3). Check that Type column is correctly set.")
+  }
+
+  # Rows: prey + Import, Columns: Group + predators
+  diet_df <- data.frame(Group = c(prey_groups$GroupName, "Import"), stringsAsFactors = FALSE)
+  for (pred_name in predator_groups$GroupName) {
+    diet_df[[pred_name]] <- NA_real_
+  }
+
+  if (!is.null(diet) && nrow(diet) > 0) {
+    required_diet_cols <- c("PredID", "PreyID", "Diet")
+    missing_diet_cols <- setdiff(required_diet_cols, names(diet))
+    if (length(missing_diet_cols) > 0) {
+      stop("diet_data missing required columns: ", paste(missing_diet_cols, collapse = ", "),
+           "\nAvailable columns: ", paste(names(diet), collapse = ", "))
+    }
+
+    for (i in seq_len(nrow(diet))) {
+      pred_id <- diet$PredID[i]
+      prey_id <- diet$PreyID[i]
+      diet_val <- diet$Diet[i]
+      if (is.na(pred_id) || is.na(prey_id) || is.na(diet_val)) next
+
+      pred_match <- predator_groups[predator_groups$GroupID == pred_id, ]
+      prey_match <- prey_groups[prey_groups$GroupID == prey_id, ]
+      if (nrow(pred_match) == 0 || nrow(prey_match) == 0) next
+
+      pred_name <- pred_match$GroupName[1]
+      prey_name <- prey_match$GroupName[1]
+      prey_row <- which(diet_df$Group == prey_name)
+
+      if (length(prey_row) == 1 && pred_name %in% colnames(diet_df)) {
+        diet_df[prey_row, pred_name] <- diet_val
+      } else if (length(prey_row) > 1) {
+        warning("Multiple matches found for prey: ", prey_name, ". Using first match.",
+                call. = FALSE)
+        diet_df[prey_row[1], pred_name] <- diet_val
+      }
+    }
+  }
+
+  # Rpath can't handle NA values in the diet matrix: no link = 0.
+  for (col in setdiff(colnames(diet_df), "Group")) {
+    diet_df[[col]][is.na(diet_df[[col]])] <- 0.0
+  }
+
+  check_rpath_diet_sums(diet_df)
+  diet_df
+}
+
+#' Warn about predator diet columns summing to more than 1
+#'
+#' The data are not changed: an over-full diet is a data-entry problem the
+#' user must fix, and silently rescaling it would hide that.
+#'
+#' @param diet_df Diet data frame from build_rpath_diet_frame().
+#' @param tol Tolerance above 1 before warning (default RPATH_DIET_SUM_TOL).
+#' @return Invisibly, the names of the offending predator columns.
+#' @export
+check_rpath_diet_sums <- function(diet_df, tol = RPATH_DIET_SUM_TOL) {
+  cols <- setdiff(names(diet_df), "Group")
+  sums <- vapply(cols, function(col) sum(diet_df[[col]], na.rm = TRUE), numeric(1))
+  over <- cols[sums > 1 + tol]
+  for (col in over) {
+    warning(sprintf("[rpath conversion] diet of '%s' sums to %.6f (> 1); data left unchanged",
+                    col, sums[[col]]), call. = FALSE)
+  }
+
+  # A group whose diet is (almost) entirely itself makes Rpath's TL/balance
+  # system singular (an opaque Lapack error). Warn so the cause is visible.
+  for (col in cols) {
+    self_row <- diet_df$Group == col
+    self_val <- diet_df[[col]][self_row]
+    if (length(self_val) == 1 && !is.na(self_val) && self_val >= 1 - tol) {
+      warning(sprintf(
+        "[rpath conversion] '%s' is a pure-cannibal group (self-diet = %.6f); Rpath balance may fail",
+        col, self_val), call. = FALSE)
+    }
+  }
+
+  invisible(over)
 }
 
 # ==============================================================================
@@ -260,112 +381,7 @@ convert_ecopath_to_rpath <- function(ecopath_data, model_name = "EcoNeTool Model
 
   message("  → Diet links: ", nrow(diet))
 
-  # Rpath diet format requirements:
-  # - Rows: prey groups (Type < 3) + "Import" row
-  # - Columns: predator/consumer groups (Type < 2) only
-  #   First column is "Group" with prey names
-
-  # Get predator groups (Type < 2: consumers and producers)
-  predator_groups <- living_groups[!is.na(living_groups$Type) & living_groups$Type < 2, ]
-
-  # Get prey groups (Type < 3: all except fleets)
-  prey_groups <- living_groups[!is.na(living_groups$Type) & living_groups$Type < 3, ]
-
-  # Validate we have predators and prey
-  if (nrow(predator_groups) == 0) {
-    stop("No predator groups found (Type < 2). Check that Type column is correctly set.")
-  }
-  if (nrow(prey_groups) == 0) {
-    stop("No prey groups found (Type < 3). Check that Type column is correctly set.")
-  }
-
-  # Initialize diet data.frame matching Rpath format
-  # Rows: prey + Import, Columns: Group + predators
-  n_prey <- nrow(prey_groups)
-  n_pred <- nrow(predator_groups)
-
-  diet_df <- data.frame(Group = c(prey_groups$GroupName, "Import"))
-
-  # Add columns for each predator (initialized with NA)
-  for (pred_name in predator_groups$GroupName) {
-    diet_df[[pred_name]] <- NA
-  }
-
-  # Fill diet data from EcopathDietComp
-  if (!is.null(diet) && nrow(diet) > 0) {
-    # Validate diet table has required columns
-    required_diet_cols <- c("PredID", "PreyID", "Diet")
-    missing_diet_cols <- setdiff(required_diet_cols, names(diet))
-    if (length(missing_diet_cols) > 0) {
-      stop("diet_data missing required columns: ", paste(missing_diet_cols, collapse = ", "),
-           "\nAvailable columns: ", paste(names(diet), collapse = ", "))
-    }
-
-    for (i in 1:nrow(diet)) {
-      pred_id <- diet$PredID[i]
-      prey_id <- diet$PreyID[i]
-      diet_val <- diet$Diet[i]
-
-      # Skip if any value is NA
-      if (is.na(pred_id) || is.na(prey_id) || is.na(diet_val)) next
-
-      # Find predator and prey in our groups
-      pred_match <- predator_groups[predator_groups$GroupID == pred_id, ]
-      prey_match <- prey_groups[prey_groups$GroupID == prey_id, ]
-
-      if (nrow(pred_match) > 0 && nrow(prey_match) > 0) {
-        pred_name <- pred_match$GroupName[1]
-        prey_name <- prey_match$GroupName[1]
-
-        # Find row and column indices in diet_df
-        prey_row <- which(diet_df$Group == prey_name)
-
-        # Ensure we have exactly one match
-        if (length(prey_row) == 1 && pred_name %in% colnames(diet_df)) {
-          diet_df[prey_row, pred_name] <- diet_val
-        } else if (length(prey_row) > 1) {
-          # Multiple matches - use first one and warn
-          warning("Multiple matches found for prey: ", prey_name, ". Using first match.")
-          diet_df[prey_row[1], pred_name] <- diet_val
-        }
-      }
-    }
-  }
-
-  # Replace remaining NA values with 0 (no diet connection)
-  # Rpath can't handle NA values in diet matrix
-  for (col in colnames(diet_df)) {
-    if (col != "Group") {
-      diet_df[[col]][is.na(diet_df[[col]])] <- 0.0
-    }
-  }
-
-  # CRITICAL FIX: Remove cannibalism (self-feeding) from diet matrix
-  # Self-feeding causes circular references in TL calculation
-  # A group eating itself doesn't increase its trophic level
-  message("  → Checking for cannibalism in diet matrix...")
-  cannibalism_found <- FALSE
-
-  for (pred_name in colnames(diet_df)) {
-    if (pred_name != "Group") {
-      # Find if this predator also appears as prey (same name in Group column)
-      prey_row <- which(diet_df$Group == pred_name)
-
-      if (length(prey_row) > 0 && diet_df[[pred_name]][prey_row] > 0) {
-        cannibalism_value <- diet_df[[pred_name]][prey_row]
-        message(sprintf("    • Removing cannibalism: '%s' eating itself (%.1f%%)",
-                        pred_name, cannibalism_value * 100))
-        diet_df[[pred_name]][prey_row] <- 0.0
-        cannibalism_found <- TRUE
-      }
-    }
-  }
-
-  if (cannibalism_found) {
-    message("    ✓ Cannibalism removed to prevent circular TL calculation")
-  } else {
-    message("    ✓ No cannibalism found")
-  }
+  diet_df <- build_rpath_diet_frame(living_groups, diet)
 
   # Convert to data.table (Rpath requires data.table, not data.frame)
   params$diet <- data.table::as.data.table(diet_df)
@@ -453,15 +469,6 @@ convert_ecopath_to_rpath <- function(ecopath_data, model_name = "EcoNeTool Model
     }
     if (!is.na(ee) && (ee < 0 || ee > 1)) {
       warning("Group '", group_name, "' has invalid EE: ", ee, " (must be 0-1)")
-    }
-  }
-
-  # Check diet matrix has valid values
-  diet_cols <- names(params$diet)[names(params$diet) != "Group"]
-  for (col in diet_cols) {
-    diet_sum <- sum(params$diet[[col]], na.rm = TRUE)
-    if (diet_sum > 1.01) {
-      warning("Predator '", col, "' has diet sum > 1.0 (", round(diet_sum, 3), ")")
     }
   }
 
