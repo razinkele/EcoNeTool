@@ -1,6 +1,6 @@
 # Sub-project A: Network-Science Correctness (edge contract, MTI/KS, Rpath TL, finalize & import)
 
-- **Status:** Draft, awaiting user review. No code changed yet.
+- **Status:** Approved 2026-09-26. No code changed yet.
 - **Date:** 2026-09-26
 - **Source:** `docs/econetool-deep-analysis-2026-09-26.md`. This spec covers remediation batches 1, 2 and 7.
 - **Precondition:** The F1 hotfix (harmonization slider loop, spec B) ships **before** any A PR.

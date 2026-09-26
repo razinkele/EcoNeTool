@@ -1,6 +1,6 @@
 # Deep-analysis 2026-09 remediation: overview
 
-- **Status:** Draft, awaiting user review.
+- **Status:** Approved by the user 2026-09-26.
 - **Date:** 2026-09-26
 - **Source:** `docs/econetool-deep-analysis-2026-09-26.md` (84 findings; 12 remediation batches).
 
@@ -61,7 +61,7 @@ B0 aligns all three.
 - Deploy after A and after B. Until B2 lands, clear `/home/razinka/EcoNeTool_staging` before each
   upload, because `cp -rT` would otherwise copy stale files from earlier deploys (spec B, F5).
 
-## Questions for the user during spec review
+## Review questions (all five accepted by the user 2026-09-26, as proposed)
 
 1. **Keystone rule (A).** Libralato KS is log-scale, so `KS > 1` no longer works. The proposal is
    "top quartile of KS" with p < 0.05 for Keystone. The alternative is plain ranking with no status.
