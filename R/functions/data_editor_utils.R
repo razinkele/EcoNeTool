@@ -30,13 +30,18 @@ apply_cell_edit <- function(df, row, col, value) {
             call. = FALSE)
     return(df)
   }
-  new_value <- suppressWarnings(DT::coerceValue(value, df[[col]]))
+  # An integer column (meanB read from an integer-valued CSV) would make
+  # coerceValue() truncate "2.5" to 2; promote it to double so decimals survive.
+  target <- df[[col]]
+  if (is.integer(target)) target <- as.numeric(target)
+  new_value <- suppressWarnings(DT::coerceValue(value, target))
   blank <- is.null(value) || is.na(value) || identical(trimws(as.character(value)), "")
   if (is.na(new_value) && !blank) {
     warning(sprintf("[data editor] '%s' is not a valid value for column '%s'; edit ignored",
                     value, names(df)[col]), call. = FALSE)
     return(df)
   }
+  df[[col]] <- target
   df[row, col] <- new_value
   df
 }

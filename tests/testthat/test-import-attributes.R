@@ -194,6 +194,26 @@ test_that("editing a meanB cell with '3.5' keeps meanB numeric (F68)", {
   expect_equal(df$meanB, c(3.5, 2))
 })
 
+test_that("a decimal edit in an integer meanB column is not truncated (H-1)", {
+  info <- read.csv(app_path("examples/Simple_3Species_info.csv"), stringsAsFactors = FALSE)
+  skip_if(!is.integer(info$meanB), "Simple_3Species_info.csv meanB no longer reads as integer")
+  df <- apply_cell_edit(info, row = 1, col = which(names(info) == "meanB"), value = "2.5")
+  expect_true(is.double(df$meanB))
+  expect_equal(df$meanB[1], 2.5)
+  expect_equal(df$meanB[-1], as.numeric(info$meanB[-1]))
+
+  df2 <- data.frame(meanB = c(1L, 800L, 150L))
+  df2 <- apply_cell_edit(df2, row = 3, col = 1, value = "0.5")
+  expect_equal(df2$meanB, c(1, 800, 0.5))
+})
+
+test_that("an integer column still rejects non-numeric text (H-1)", {
+  df <- data.frame(meanB = c(1L, 800L))
+  expect_warning(out <- apply_cell_edit(df, row = 1, col = 1, value = "abc"),
+                 "not a valid value for column 'meanB'")
+  expect_identical(out, df)
+})
+
 test_that("editing fg to a valid level keeps the factor", {
   df <- apply_cell_edit(editor_frame(), row = 2, col = 2, value = "Fish")
   expect_true(is.factor(df$fg))
