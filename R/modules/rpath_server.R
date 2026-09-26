@@ -1649,6 +1649,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
             <tr><td><strong>Number of Groups:</strong></td><td>", diag$n_groups, "</td></tr>
             <tr><td><strong>Producers:</strong></td><td>", diag$n_producers, "</td></tr>
             <tr><td><strong>Consumers:</strong></td><td>", diag$n_consumers, "</td></tr>
+            <tr><td><strong>Detritus groups (not in living totals):</strong></td><td>", diag$n_detritus, "</td></tr>
           </table>
         </div>
       "))

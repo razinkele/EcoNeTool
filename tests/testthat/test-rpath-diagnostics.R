@@ -45,18 +45,18 @@ params_model <- function() {
 test_that("calculate_ecopath_diagnostics returns a real mean trophic level", {
   d <- calculate_ecopath_diagnostics(balanced_model())
 
-  # Living groups are type < 3: Phyto 1.0, Detritus 1.0, Zoo 2.1, Cod 3.6
-  expect_equal(d$mean_trophic_level, mean(c(1.0, 1.0, 2.1, 3.6)))
+  # Living groups are type < 2: Phyto 1.0, Zoo 2.1, Cod 3.6 (detritus excluded)
+  expect_equal(d$mean_trophic_level, mean(c(1.0, 2.1, 3.6)))  # 2.233333
   expect_false(is.na(d$mean_trophic_level))
 })
 
 test_that("calculate_ecopath_diagnostics counts groups by lowercase type", {
   d <- calculate_ecopath_diagnostics(balanced_model())
 
-  expect_equal(d$n_groups, 4L)      # type < 3
+  expect_equal(d$n_groups, 3L)      # type < 2
   expect_equal(d$n_producers, 1L)   # type == 1
   expect_equal(d$n_consumers, 2L)   # type == 0
-  expect_equal(d$total_biomass, 20 + 50 + 5 + 1)
+  expect_equal(d$total_biomass, 20 + 5 + 1)
   expect_equal(d$primary_production, 20 * 100)
 })
 
@@ -78,7 +78,7 @@ test_that("trophic_pyramid_bins bins the living groups by trophic level", {
   expect_true(is.numeric(bins))
   expect_true(length(bins) > 0)
   # Every living group's biomass must land somewhere - total is conserved.
-  expect_equal(sum(bins, na.rm = TRUE), 20 + 50 + 5 + 1)
+  expect_equal(sum(bins, na.rm = TRUE), 20 + 5 + 1)
 })
 
 test_that("trophic_pyramid_bins keeps TL = 1 producers in the base bin", {
@@ -86,7 +86,7 @@ test_that("trophic_pyramid_bins keeps TL = 1 producers in the base bin", {
   # primary producers at exactly TL 1.0 - the base of the pyramid - silently
   # vanished from the plot.
   bins <- trophic_pyramid_bins(balanced_model())
-  expect_equal(unname(bins[1]), 70)  # Phytoplankton 20 + Detritus 50
+  expect_equal(unname(bins[1]), 20)  # Phytoplankton only; detritus is not living
 })
 
 test_that("trophic_pyramid_bins does not throw when every TL is 1", {
@@ -98,7 +98,7 @@ test_that("trophic_pyramid_bins does not throw when every TL is 1", {
   # ceiling(max(TL)) == 1 makes seq(1, 1, by = 0.5) a single point; the old
   # code would produce an unusable break vector.
   expect_no_error(bins <- trophic_pyramid_bins(flat))
-  expect_equal(sum(bins, na.rm = TRUE), 70)
+  expect_equal(sum(bins, na.rm = TRUE), 20)
 })
 
 test_that("trophic_pyramid_bins warns and returns NULL without a TL column", {

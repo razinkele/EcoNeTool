@@ -308,17 +308,72 @@ run_complete_rpath_workflow <- function(ecopath_db_file,
 # only exists after balancing, where the column set is $TL with lowercase
 # $type. Reading TL off params$model yields NULL, so mean() returned NA and
 # max() returned -Inf.
+#
+# run_ecopath_balance() returns the class-"Rpath" LIST that Rpath::rpath()
+# produces, not a data.frame. .as_balanced_frame() flattens it so both helpers
+# accept what the server actually stores in rpath_values$ecopath_model.
+# Rpath type codes: 0 consumer, 1 producer, 2 detritus, 3 fleet. "Living"
+# means type < 2; detritus is reported separately.
+
+#' Flatten a balanced model into a per-group data frame
+#'
+#' @param model A class-"Rpath" list from Rpath::rpath() / run_ecopath_balance(),
+#'   or an already-flat data frame.
+#' @param scope Caller label used in warnings.
+#' @return data.frame(Group, type, TL, Biomass, PB, QB, EE) for an Rpath
+#'   object, the input unchanged for a data frame, or NULL (with a warning).
+#' @keywords internal
+.as_balanced_frame <- function(model, scope) {
+  if (is.null(model)) {
+    warning(sprintf("[%s] no model supplied", scope), call. = FALSE)
+    return(NULL)
+  }
+  if (is.data.frame(model)) {
+    return(model)
+  }
+  if (!inherits(model, "Rpath")) {
+    warning(sprintf("[%s] unsupported model object of class '%s'", scope,
+                    paste(class(model), collapse = "/")), call. = FALSE)
+    return(NULL)
+  }
+
+  # Group, not NUM_GROUPS, fixes the length: every per-group vector in an
+  # Rpath object (fleets included) has one entry per Group.
+  n <- length(model$Group)
+  frame <- data.frame(Group = as.character(model$Group), stringsAsFactors = FALSE)
+  for (col in c("type", "TL", "Biomass", "PB", "QB", "EE")) {
+    v <- model[[col]]
+    if (is.null(v)) {
+      # type and TL stay absent so .require_balanced_model() names them;
+      # the optional rates become NA.
+      if (col %in% c("type", "TL")) next
+      v <- rep(NA_real_, n)
+    }
+    if (length(v) != n) {
+      warning(sprintf("[%s] Rpath object has %d groups but %d '%s' values",
+                      scope, n, length(v), col), call. = FALSE)
+      return(NULL)
+    }
+    frame[[col]] <- as.numeric(unname(v))
+  }
+  frame
+}
 
 #' Require a balanced model that actually carries trophic levels
 #'
-#' @param model Candidate model frame.
+#' @param model Balanced model: class-"Rpath" list or data frame.
 #' @param scope Caller label used in the warning.
-#' @return TRUE when usable; FALSE (with a warning) otherwise.
+#' @return The model as a data frame when usable; NULL (with a warning)
+#'   otherwise.
 #' @keywords internal
 .require_balanced_model <- function(model, scope) {
-  if (is.null(model) || !is.data.frame(model) || nrow(model) == 0) {
+  model <- .as_balanced_frame(model, scope)
+  if (is.null(model)) {
+    return(NULL)
+  }
+  if (nrow(model) == 0) {
     warning(sprintf("[%s] no model supplied", scope), call. = FALSE)
-    return(FALSE)
+    return(NULL)
   }
   if (!"TL" %in% names(model)) {
     msg <- paste0(
@@ -326,54 +381,62 @@ run_complete_rpath_workflow <- function(ecopath_db_file,
       "object rather than the balanced model from run_ecopath_balance()"
     )
     warning(sprintf(msg, scope), call. = FALSE)
-    return(FALSE)
+    return(NULL)
   }
   if (!"type" %in% names(model)) {
     warning(sprintf("[%s] model has no lowercase 'type' column", scope),
             call. = FALSE)
-    return(FALSE)
+    return(NULL)
   }
-  TRUE
+  model
 }
 
 #' Summary diagnostics for a balanced Ecopath model
 #'
-#' @param model Balanced model from run_ecopath_balance().
+#' @param model Balanced model from run_ecopath_balance() (class "Rpath") or a
+#'   data frame with Group, type, TL, Biomass, PB.
 #' @return Named list of metrics, or NULL (with a warning) if `model` is not a
-#'   balanced model.
+#'   balanced model. Living groups are type < 2; detritus (type 2) is counted
+#'   in n_detritus only; fleets (type 3) are ignored.
 #' @export
 calculate_ecopath_diagnostics <- function(model) {
-  if (!.require_balanced_model(model, "diagnostics")) {
+  model <- .require_balanced_model(model, "diagnostics")
+  if (is.null(model)) {
     return(NULL)
   }
 
-  living <- model$type < 3
+  living <- which(model$type < 2)
+  producers <- which(model$type == 1)
 
   list(
     total_biomass = sum(model$Biomass[living], na.rm = TRUE),
     mean_trophic_level = mean(model$TL[living], na.rm = TRUE),
-    primary_production = sum(model$Biomass[model$type == 1] *
-                               model$PB[model$type == 1], na.rm = TRUE),
-    n_groups = sum(living, na.rm = TRUE),
-    n_producers = sum(model$type == 1, na.rm = TRUE),
-    n_consumers = sum(model$type == 0, na.rm = TRUE)
+    primary_production = sum(model$Biomass[producers] * model$PB[producers],
+                             na.rm = TRUE),
+    n_groups = length(living),
+    n_producers = length(producers),
+    n_consumers = sum(model$type == 0, na.rm = TRUE),
+    n_detritus = sum(model$type == 2, na.rm = TRUE)
   )
 }
 
 #' Biomass aggregated into half-unit trophic level bins
 #'
-#' @param model Balanced model from run_ecopath_balance().
-#' @return Named numeric vector of biomass per TL bin, lowest bin first, or
-#'   NULL (with a warning) if `model` is not a balanced model.
+#' @param model Balanced model from run_ecopath_balance() (class "Rpath") or a
+#'   data frame with Group, type, TL, Biomass.
+#' @return Named numeric vector of biomass per TL bin for the living groups
+#'   (type < 2), lowest bin first, or NULL (with a warning) if `model` is not
+#'   a balanced model.
 #' @export
 trophic_pyramid_bins <- function(model) {
-  if (!.require_balanced_model(model, "trophic pyramid")) {
+  model <- .require_balanced_model(model, "trophic pyramid")
+  if (is.null(model)) {
     return(NULL)
   }
 
-  living <- model[model$type < 3, , drop = FALSE]
+  living <- model[which(model$type < 2), , drop = FALSE]
   tl <- living$TL
-  if (all(is.na(tl))) {
+  if (length(tl) == 0 || all(is.na(tl))) {
     warning("[trophic pyramid] no non-NA trophic levels", call. = FALSE)
     return(NULL)
   }
