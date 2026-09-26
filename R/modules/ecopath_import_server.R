@@ -177,6 +177,10 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
       pb_values <- pb_values[valid_idx]
       qb_values <- qb_values[valid_idx]
 
+      if (!is.null(bodymass_values_raw)) {
+        bodymass_values_raw <- bodymass_values_raw[valid_idx]
+      }
+
       # EwE Type (0 consumer, 1 producer, 2 detritus, 0-1 mixotroph) drives
       # functional-group assignment where present; NULL keeps name + topology.
       type_col <- which(col_names == "type")[1]

@@ -286,3 +286,24 @@ test_that("the construct observer is wrapped in tryCatch (F74)", {
   expect_true(any(grepl("tryCatch(", block, fixed = TRUE)))
   expect_true(any(grepl("warning(", block, fixed = TRUE)))
 })
+
+# ---------------------------------------------------------------------------
+# EwE body masses must be filtered with the other per-group vectors
+# ---------------------------------------------------------------------------
+
+test_that("every per-group vector read from group_table is subset by valid_idx", {
+  code <- readLines(app_path("R/modules/ecopath_import_server.R"), warn = FALSE)
+  # Vectors assigned directly from group_table[[<col>]] (e.g. biomass_values, bodymass_values_raw)
+  read_lines <- grep("^\\s*([A-Za-z_.]+)\\s*<-.*group_table\\[\\[", code, value = TRUE)
+  vars <- unique(sub("^\\s*([A-Za-z_.]+)\\s*<-.*$", "\\1", read_lines))
+  # area_proportions is consumed (biomass_values * area_proportions) BEFORE the valid_idx
+  # filter and never used after it, so it needs no subsetting. If Task 5 (F52) removes that
+  # read in favour of ewe_group_biomass(), this setdiff is a harmless no-op.
+  vars <- setdiff(vars, "area_proportions")
+  expect_true("bodymass_values_raw" %in% vars)
+  for (v in vars) {
+    subset_pat <- paste0(v, "\\s*<-\\s*", v, "\\[valid_idx\\]")
+    expect_true(any(grepl(subset_pat, code)),
+                info = sprintf("%s is read from group_table but never subset by valid_idx", v))
+  }
+})
