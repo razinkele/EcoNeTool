@@ -4,21 +4,21 @@
 # Format: MAJOR.MINOR.PATCH
 # See CHANGELOG.md for detailed change history
 
-VERSION=1.4.5
-VERSION_NAME=Harmonization Loop Hotfix
-RELEASE_DATE=2026-09-26
+VERSION=1.5.0
+VERSION_NAME=Network Science Correctness
+RELEASE_DATE=2026-09-27
 STATUS=stable
 
 # Version components
 MAJOR=1
-MINOR=4
-PATCH=5
+MINOR=5
+PATCH=0
 
 # Git information (if available)
 # Set by deployment scripts
-GIT_COMMIT=fdd2f82
+GIT_COMMIT=af580e1
 GIT_BRANCH=master
-BUILD_DATE=2026-04-14T18:55:00
+BUILD_DATE=2026-09-27T00:07:18
 
 # Deployment information
 DEPLOYED_BY=
