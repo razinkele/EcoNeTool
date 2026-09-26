@@ -469,6 +469,7 @@ foodweb_construction_server <- function(input, output, session, shared_data) {
     connectance <- n_edges / (n_nodes * (n_nodes - 1))
 
     avg_degree <- mean(igraph::degree(g, mode = "all"))
+    # Edges run prey -> predator: in-degree = number of prey, out-degree = predators
     avg_in_degree <- mean(igraph::degree(g, mode = "in"))
     avg_out_degree <- mean(igraph::degree(g, mode = "out"))
 
@@ -478,8 +479,8 @@ foodweb_construction_server <- function(input, output, session, shared_data) {
       "<tr><td><b>Interactions:</b></td><td>", n_edges, "</td></tr>",
       "<tr><td><b>Connectance:</b></td><td>", sprintf("%.3f", connectance), "</td></tr>",
       "<tr><td><b>Avg. degree:</b></td><td>", sprintf("%.2f", avg_degree), "</td></tr>",
-      "<tr><td><b>Avg. prey:</b></td><td>", sprintf("%.2f", avg_out_degree), "</td></tr>",
-      "<tr><td><b>Avg. predators:</b></td><td>", sprintf("%.2f", avg_in_degree), "</td></tr>",
+      "<tr><td><b>Avg. prey:</b></td><td>", sprintf("%.2f", avg_in_degree), "</td></tr>",
+      "<tr><td><b>Avg. predators:</b></td><td>", sprintf("%.2f", avg_out_degree), "</td></tr>",
       "</table>"
     ))
   })
@@ -626,7 +627,8 @@ foodweb_construction_server <- function(input, output, session, shared_data) {
     },
     content = function(file) {
       req(rv$adjacency_matrix)
-      write.csv(rv$adjacency_matrix, file, row.names = TRUE)
+      # rv$adjacency_matrix is [consumer, resource]; export rows = prey (F-4)
+      write.csv(trait_adjacency_for_export(rv$adjacency_matrix), file, row.names = TRUE)
     }
   )
 

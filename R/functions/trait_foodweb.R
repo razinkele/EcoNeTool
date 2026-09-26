@@ -318,6 +318,22 @@ construct_trait_foodweb <- function(species_data, threshold = 0.05, return_probs
 }
 
 
+#' Orient a trait adjacency matrix for CSV export
+#'
+#' `construct_trait_foodweb()` returns `[consumer, resource]`. The documented
+#' network CSV import format (and the app-wide edge contract) is rows = prey,
+#' columns = predators, so the matrix is transposed before it is written.
+#'
+#' @param adj Matrix from `construct_trait_foodweb()` (rows = consumers)
+#' @return Matrix `[resource (prey), consumer (predator)]`
+#' @export
+trait_adjacency_for_export <- function(adj) {
+  out <- t(adj)
+  names(dimnames(out)) <- NULL
+  out
+}
+
+
 #' Convert trait-based food web to igraph object
 #'
 #' @param species_data Data frame with trait information
@@ -334,11 +350,13 @@ trait_foodweb_to_igraph <- function(species_data, threshold = 0.05, include_prob
   # Get probability matrix
   prob_matrix <- construct_trait_foodweb(species_data, threshold = 0, return_probs = TRUE)
 
-  # Create edge list from probabilities above threshold
+  # Create edge list from probabilities above threshold.
+  # prob_matrix is [consumer, resource]; the graph follows the app-wide edge
+  # contract resource (prey) -> consumer (predator), so the columns swap here.
   edges <- which(prob_matrix >= threshold, arr.ind = TRUE)
   edge_list <- data.frame(
-    from = rownames(prob_matrix)[edges[, 1]],
-    to = colnames(prob_matrix)[edges[, 2]],
+    from = colnames(prob_matrix)[edges[, 2]],
+    to = rownames(prob_matrix)[edges[, 1]],
     probability = prob_matrix[edges]
   )
 

@@ -53,7 +53,8 @@ This directory contains example food web datasets for testing and learning how t
 
 ### Network CSV (Adjacency Matrix)
 - Square matrix where rows and columns are species
-- Value = 1 means row species eats column species
+- Rows are prey, columns are predators (edge contract: prey -> predator)
+- Value = 1 means the column species eats the row species
 - Value = 0 means no feeding link
 
 ### Species Info CSV
@@ -70,7 +71,7 @@ Required columns:
 1. Start with Template files
 2. Modify species names in both network and info files
 3. Add/remove species (keep matrix square!)
-4. Set feeding links (1 = eats, 0 = no link)
+4. Set feeding links (1 = column species eats row species, 0 = no link)
 5. Fill in species attributes (biomass, body mass, etc.)
 6. Save and upload to EcoNeTool
 

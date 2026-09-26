@@ -9,8 +9,10 @@
 #'
 #' @param sp_name Character, species/group name
 #' @param pb Numeric, production/biomass ratio (optional, for topology-based assignment)
-#' @param indegree Numeric, network in-degree (optional, for topology-based assignment)
-#' @param outdegree Numeric, network out-degree (optional, for topology-based assignment)
+#' @param indegree Numeric, network in-degree = number of prey under the
+#'   prey -> predator edge contract (optional, for topology-based assignment)
+#' @param outdegree Numeric, network out-degree = number of predators
+#'   (optional, for topology-based assignment)
 #' @param use_topology Logical, whether to use network topology for assignment (default: FALSE)
 #'
 #' @return Character, functional group name
@@ -26,8 +28,8 @@
 #'    - Benthos: benthos, benthic, mussel, clam, worm, shrimp, crab, bottom, macrobent, meiobent
 #'    - Detritus: detritus, det., debris
 #' 2. Network topology (if use_topology = TRUE)
-#'    - No predators + high P/B → Phytoplankton
-#'    - Has predators, no prey → Top predator (Fish)
+#'    - No prey (in-degree 0) + high P/B → Phytoplankton
+#'    - Has prey, no predators (out-degree 0) → Top predator (Fish)
 #'    - Has both → Intermediate (Benthos)
 #' 3. Default: Fish
 #'
@@ -124,17 +126,19 @@ assign_functional_group <- function(sp_name, pb = NA, indegree = NA, outdegree =
 
   # Priority 2: Network topology heuristics (optional)
   if (use_topology && !is.na(pb) && !is.na(indegree) && !is.na(outdegree)) {
-    # No predators (indegree = 0) + high production rate → Primary producer
+    # Edge contract prey -> predator: in-degree = number of prey,
+    # out-degree = number of predators.
+    # No prey (indegree = 0) + high production rate → Primary producer
     if (indegree == 0 && pb > 1) {
       return("Phytoplankton")
     }
 
-    # Has predators but no prey (top predator) → Fish
+    # Has prey but no predators (top predator) → Fish
     if (indegree > 0 && outdegree == 0) {
       return("Fish")
     }
 
-    # Has both predators and prey (intermediate consumer) → Benthos
+    # Has both prey and predators (intermediate consumer) → Benthos
     if (indegree > 0 && outdegree > 0) {
       return("Benthos")
     }

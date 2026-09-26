@@ -1,103 +1,138 @@
+#' Calculate the Mixed Trophic Impact (MTI) matrix
+#'
+#' Ulanowicz & Puccia (1990) as used by Ecopath, on the app-wide edge contract
+#' (A -> B means B eats A; every matrix below is indexed [prey, predator]).
+#'
+#' @param net Directed igraph food web. Optional edge attribute `diet_prop`
+#'   (diet proportion of the edge's prey in the edge's predator's diet).
+#' @param info Data frame aligned to `V(net)` (one row per vertex, same order,
+#'   as produced by finalize_network()) with `meanB`; optional `QB`.
+#'
+#' @return Numeric n x n matrix with dimnames `V(net)$name`. `MTI[i, j]` is the
+#'   net (direct + indirect) impact of a small increase of i on j. The diagonal
+#'   is kept (self-impact); displays blank it.
+#'
+#' @details
+#' \enumerate{
+#'   \item \code{D}: `diet_prop` weighted adjacency when every edge has one,
+#'     else the binary adjacency (equal diet split). Columns (predators)
+#'     normalised to sum to 1; predators without prey keep a zero column.
+#'   \item Consumption \code{cons_k = B_k * QB_k} where `QB_k` is finite and
+#'     positive, else \code{cons_k = B_k} (biomass proxy).
+#'   \item Flows \code{T[p, k] = D[p, k] * cons_k};
+#'     \code{FC = T / rowSums(T)}: share of prey p's total predation taken by k.
+#'   \item \code{Q = D - t(FC)}; \code{MTI = solve(I - Q) - I}. If
+#'     \code{rcond(I - Q) < 1e-10} the Moore-Penrose inverse (MASS::ginv) is
+#'     used and a warning() is raised.
+#' }
+#'
+#' @references
+#' Ulanowicz, R. E., & Puccia, C. J. (1990). Mixed trophic impacts in
+#' ecosystems. Coenoses, 5(1), 7-16.
+#' @export
 calculate_mti <- function(net, info) {
   tryCatch({
-    # Input validation using utility functions
-    validate_network(net, require_directed = FALSE, min_vertices = 1)
+    validate_network(net, require_directed = TRUE, min_vertices = 1)
     validate_dataframe(info, required_cols = "meanB")
 
-    if (nrow(info) != vcount(net)) {
-      stop(sprintf("Number of rows in 'info' (%d) must match number of vertices in 'net' (%d)",
-                   nrow(info), vcount(net)), call. = FALSE)
-    }
     n <- vcount(net)
-    adj_matrix <- as_adjacency_matrix(net, sparse = FALSE)
-
-    # Create Diet Composition (DC) matrix
-    # DC[i,j] = proportion of predator i's diet that is prey j
-    # Rows = predators, Columns = prey
-
-    # Calculate row sums (total consumption per predator)
-    row_sums <- rowSums(adj_matrix)
-
-    # Vectorized row normalization (avoid loop for 3-5x speedup)
-    # Use sweep() to divide each row by its sum, with safe divisor for zero rows
-    safe_divisor <- ifelse(row_sums > 0, row_sums, 1)
-    DC <- sweep(adj_matrix, 1, safe_divisor, "/")
-    DC[row_sums == 0, ] <- 0  # Zero out rows with no consumption
-
-    rownames(DC) <- colnames(DC) <- V(net)$name
-
-    # Create identity matrix
-    I <- diag(n)
-
-    # Calculate (I - DC)^(-1)
-    # This represents direct and indirect effects through the food web
-    I_minus_DC <- I - DC
-
-    # Check if matrix is invertible
-    if (abs(det(I_minus_DC)) < 1e-10) {
-      warning("Diet composition matrix is singular or near-singular. MTI calculation may be unstable.")
-      # Use pseudo-inverse
-      I_minus_DC_inv <- MASS::ginv(I_minus_DC)
-    } else {
-      I_minus_DC_inv <- solve(I_minus_DC)
+    if (nrow(info) != n) {
+      stop(sprintf("Number of rows in 'info' (%d) must match number of vertices in 'net' (%d)",
+                   nrow(info), n), call. = FALSE)
     }
+    sp <- V(net)$name
+    if (is.null(sp)) sp <- as.character(seq_len(n))
 
-    # Calculate MTI matrix
-    # MTI = - (I - DC)^(-1) * DC
-    MTI <- -I_minus_DC_inv %*% DC
+    # 1. Diet composition D[prey, predator], columns sum to 1
+    has_diet <- "diet_prop" %in% igraph::edge_attr_names(net)
+    if (has_diet && anyNA(igraph::E(net)$diet_prop)) {
+      warning("[calculate_mti] some edges have no diet_prop; using an equal diet split for all",
+              call. = FALSE)
+      has_diet <- FALSE
+    }
+    D <- if (has_diet) {
+      as.matrix(igraph::as_adjacency_matrix(net, attr = "diet_prop", sparse = FALSE))
+    } else {
+      as.matrix(igraph::as_adjacency_matrix(net, sparse = FALSE))
+    }
+    D[!is.finite(D) | D < 0] <- 0
+    col_tot <- colSums(D)
+    D <- sweep(D, 2, ifelse(col_tot > 0, col_tot, 1), "/")
 
-    # Set diagonal to 0 (species doesn't impact itself in this analysis)
-    diag(MTI) <- 0
+    # 2. Consumption per predator: B * Q/B where available, else biomass proxy
+    B <- as.numeric(info$meanB)
+    cons <- B
+    if ("QB" %in% names(info)) {
+      qb <- suppressWarnings(as.numeric(info$QB))
+      use_qb <- is.finite(qb) & qb > 0
+      cons[use_qb] <- B[use_qb] * qb[use_qb]
+    }
+    cons[!is.finite(cons) | cons < 0] <- 0
 
-    rownames(MTI) <- colnames(MTI) <- V(net)$name
+    # 3. Flows and predation shares FC[prey, predator]
+    flows <- sweep(D, 2, cons, "*")
+    row_tot <- rowSums(flows)
+    FC <- flows / ifelse(row_tot > 0, row_tot, 1)
 
-    return(MTI)
-
+    # 4. Net impacts
+    I <- diag(n)
+    A <- I - (D - t(FC))
+    if (.mti_rcond(A) < 1e-10) {
+      warning("[calculate_mti] (I - Q) is singular or near-singular; using the pseudo-inverse",
+              call. = FALSE)
+      A_inv <- MASS::ginv(A)
+    } else {
+      A_inv <- solve(A)
+    }
+    MTI <- A_inv - I
+    dimnames(MTI) <- list(sp, sp)
+    MTI
   }, error = function(e) {
     stop(sprintf("Failed to calculate Mixed Trophic Impact (MTI): %s", e$message), call. = FALSE)
   })
 }
 
+#' Reciprocal condition number used by calculate_mti()'s singularity check
+#'
+#' A named seam so tests can force the pseudo-inverse branch.
+#' @keywords internal
+.mti_rcond <- function(A) rcond(A)
+
 #' Calculate Keystoneness Index
 #'
-#' Computes the keystoneness index for each species based on their
-#' overall impact on the ecosystem and their relative biomass.
+#' Libralato et al. (2006) keystoneness from the MTI matrix.
 #'
-#' @param net An igraph object representing the food web
-#' @param info Data frame with 'meanB' column for biomass
+#' @param net An igraph object representing the food web (see calculate_mti())
+#' @param info Data frame aligned to `V(net)` with `meanB` (optional `QB`)
 #'
-#' @return A data frame with columns:
+#' @return A data frame sorted by `keystoneness` (descending, `NA` last) with
+#'   columns:
 #' \describe{
 #'   \item{species}{Species name}
-#'   \item{overall_effect}{Total impact on the ecosystem (sum of absolute MTI values)}
-#'   \item{relative_biomass}{Biomass relative to total ecosystem biomass}
-#'   \item{keystoneness}{Keystoneness index (high values = keystone species)}
-#'   \item{keystone_status}{Classification: "Keystone", "Dominant", or "Rare"}
+#'   \item{overall_effect}{epsilon_i = sqrt(sum over j != i of MTI[i, j]^2)}
+#'   \item{relative_biomass}{p_i = B_i / sum(B)}
+#'   \item{keystoneness}{KS_i = log10(epsilon_i * (1 - p_i)), base-10 log as
+#'     reported by EwE; NA when undefined}
+#'   \item{keystone_status}{"Keystone", "Dominant", "Other" or "Undefined"}
+#'   \item{ks_rank}{Rank by KS, 1 = highest; NA when KS is NA}
 #' }
 #'
 #' @details
-#' The keystoneness index (KS) is calculated as:
-#' KS_i = log(1 + OE_i) / log(1 + RB_i)
-#'
-#' Where:
-#' - OE_i = Overall Effect of species i (sum of absolute MTI values)
-#' - RB_i = Relative Biomass of species i (as proportion of total biomass)
-#'
-#' High keystoneness values indicate species with large ecosystem impacts
-#' relative to their biomass (classic keystone species).
-#'
-#' Classification:
-#' - Keystone: High impact, low biomass (KS > 1, RB < 0.05)
-#' - Dominant: High impact, high biomass (KS > 0, RB >= 0.05)
-#' - Rare: Low impact, low biomass (KS <= 1, RB < 0.05)
+#' Classification (a design choice; Libralato ranks without cut-offs):
+#' \itemize{
+#'   \item Keystone: KS >= 75th percentile of KS and p < 0.05
+#'   \item Dominant: KS >= 75th percentile of KS and p >= 0.05
+#'   \item Other: every other species with a finite KS
+#'   \item Undefined: KS not finite (e.g. epsilon = 0 or p = 1)
+#' }
 #'
 #' @references
-#' Libralato, S., et al. (2006). A method for identifying keystone species in
-#' food web models. Ecological Modelling, 195(3-4), 153-171.
+#' Libralato, S., Christensen, V., & Pauly, D. (2006). A method for identifying
+#' keystone species in food web models. Ecological Modelling, 195(3-4), 153-171.
+#' @export
 calculate_keystoneness <- function(net, info) {
   tryCatch({
-    # Input validation using utility functions
-    validate_network(net, require_directed = FALSE, min_vertices = 1)
+    validate_network(net, require_directed = TRUE, min_vertices = 1)
     validate_dataframe(info, required_cols = "meanB")
 
     if (nrow(info) != vcount(net)) {
@@ -105,54 +140,48 @@ calculate_keystoneness <- function(net, info) {
                    nrow(info), vcount(net)), call. = FALSE)
     }
 
-    # Calculate MTI matrix
     MTI <- calculate_mti(net, info)
 
-    # Calculate overall effect (sum of absolute MTI values for each impactor)
-    # This represents the total impact a species has on the ecosystem
-    overall_effect <- colSums(abs(MTI))
+    # epsilon_i: overall effect of impactor i (row), self-impact excluded
+    off_diag <- MTI
+    diag(off_diag) <- 0
+    overall_effect <- sqrt(rowSums(off_diag^2))
 
-    # Calculate relative biomass
-    total_biomass <- sum(info$meanB, na.rm = TRUE)
-
-    if (total_biomass <= 0) {
+    biomass <- as.numeric(info$meanB)
+    total_biomass <- sum(biomass, na.rm = TRUE)
+    if (!(total_biomass > 0)) {
       stop("Total biomass must be positive to calculate keystoneness", call. = FALSE)
     }
+    relative_biomass <- biomass / total_biomass
 
-    relative_biomass <- info$meanB / total_biomass
+    keystoneness <- suppressWarnings(log10(overall_effect * (1 - relative_biomass)))
+    keystoneness[!is.finite(keystoneness)] <- NA_real_
 
-    # Calculate keystoneness index
-    # KS = log(1 + overall_effect) / log(1 + relative_biomass)
-    # High KS means high impact relative to biomass
-    keystoneness <- log(1 + overall_effect) / log(1 + relative_biomass)
+    ks_cut <- if (all(is.na(keystoneness))) {
+      NA_real_
+    } else {
+      stats::quantile(keystoneness, 0.75, na.rm = TRUE, names = FALSE)
+    }
+    top <- !is.na(keystoneness) & keystoneness >= ks_cut
+    keystone_status <- ifelse(
+      is.na(keystoneness), "Undefined",
+      ifelse(top & relative_biomass < 0.05, "Keystone",
+             ifelse(top, "Dominant", "Other"))
+    )
 
-    # Handle infinite or undefined values
-    keystoneness[is.infinite(keystoneness)] <- NA
-    keystoneness[is.nan(keystoneness)] <- NA
-
-    # Classify species
-    keystone_status <- sapply(1:length(keystoneness), function(i) {
-      if (is.na(keystoneness[i])) return("Undefined")
-      if (keystoneness[i] > 1 && relative_biomass[i] < 0.05) return("Keystone")
-      if (keystoneness[i] > 0 && relative_biomass[i] >= 0.05) return("Dominant")
-      return("Rare")
-    })
-
-    # Create results data frame
     results <- data.frame(
-      species = V(net)$name,
-      overall_effect = overall_effect,
+      species = rownames(MTI),
+      overall_effect = unname(overall_effect),
       relative_biomass = relative_biomass,
-      keystoneness = keystoneness,
+      keystoneness = unname(keystoneness),
       keystone_status = keystone_status,
+      ks_rank = as.integer(rank(-keystoneness, ties.method = "min", na.last = "keep")),
       stringsAsFactors = FALSE
     )
 
-    # Sort by keystoneness (descending)
-    results <- results[order(-results$keystoneness), ]
-
-    return(results)
-
+    results <- results[order(-results$keystoneness, na.last = TRUE), ]
+    rownames(results) <- NULL
+    results
   }, error = function(e) {
     stop(sprintf("Failed to calculate keystoneness indices: %s", e$message), call. = FALSE)
   })

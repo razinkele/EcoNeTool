@@ -16,6 +16,20 @@
 #       `species` column (the metaweb calls it species_name) and fg = "Other",
 #       which is not one of get_functional_group_levels() - the Food Web tab
 #       then failed its required-columns check.
+#
+# -----------------------------------------------------------------------------
+# EDGE CONTRACT (app-wide; every importer, metric and plot relies on it)
+# -----------------------------------------------------------------------------
+#   * A directed edge A -> B means "A is eaten by B" (B eats A): prey -> predator,
+#     the direction of energy flow.
+#   * Adjacency matrices are indexed adj[prey, predator]; a node's prey are its
+#     in-neighbours (column of adj), its predators its out-neighbours (row).
+#   * Diet matrices are prey x predator, as in EwE and Rpath; each predator
+#     column sums to 1. Edge attribute E(net)$diet_prop, when present, is
+#     diet[prey, predator] for that edge.
+#   * metaweb$interactions columns mean exactly what their names say:
+#     predator_id eats prey_id, so metaweb_to_igraph() builds prey_id -> predator_id.
+# Tests assert it with assert_prey_to_predator() (tests/testthat/helper-fixtures.R).
 
 #' Candidate column names holding the species key
 .SPECIES_KEY_CANDIDATES <- c("species", "species_name", "Species", "GroupName",

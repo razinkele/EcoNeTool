@@ -159,10 +159,10 @@ metaweb_manager_server <- function(input, output, session, current_metaweb,
       )
     )
 
-    # Create edges
+    # Create edges: prey -> predator (energy flow), as in the Food Web tab
     edges <- data.frame(
-      from = metaweb$interactions$predator_id,
-      to = metaweb$interactions$prey_id,
+      from = metaweb$interactions$prey_id,
+      to = metaweb$interactions$predator_id,
       arrows = "to",
       title = paste0(
         "Quality: ", metaweb$interactions$quality_code, "<br>",

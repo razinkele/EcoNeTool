@@ -437,8 +437,10 @@ convert_ecobase_to_econetool <- function(model_id, use_output = TRUE) {
   adjacency_matrix <- (diet_matrix > 0) * 1
   rownames(adjacency_matrix) <- colnames(adjacency_matrix) <- species_names
 
-  # Create network
+  # Create network (edge contract: prey -> predator, adj[prey, predator])
   net <- graph_from_adjacency_matrix(adjacency_matrix, mode = "directed")
+  # Edge (prey, predator) carries diet_matrix[prey, predator] for MTI/keystoneness
+  E(net)$diet_prop <- diet_matrix[as_edgelist(net, names = FALSE)]
 
   # Explicitly set vertex names to ensure they're preserved
   V(net)$name <- species_names
@@ -623,8 +625,10 @@ convert_ecobase_to_econetool_hybrid <- function(model_id) {
   adjacency_matrix <- (diet_matrix > 0) * 1
   rownames(adjacency_matrix) <- colnames(adjacency_matrix) <- species_names
 
-  # Create network
+  # Create network (edge contract: prey -> predator, adj[prey, predator])
   net <- graph_from_adjacency_matrix(adjacency_matrix, mode = "directed")
+  # Edge (prey, predator) carries diet_matrix[prey, predator] for MTI/keystoneness
+  E(net)$diet_prop <- diet_matrix[as_edgelist(net, names = FALSE)]
 
   # Explicitly set vertex names to ensure they're preserved
   V(net)$name <- species_names

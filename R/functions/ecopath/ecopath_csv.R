@@ -68,7 +68,9 @@ parse_ecopath_data <- function(basic_est_file, diet_file) {
   # to subset the full frame recycles the mask and misaligns biomass/PB/QB.
   raw_names <- as.character(basic_data[[group_col]])
   name_present <- !is.na(raw_names) & raw_names != ""
-  not_summary <- !grepl("^sum$|^total$|^import$|^export$|^detritus$",
+  # "Detritus" is a real EwE group (TL 1, eaten by detritivores), not a
+  # summary row, so it is NOT in this filter (F55).
+  not_summary <- !grepl("^sum$|^total$|^import$|^export$",
                         tolower(raw_names))
   valid_rows <- name_present & not_summary
 
@@ -82,8 +84,32 @@ parse_ecopath_data <- function(basic_est_file, diet_file) {
   qb_values <- if (!is.na(qb_col)) as.numeric(basic_data[[qb_col]]) else rep(DEFAULT_QB_RATIO, length(species_names))
 
   # Process Diet Composition matrix
-  # First column is prey names, rest are predators
-  diet_matrix <- as.matrix(diet_data[, -1])
+  # First column is prey names, rest are predators: diet_matrix[prey, predator]
+  # Coerce column-wise (as.matrix() on a mixed frame would format() numeric
+  # columns and turn NA into the string "NA"). Blank cells mean "not eaten";
+  # a non-blank cell that is not a number (e.g. decimal comma "0,35") is NOT
+  # silently read as 0 - it is counted and reported (F-2).
+  diet_raw <- as.data.frame(diet_data[, -1, drop = FALSE])
+  bad_values <- character(0)
+  diet_cols <- lapply(diet_raw, function(col) {
+    num <- suppressWarnings(as.numeric(col))
+    if (is.character(col) || is.factor(col)) {
+      txt <- trimws(as.character(col))
+      bad <- !is.na(txt) & txt != "" & is.na(num)
+      bad_values <<- c(bad_values, txt[bad])
+    }
+    num
+  })
+  diet_matrix <- matrix(unlist(diet_cols, use.names = FALSE), nrow = nrow(diet_raw),
+                        dimnames = list(NULL, colnames(diet_raw)))
+  if (length(bad_values) > 0) {
+    warning(sprintf(
+      paste0("[parse_ecopath_data] %d non-numeric diet cell%s read as 0 (e.g. '%s'). ",
+             "Check the decimal separator: diet proportions must use '.' (0.35, not 0,35)."),
+      length(bad_values), if (length(bad_values) == 1) "" else "s", bad_values[1]
+    ), call. = FALSE)
+  }
+  diet_matrix[is.na(diet_matrix)] <- 0  # blank EwE cells mean "not eaten"
   rownames(diet_matrix) <- as.character(diet_data[[1]])
 
   # Match species names between basic and diet files
@@ -103,18 +129,21 @@ parse_ecopath_data <- function(basic_est_file, diet_file) {
   # Subset and reorder diet matrix
   diet_matrix <- diet_matrix[common_species, common_species, drop = FALSE]
 
-  # Convert diet proportions to binary adjacency matrix
-  # In ECOPATH: columns are predators, rows are prey
-  # In our format: rows are predators, columns are prey
-  # So we need to transpose
-  adjacency_matrix <- t(diet_matrix > 0) * 1
+  # Convert diet proportions to binary adjacency matrix. EwE's diet matrix is
+  # already prey x predator, which is exactly the app's edge contract
+  # (adj[prey, predator], edge prey -> predator) - no transpose (F48).
+  adjacency_matrix <- (diet_matrix > 0) * 1
+  rownames(adjacency_matrix) <- rownames(diet_matrix)
+  colnames(adjacency_matrix) <- colnames(diet_matrix)
 
-  # Ensure rownames and colnames are preserved after transpose
-  rownames(adjacency_matrix) <- colnames(diet_matrix)
-  colnames(adjacency_matrix) <- rownames(diet_matrix)
-
-  # Create igraph network
+  # Create igraph network; edge (prey, predator) carries its diet proportion
   net <- igraph::graph_from_adjacency_matrix(adjacency_matrix, mode = "directed")
+  if (igraph::ecount(net) == 0) {
+    stop("The Diet Composition file contains no feeding links (every diet proportion is 0 or ",
+         "unreadable). Check that it is the EwE diet matrix (rows = prey, columns = predators) ",
+         "and that decimals use '.'.", call. = FALSE)
+  }
+  igraph::E(net)$diet_prop <- diet_matrix[igraph::as_edgelist(net, names = FALSE)]
 
   # Explicitly set vertex names to ensure they're preserved
   igraph::V(net)$name <- species_names

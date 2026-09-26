@@ -175,11 +175,11 @@ library(igraph)
 net  <- graph_from_adjacency_matrix(adjacency_matrix, mode = "directed")
 info <- data.frame(
   species       = c("Species_A", "Species_B", "Species_C"),
-  fg            = factor(c("Fish", "Zooplankton", "Phytoplankton")),
-  meanB         = c(1250.5, 850.2, 2100.0),
-  bodymasses    = c(50.0, 0.5, 0.001),
-  met.types     = c("ectotherm vertebrates", "invertebrates", "Other"),
-  efficiencies  = c(0.85, 0.75, 0.40)
+  fg            = factor(c("Phytoplankton", "Zooplankton", "Fish")),
+  meanB         = c(2100.0, 850.2, 1250.5),
+  bodymasses    = c(0.001, 0.5, 50.0),
+  met.types     = c("Other", "invertebrates", "ectotherm vertebrates"),
+  efficiencies  = c(0.40, 0.75, 0.85)
 )
 save(net, info, file = "MyFoodWeb.Rdata")
 ```

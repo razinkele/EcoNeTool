@@ -25,16 +25,19 @@ species_data <- data.frame(
   stringsAsFactors = FALSE
 )
 
-# Extract interactions from network
-edgelist <- as_edgelist(net, names = FALSE)
-interactions_data <- data.frame(
-  predator_id = species_data$species_id[edgelist[, 1]],
-  prey_id = species_data$species_id[edgelist[, 2]],
+# Extract interactions from network. `net` follows the edge contract
+# (prey -> predator), so go through the shared writer, which labels the edge
+# tail as prey_id and the head as predator_id. The old inline writer labelled
+# the tail as predator_id - the origin of the swapped Baltic metaweb.
+source("R/functions/metaweb_core.R")
+net_by_id <- net
+V(net_by_id)$name <- species_data$species_id
+interactions_data <- igraph_to_metaweb_interactions(
+  net_by_id,
   quality_code = 1,  # Assume all documented (since from published study)
-  source = "Frelat & Kortsch (2020) Baltic Food Web Tutorial",
-  notes = "Original data from Gulf of Riga, 1979-2016",
-  stringsAsFactors = FALSE
+  source = "Frelat & Kortsch (2020) Baltic Food Web Tutorial"
 )
+interactions_data$notes <- "Original data from Gulf of Riga, 1979-2016"
 
 # Create metadata
 metadata <- list(

@@ -64,9 +64,11 @@ dataeditor_ui <- function() {
               title = "Network Adjacency Matrix",
               icon = icon("project-diagram"),
               HTML("
-                <p>Edit the food web structure. Values should be 0 (no interaction) or 1 (predator eats prey).</p>
+                <p>Edit the food web structure. Values should be 0 (no interaction) or 1
+                (the column species eats the row species).</p>
                 <p><strong>Tip:</strong> Hover over species names (underlined) to see their role in the food web.</p>
-                <p><em>Rows = Predators, Columns = Prey. Value of 1 in row i, column j means species i eats species j.</em></p>
+                <p><em>Rows = Prey, Columns = Predators. Value of 1 in row i, column j means species j eats species i
+                (edge i → j, prey → predator).</em></p>
               "),
               DT::dataTableOutput("network_matrix_table"),
               br(),

@@ -253,10 +253,10 @@ extract_local_network <- function(metaweb, species_list, hexagon_id = NA) {
      metaweb$interactions$prey_id %in% local_species_df$species_name),
   ]
 
-  # Create igraph network
+  # Create igraph network. Edge contract: prey -> predator (B eats A for A -> B).
   if (nrow(local_interactions) > 0) {
     local_net <- igraph::graph_from_data_frame(
-      d = local_interactions[, c("predator_id", "prey_id")],
+      d = local_interactions[, c("prey_id", "predator_id")],
       directed = TRUE,
       vertices = local_species_df
     )
@@ -404,25 +404,17 @@ calculate_spatial_metrics <- function(local_networks,
     # Trophic levels
     if ("meanTL" %in% metrics || "maxTL" %in% metrics) {
       if (igraph::vcount(net) > 0 && igraph::ecount(net) > 0) {
-        # Simple trophic level: 1 + mean trophic level of prey
-        # (This is a simplified version - full version needs basal species detection)
-        tl <- rep(1, igraph::vcount(net))  # Default = basal
-
-        # Iteratively calculate trophic levels
-        for (iter in 1:10) {  # Max 10 iterations
-          for (v in igraph::V(net)) {
-            prey <- igraph::neighbors(net, v, mode = "in")
-            if (length(prey) > 0) {
-              tl[v] <- 1 + mean(tl[prey])
-            }
-          }
-        }
+        # Same estimator as the Food Web tab. Under the prey -> predator
+        # contract a node's prey are its in-neighbours (mode = "in").
+        # NA = no path from a basal species; excluded from both summaries.
+        tl <- calculate_trophic_levels(net)
+        tl_defined <- !all(is.na(tl))
 
         if ("meanTL" %in% metrics) {
-          results$meanTL[i] <- mean(tl)
+          results$meanTL[i] <- if (tl_defined) mean(tl, na.rm = TRUE) else NA_real_
         }
         if ("maxTL" %in% metrics) {
-          results$maxTL[i] <- max(tl)
+          results$maxTL[i] <- if (tl_defined) max(tl, na.rm = TRUE) else NA_real_
         }
       } else {
         if ("meanTL" %in% metrics) results$meanTL[i] <- NA

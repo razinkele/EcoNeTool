@@ -185,3 +185,20 @@ expect_valid_db_lookup_result <- function(result, expected_source) {
   expect_true("success" %in% names(result))
   expect_equal(result$source, expected_source)
 }
+
+# ---------------------------------------------------------------------------
+# Edge contract (R/functions/network_finalize.R header): A -> B means B eats A
+# ---------------------------------------------------------------------------
+# Asserts that `predator` eats `prey` in `net` and that the reverse link is
+# absent. Vertices are given by name (or index). Every orientation test uses
+# this, so a predator->prey regression fails with a readable message.
+assert_prey_to_predator <- function(net, prey, predator) {
+  testthat::expect_true(
+    igraph::are_adjacent(net, prey, predator),
+    label = sprintf("edge %s -> %s (prey -> predator) exists", prey, predator)
+  )
+  testthat::expect_false(
+    igraph::are_adjacent(net, predator, prey),
+    label = sprintf("reverse edge %s -> %s (predator -> prey) exists", predator, prey)
+  )
+}

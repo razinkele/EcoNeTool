@@ -77,8 +77,11 @@ Metawebs are stored as R objects (class `metaweb`) in RDS format. Each metaweb c
    - Additional trait columns (optional)
 
 2. **Interactions** (`interactions` data frame):
-   - `predator_id`: ID of predator species
-   - `prey_id`: ID of prey species
+   - `predator_id`: ID of the predator (the species that eats)
+   - `prey_id`: ID of the prey (the species that is eaten)
+   - In the igraph network built from a metaweb, every edge points
+     `prey_id -> predator_id` (direction of energy flow), the contract used
+     throughout EcoNeTool (see `R/functions/network_finalize.R`).
    - `quality_code`: Link quality (1-4 scale)
    - `source`: Citation or DOI
    - `notes`: Additional information (optional)
