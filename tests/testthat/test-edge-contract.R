@@ -91,6 +91,35 @@ test_that("blank cells in an EwE diet CSV are read as zero", {
   assert_prey_to_predator(res$net, "Phyto", "Zoo")
 })
 
+test_that("unparseable diet cells warn instead of silently becoming 'not eaten' (F-2)", {
+  basic <- tempfile(fileext = ".csv")
+  diet <- tempfile(fileext = ".csv")
+  on.exit(unlink(c(basic, diet)), add = TRUE)
+  writeLines(c("Group,Biomass,PB,QB", "Phyto,20,100,0", "Zoo,5,30,100", "Cod,1,0.5,3"), basic)
+  # One decimal-comma cell; the other link is a proper number, blanks stay blank.
+  writeLines(c("Prey,Phyto,Zoo,Cod", "Phyto,,\"0,35\",", "Zoo,,,1", "Cod,,,"), diet)
+
+  expect_warning(
+    res <- parse_ecopath_data(basic, diet),
+    "1 non-numeric diet cell.*0,35"
+  )
+  expect_equal(ecount(res$net), 1)
+  assert_prey_to_predator(res$net, "Zoo", "Cod")
+})
+
+test_that("a diet file with no parseable feeding links is rejected (F-2)", {
+  basic <- tempfile(fileext = ".csv")
+  diet <- tempfile(fileext = ".csv")
+  on.exit(unlink(c(basic, diet)), add = TRUE)
+  writeLines(c("Group,Biomass,PB,QB", "Phyto,20,100,0", "Zoo,5,30,100", "Cod,1,0.5,3"), basic)
+  writeLines(c("Prey,Phyto,Zoo,Cod", "Phyto,,\"0,6\",", "Zoo,,,\"1,0\"", "Cod,,,"), diet)
+
+  expect_warning(
+    expect_error(parse_ecopath_data(basic, diet), "no feeding links"),
+    "2 non-numeric diet cells"
+  )
+})
+
 # ---------------------------------------------------------------------------
 # E(net)$diet_prop on the EwE importers
 # ---------------------------------------------------------------------------
