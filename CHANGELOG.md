@@ -56,7 +56,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **trait-research:** resolve null-safety crashes blocking trait lookup (#1) (fdd2f82)
 - **trait-research:** resolve 3 bugs blocking multi-species lookup (15b27ff)
 - **ml:** load randomForest namespace before predict() dispatch (127a695)
 - **phylo:** make phylogenetic imputation actually impute (4fe3adb)
@@ -173,7 +172,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
-- **release:** v1.4.4 - Trait Research Stability (821e322)
 - ignore .playwright-mcp/ test artifacts (128c089)
 - untrack .claude/settings.local.json (b32fdad)
 - ignore CLAUDE.md and data/ (f5d373d)
@@ -194,6 +192,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - strip trailing whitespace and fix final newlines in first-party files (68224e3)
 - fix shellcheck warnings in deploy scripts + report-doc final newline (bf37524)
 - **pre-commit:** wrap custom hook entries in bash -c so shell syntax runs (646cc9e)
+- **release:** 1.4.5 - align VERSION, config fallback, app header, CHANGELOG (68492a0)
 
 ### Other
 
@@ -203,6 +202,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - docs/test(r2): roxygen param order, split assertions, explicit cache-key check (cd9be38)
 - Merge pull request #2 from razinkele/fix/deep-analysis-criticals (f3d127d)
 - Merge pull request #3 from razinkele/chore/precommit-exclude-vendored (69febfa)
+
+---
+
+## [1.4.4] - 2026-04-14
+
+### Fixed
+
+- **trait-research:** resolve null-safety crashes blocking trait lookup (#1) (fdd2f82)
+
+### Maintenance
+
+- **release:** v1.4.4 - Trait Research Stability (821e322)
 
 ---
 
@@ -380,6 +391,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[1.4.5]: https://github.com/razinkele/EcoNeTool/compare/v1.4.3...HEAD
+[1.4.5]: https://github.com/razinkele/EcoNeTool/compare/v1.4.4...HEAD
+[1.4.4]: https://github.com/razinkele/EcoNeTool/compare/v1.4.3...v1.4.4
 [1.4.3]: https://github.com/razinkele/EcoNeTool/releases/tag/v1.4.3
 
