@@ -15,12 +15,13 @@ if (!dir.exists("examples")) {
 
 cat("Creating Simple 3-Species example...\n")
 
-# Create adjacency matrix (row eats column)
+# Create adjacency matrix: adj[prey, predator] = 1 means the column species
+# eats the row species (edge contract: prey -> predator, rows = prey).
 # Zooplankton eats Phytoplankton, Fish eats Zooplankton
 adj_simple <- matrix(c(
-  0, 0, 0,  # Phytoplankton eats nothing
-  1, 0, 0,  # Zooplankton eats Phytoplankton
-  0, 1, 0   # Fish eats Zooplankton
+  0, 1, 0,  # Phytoplankton is eaten by Zooplankton
+  0, 0, 1,  # Zooplankton is eaten by Fish
+  0, 0, 0   # Fish is eaten by nobody
 ), nrow = 3, byrow = TRUE)
 
 species_names_simple <- c("Phytoplankton", "Zooplankton", "Fish")
@@ -74,44 +75,44 @@ species_names_reef <- c(
 )
 
 # Create adjacency matrix (10x10)
-# Row eats column
+# Rows = prey, columns = predators: adj_reef[prey, predator] <- 1
 adj_reef <- matrix(0, nrow = 10, ncol = 10)
 rownames(adj_reef) <- colnames(adj_reef) <- species_names_reef
 
 # Define feeding links
 # Zooplankton eats Phytoplankton
-adj_reef["Zooplankton", "Phytoplankton"] <- 1
+adj_reef["Phytoplankton", "Zooplankton"] <- 1
 
 # Sea Urchin eats Macroalgae
-adj_reef["Sea_Urchin", "Macroalgae"] <- 1
+adj_reef["Macroalgae", "Sea_Urchin"] <- 1
 
 # Parrotfish eats Macroalgae
-adj_reef["Parrotfish", "Macroalgae"] <- 1
+adj_reef["Macroalgae", "Parrotfish"] <- 1
 
 # Damselfish eats Zooplankton and Phytoplankton
-adj_reef["Damselfish", "Zooplankton"] <- 1
-adj_reef["Damselfish", "Phytoplankton"] <- 1
+adj_reef["Zooplankton", "Damselfish"] <- 1
+adj_reef["Phytoplankton", "Damselfish"] <- 1
 
 # Snapper eats Damselfish, Zooplankton, Sea_Urchin
-adj_reef["Snapper", "Damselfish"] <- 1
-adj_reef["Snapper", "Zooplankton"] <- 1
-adj_reef["Snapper", "Sea_Urchin"] <- 1
+adj_reef["Damselfish", "Snapper"] <- 1
+adj_reef["Zooplankton", "Snapper"] <- 1
+adj_reef["Sea_Urchin", "Snapper"] <- 1
 
 # Grouper eats Parrotfish, Damselfish, Snapper, Octopus
-adj_reef["Grouper", "Parrotfish"] <- 1
-adj_reef["Grouper", "Damselfish"] <- 1
-adj_reef["Grouper", "Snapper"] <- 1
-adj_reef["Grouper", "Octopus"] <- 1
+adj_reef["Parrotfish", "Grouper"] <- 1
+adj_reef["Damselfish", "Grouper"] <- 1
+adj_reef["Snapper", "Grouper"] <- 1
+adj_reef["Octopus", "Grouper"] <- 1
 
 # Octopus eats Sea_Urchin, Damselfish
-adj_reef["Octopus", "Sea_Urchin"] <- 1
-adj_reef["Octopus", "Damselfish"] <- 1
+adj_reef["Sea_Urchin", "Octopus"] <- 1
+adj_reef["Damselfish", "Octopus"] <- 1
 
 # Barracuda eats Snapper, Parrotfish, Damselfish, Grouper
-adj_reef["Barracuda", "Snapper"] <- 1
-adj_reef["Barracuda", "Parrotfish"] <- 1
-adj_reef["Barracuda", "Damselfish"] <- 1
-adj_reef["Barracuda", "Grouper"] <- 1
+adj_reef["Snapper", "Barracuda"] <- 1
+adj_reef["Parrotfish", "Barracuda"] <- 1
+adj_reef["Damselfish", "Barracuda"] <- 1
+adj_reef["Grouper", "Barracuda"] <- 1
 
 # Create network
 net <- graph_from_adjacency_matrix(adj_reef, mode = "directed")
@@ -275,7 +276,8 @@ This directory contains example food web datasets for testing and learning how t
 
 ### Network CSV (Adjacency Matrix)
 - Square matrix where rows and columns are species
-- Value = 1 means row species eats column species
+- Rows are prey, columns are predators (edge contract: prey -> predator)
+- Value = 1 means the column species eats the row species
 - Value = 0 means no feeding link
 
 ### Species Info CSV
@@ -292,7 +294,7 @@ Required columns:
 1. Start with Template files
 2. Modify species names in both network and info files
 3. Add/remove species (keep matrix square!)
-4. Set feeding links (1 = eats, 0 = no link)
+4. Set feeding links (1 = column species eats row species, 0 = no link)
 5. Fill in species attributes (biomass, body mass, etc.)
 6. Save and upload to EcoNeTool
 
