@@ -160,7 +160,7 @@ analysis_server <- function(input, output, session, net_reactive, info_reactive,
         DT::formatStyle(
           'keystone_status',
           backgroundColor = DT::styleEqual(
-            c('Keystone', 'Dominant', 'Rare', 'Undefined'),
+            c('Keystone', 'Dominant', 'Other', 'Undefined'),
             c('#ffcccc', '#cce5ff', '#e6e6e6', '#fff9cc')
           )
         )
@@ -178,7 +178,7 @@ analysis_server <- function(input, output, session, net_reactive, info_reactive,
       status_colors <- c(
         "Keystone" = "#ff4444",
         "Dominant" = "#4444ff",
-        "Rare" = "#999999",
+        "Other" = "#999999",
         "Undefined" = "#ffcc00"
       )
 
@@ -194,8 +194,9 @@ analysis_server <- function(input, output, session, net_reactive, info_reactive,
         log = "x"  # Log scale for biomass
       )
 
-      # Add reference lines
-      abline(h = 1, lty = 2, col = "gray50")
+      # Reference lines: the Keystone/Dominant cut-offs used by calculate_keystoneness()
+      ks_cut <- stats::quantile(ks_results$keystoneness, 0.75, na.rm = TRUE, names = FALSE)
+      abline(h = ks_cut, lty = 2, col = "gray50")
       abline(v = 0.05, lty = 2, col = "gray50")
 
       # Add labels for top keystone species
@@ -222,7 +223,7 @@ analysis_server <- function(input, output, session, net_reactive, info_reactive,
       )
 
       # Add text annotations
-      text(0.001, 1, "Keystone threshold", pos = 3, cex = 0.7, col = "gray50")
+      text(0.001, ks_cut, "Top-quartile KS", pos = 3, cex = 0.7, col = "gray50")
       text(0.05, max(ks_results$keystoneness, na.rm = TRUE) * 0.9,
            "5% biomass threshold", pos = 4, cex = 0.7, col = "gray50")
 
@@ -238,6 +239,7 @@ analysis_server <- function(input, output, session, net_reactive, info_reactive,
       net <- net_reactive()
       info <- info_reactive()
       mti_matrix <- calculate_mti(net, info)
+      diag(mti_matrix) <- NA  # self-impact is kept in the data, blanked for display
 
       # Create color palette (red = negative, blue = positive)
       colors <- colorRampPalette(c("red", "white", "blue"))(100)
@@ -256,8 +258,8 @@ analysis_server <- function(input, output, session, net_reactive, info_reactive,
         breaks = breaks,
         margins = c(8, 8),
         main = "Mixed Trophic Impact Matrix",
-        xlab = "Impacting Species (impactor)",
-        ylab = "Impacted Species",
+        xlab = "Impacted Species",
+        ylab = "Impacting Species (impactor = row)",
         cexRow = 0.7,
         cexCol = 0.7
       )
@@ -279,7 +281,7 @@ analysis_server <- function(input, output, session, net_reactive, info_reactive,
       cat("Total species analyzed:", nrow(ks_results), "\n")
       cat("Keystone species:", sum(ks_results$keystone_status == "Keystone", na.rm = TRUE), "\n")
       cat("Dominant species:", sum(ks_results$keystone_status == "Dominant", na.rm = TRUE), "\n")
-      cat("Rare species:", sum(ks_results$keystone_status == "Rare", na.rm = TRUE), "\n\n")
+      cat("Other species:", sum(ks_results$keystone_status == "Other", na.rm = TRUE), "\n\n")
 
       # Top 5 keystone species
       cat("=== TOP 5 KEYSTONE SPECIES ===\n\n")

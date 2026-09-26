@@ -122,7 +122,7 @@ dashboard_ui <- function() {
                   <h5 style='color: #605ca8; margin-top: 0;'>🔑 Keystone Species Identification</h5>
                   <ul style='margin-bottom: 0;'>
                     <li><code>calculate_mti()</code> - Mixed Trophic Impact matrix (ECOPATH method)</li>
-                    <li><code>calculate_keystoneness()</code> - Keystoneness index (impact/biomass ratio)</li>
+                    <li><code>calculate_keystoneness()</code> - Keystoneness index (Libralato et al. 2006)</li>
                     <li><strong>Species Classification:</strong> Keystone, Dominant, or Rare</li>
                     <li><strong>Impact Visualization:</strong> Heatmaps showing direct & indirect effects</li>
                     <li><em>Reference: Libralato et al. (2006), Ecological Modelling</em></li>
