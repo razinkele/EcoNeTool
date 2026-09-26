@@ -328,6 +328,9 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
       # Create network
       net <- igraph::graph_from_adjacency_matrix(adjacency_matrix, mode = "directed")
       net <- igraph::upgrade_graph(net)
+      # Keep the diet proportions on the edges for MTI/keystoneness:
+      # edge (prey, predator) carries diet_matrix[prey, predator].
+      igraph::E(net)$diet_prop <- diet_matrix[igraph::as_edgelist(net, names = FALSE)]
 
       # Explicitly set vertex names to ensure they're preserved
       igraph::V(net)$name <- species_names

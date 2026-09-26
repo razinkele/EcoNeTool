@@ -334,11 +334,13 @@ trait_foodweb_to_igraph <- function(species_data, threshold = 0.05, include_prob
   # Get probability matrix
   prob_matrix <- construct_trait_foodweb(species_data, threshold = 0, return_probs = TRUE)
 
-  # Create edge list from probabilities above threshold
+  # Create edge list from probabilities above threshold.
+  # prob_matrix is [consumer, resource]; the graph follows the app-wide edge
+  # contract resource (prey) -> consumer (predator), so the columns swap here.
   edges <- which(prob_matrix >= threshold, arr.ind = TRUE)
   edge_list <- data.frame(
-    from = rownames(prob_matrix)[edges[, 1]],
-    to = colnames(prob_matrix)[edges[, 2]],
+    from = colnames(prob_matrix)[edges[, 2]],
+    to = rownames(prob_matrix)[edges[, 1]],
     probability = prob_matrix[edges]
   )
 

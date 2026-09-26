@@ -68,7 +68,9 @@ parse_ecopath_data <- function(basic_est_file, diet_file) {
   # to subset the full frame recycles the mask and misaligns biomass/PB/QB.
   raw_names <- as.character(basic_data[[group_col]])
   name_present <- !is.na(raw_names) & raw_names != ""
-  not_summary <- !grepl("^sum$|^total$|^import$|^export$|^detritus$",
+  # "Detritus" is a real EwE group (TL 1, eaten by detritivores), not a
+  # summary row, so it is NOT in this filter (F55).
+  not_summary <- !grepl("^sum$|^total$|^import$|^export$",
                         tolower(raw_names))
   valid_rows <- name_present & not_summary
 
@@ -82,8 +84,10 @@ parse_ecopath_data <- function(basic_est_file, diet_file) {
   qb_values <- if (!is.na(qb_col)) as.numeric(basic_data[[qb_col]]) else rep(DEFAULT_QB_RATIO, length(species_names))
 
   # Process Diet Composition matrix
-  # First column is prey names, rest are predators
+  # First column is prey names, rest are predators: diet_matrix[prey, predator]
   diet_matrix <- as.matrix(diet_data[, -1])
+  storage.mode(diet_matrix) <- "numeric"
+  diet_matrix[is.na(diet_matrix)] <- 0  # blank EwE cells mean "not eaten"
   rownames(diet_matrix) <- as.character(diet_data[[1]])
 
   # Match species names between basic and diet files
@@ -103,18 +107,16 @@ parse_ecopath_data <- function(basic_est_file, diet_file) {
   # Subset and reorder diet matrix
   diet_matrix <- diet_matrix[common_species, common_species, drop = FALSE]
 
-  # Convert diet proportions to binary adjacency matrix
-  # In ECOPATH: columns are predators, rows are prey
-  # In our format: rows are predators, columns are prey
-  # So we need to transpose
-  adjacency_matrix <- t(diet_matrix > 0) * 1
+  # Convert diet proportions to binary adjacency matrix. EwE's diet matrix is
+  # already prey x predator, which is exactly the app's edge contract
+  # (adj[prey, predator], edge prey -> predator) - no transpose (F48).
+  adjacency_matrix <- (diet_matrix > 0) * 1
+  rownames(adjacency_matrix) <- rownames(diet_matrix)
+  colnames(adjacency_matrix) <- colnames(diet_matrix)
 
-  # Ensure rownames and colnames are preserved after transpose
-  rownames(adjacency_matrix) <- colnames(diet_matrix)
-  colnames(adjacency_matrix) <- rownames(diet_matrix)
-
-  # Create igraph network
+  # Create igraph network; edge (prey, predator) carries its diet proportion
   net <- igraph::graph_from_adjacency_matrix(adjacency_matrix, mode = "directed")
+  igraph::E(net)$diet_prop <- diet_matrix[igraph::as_edgelist(net, names = FALSE)]
 
   # Explicitly set vertex names to ensure they're preserved
   igraph::V(net)$name <- species_names
