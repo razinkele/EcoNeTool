@@ -91,3 +91,61 @@ test_that("live: Rpath balance of Phyto -> Zoo -> Fish keeps TL 1, 2, 3", {
   tl <- setNames(as.numeric(model$TL), model$Group)
   expect_equal(unname(tl[c("Phyto", "Zoo", "Fish")]), c(1, 2, 3), tolerance = 1e-6)
 })
+
+test_that("rpath_conversion.R no longer strips cannibalism (F41)", {
+  code <- readLines(app_path("R/functions/rpath/rpath_conversion.R"), warn = FALSE)
+  expect_false(any(grepl("Removing cannibalism", code, fixed = TRUE)))
+})
+
+# EwE-style tables: Phyto(1), Det(2), Zoo(0), Cod(0), DummyFleet(3).
+# Zoo eats Phyto 0.7 + Det 0.3; Cod eats Zoo 0.9 + Cod 0.1 (cannibalism).
+ewe_groups <- function() {
+  data.frame(
+    GroupID = 1:5,
+    GroupName = c("Phyto", "Det", "Zoo", "Cod", "DummyFleet"),
+    Type = c(1, 2, 0, 0, 3),
+    stringsAsFactors = FALSE
+  )
+}
+ewe_diet <- function(cod_on_cod = 0.1) {
+  data.frame(
+    PredID = c(3, 3, 4, 4),
+    PreyID = c(1, 2, 3, 4),
+    Diet = c(0.7, 0.3, 1 - cod_on_cod, cod_on_cod)
+  )
+}
+
+test_that("build_rpath_diet_frame keeps cannibalism and the column sums to 1 (F41)", {
+  diet_df <- build_rpath_diet_frame(ewe_groups(), ewe_diet())
+
+  expect_equal(diet_df$Group, c("Phyto", "Det", "Zoo", "Cod", "Import"))
+  expect_equal(names(diet_df), c("Group", "Phyto", "Zoo", "Cod"))
+  expect_equal(diet_df$Cod[diet_df$Group == "Cod"], 0.1)
+  expect_equal(sum(diet_df$Cod), 1)
+  expect_equal(sum(diet_df$Zoo), 1)
+})
+
+test_that("a diet column summing to more than 1 warns with the group name", {
+  over <- ewe_diet()
+  over$Diet[over$PredID == 3 & over$PreyID == 1] <- 0.8  # Zoo sums to 1.1
+  expect_warning(diet_df <- build_rpath_diet_frame(ewe_groups(), over), "'Zoo' sums to 1.1")
+  # The data are reported, never changed.
+  expect_equal(diet_df$Zoo[diet_df$Group == "Phyto"], 0.8)
+})
+
+test_that("a diet column summing to exactly 1 does not warn", {
+  expect_no_warning(build_rpath_diet_frame(ewe_groups(), ewe_diet()))
+})
+
+test_that("convert_ecopath_to_rpath passes cannibalism through to params$diet", {
+  skip_if_not_installed("Rpath")
+  ecopath_data <- list(
+    group_data = transform(ewe_groups()[1:4, ],
+                           Biomass = c(20, 50, 5, 1), ProdBiom = c(100, NA, 30, 0.5),
+                           ConsBiom = c(NA, NA, 100, 3), EcoEfficiency = c(NA, NA, NA, NA)),
+    diet_data = ewe_diet()
+  )
+  params <- suppressWarnings(convert_ecopath_to_rpath(ecopath_data))
+  expect_equal(params$diet$Cod[params$diet$Group == "Cod"], 0.1)
+  expect_equal(sum(params$diet$Cod), 1)
+})
