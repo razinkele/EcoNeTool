@@ -358,3 +358,11 @@ test_that("README minimal example uses the same species order as the import help
   expect_length(fg_line, 1)
   expect_match(fg_line, "\"Phytoplankton\", \"Zooplankton\", \"Fish\"", fixed = TRUE)
 })
+
+test_that("the example metaweb generator writes interactions through the shared writer (F-6)", {
+  code <- readLines(app_path("scripts/initialization/create_example_metaweb.R"), warn = FALSE)
+  code <- code[!startsWith(trimws(code), "#")]
+  expect_true(any(grepl("igraph_to_metaweb_interactions(", code, fixed = TRUE)))
+  # The old inline writer labelled the edge tail (the prey) as the predator.
+  expect_false(any(grepl("predator_id *= *.*edgelist[[], *1[]]", code)))
+})
