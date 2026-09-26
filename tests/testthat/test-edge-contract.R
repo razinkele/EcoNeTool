@@ -184,6 +184,44 @@ test_that("trait food webs are exported prey -> predator (N3)", {
   assert_prey_to_predator(g, "Phytoplankton", "Benthic_filter_feeder")
 })
 
+trait_simple_example <- function() {
+  data.frame(
+    species = c("Predatory_fish", "Small_fish", "Zooplankton", "Phytoplankton", "Benthic_filter_feeder"),
+    MS = c("MS5", "MS3", "MS2", "MS1", "MS3"),
+    FS = c("FS1", "FS1", "FS6", "FS0", "FS6"),
+    MB = c("MB5", "MB5", "MB4", "MB2", "MB1"),
+    EP = c("EP4", "EP4", "EP3", "EP4", "EP2"),
+    PR = c("PR0", "PR0", "PR0", "PR0", "PR6"),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("the trait tab's adjacency download is rows = prey, columns = predators (F-4)", {
+  adj <- construct_trait_foodweb(trait_simple_example())  # [consumer, resource]
+  out <- trait_adjacency_for_export(adj)
+
+  expect_equal(dim(out), dim(adj))
+  # The producer is eaten (its row has links) and eats nothing (its column is empty).
+  expect_gt(sum(out["Phytoplankton", ]), 0)
+  expect_equal(sum(out[, "Phytoplankton"]), 0)
+  expect_equal(unname(out), unname(t(adj)))
+  # Round trip through the documented import format gives the same graph as N3.
+  g <- igraph::graph_from_adjacency_matrix(out, mode = "directed")
+  assert_prey_to_predator(g, "Phytoplankton", "Benthic_filter_feeder")
+})
+
+test_that("the trait tab's download handler writes through trait_adjacency_for_export (F-4)", {
+  code <- readLines(app_path("R/modules/foodweb_construction_server.R"), warn = FALSE)
+  code <- code[!startsWith(trimws(code), "#")]
+  expect_true(any(grepl("trait_adjacency_for_export(rv$adjacency_matrix)", code, fixed = TRUE)))
+})
+
+test_that("trait network stats label in-degree as prey and out-degree as predators (F-5)", {
+  code <- readLines(app_path("R/modules/foodweb_construction_server.R"), warn = FALSE)
+  expect_true(any(grepl("Avg. prey:.*avg_in_degree", code)))
+  expect_true(any(grepl("Avg. predators:.*avg_out_degree", code)))
+})
+
 # ---------------------------------------------------------------------------
 # F64 - metaweb_to_igraph, and the bundled metawebs it reads
 # ---------------------------------------------------------------------------

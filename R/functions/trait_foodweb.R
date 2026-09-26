@@ -318,6 +318,22 @@ construct_trait_foodweb <- function(species_data, threshold = 0.05, return_probs
 }
 
 
+#' Orient a trait adjacency matrix for CSV export
+#'
+#' `construct_trait_foodweb()` returns `[consumer, resource]`. The documented
+#' network CSV import format (and the app-wide edge contract) is rows = prey,
+#' columns = predators, so the matrix is transposed before it is written.
+#'
+#' @param adj Matrix from `construct_trait_foodweb()` (rows = consumers)
+#' @return Matrix `[resource (prey), consumer (predator)]`
+#' @export
+trait_adjacency_for_export <- function(adj) {
+  out <- t(adj)
+  names(dimnames(out)) <- NULL
+  out
+}
+
+
 #' Convert trait-based food web to igraph object
 #'
 #' @param species_data Data frame with trait information
