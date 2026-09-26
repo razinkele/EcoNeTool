@@ -1607,33 +1607,13 @@ install.packages('Hmisc')</pre>
   # EMODnet Habitat Integration
   # ======================================================================
 
-  # Observer to load EUSeaMap data when EMODnet habitat enrichment is enabled.
-  # The bbox comes from the sampling location the user entered (the same
-  # inputs the import step uses), else from the imported model's metadata
-  # bounding box. With neither there is nothing sensible to load.
-  observeEvent(input$enable_emodnet_habitat, {
-    if (!isTRUE(input$enable_emodnet_habitat) || !is.null(euseamap_data())) {
-      return()
-    }
-
-    custom_bbox <- resolve_emodnet_bbox(
-      lon = input$sampling_longitude,
-      lat = input$sampling_latitude,
-      meta = ecopath_native_metadata()$metadata
-    )
-    if (is.null(custom_bbox)) {
-      showNotification(
-        paste("EMODnet habitat enrichment needs a sampling location: enter latitude and",
-              "longitude, or import a model whose metadata has a bounding box."),
-        type = "warning", duration = 10
-      )
-      updateCheckboxInput(session, "enable_emodnet_habitat", value = FALSE)
-      return()
-    }
-
+  # Load EUSeaMap for a WGS84 bbox into euseamap_data(); returns the layer, or
+  # NULL (with a warning + error notification, and the checkbox cleared) when
+  # the load fails. Shared by the enable observer and the import step, which
+  # reloads when the sampling point lies outside the layer already loaded.
+  load_euseamap_for_bbox <- function(custom_bbox) {
     showNotification("Loading EUSeaMap habitat data (optimized regional loading)...",
                      type = "message", duration = NULL, id = "emodnet_loading")
-
     tryCatch({
       euseamap <- load_regional_euseamap(
         bbt_name = NULL,
@@ -1650,6 +1630,7 @@ install.packages('Hmisc')</pre>
         type = "message",
         duration = 5
       )
+      euseamap
     }, error = function(e) {
       warning(sprintf("[EMODnet] EUSeaMap load failed for bbox %s: %s",
                       paste(round(custom_bbox, 3), collapse = ", "), conditionMessage(e)),
@@ -1663,7 +1644,35 @@ install.packages('Hmisc')</pre>
       )
       # Disable checkbox if loading failed
       updateCheckboxInput(session, "enable_emodnet_habitat", value = FALSE)
+      NULL
     })
+  }
+
+  # Observer to pre-load EUSeaMap when EMODnet habitat enrichment is enabled.
+  # The bbox comes from the sampling location the user entered (the same
+  # inputs the import step uses), else from the imported model's metadata
+  # bounding box. With neither, loading waits for the import step (the
+  # coordinates are only visible once the box is ticked, so do not untick it).
+  observeEvent(input$enable_emodnet_habitat, {
+    if (!isTRUE(input$enable_emodnet_habitat) || !is.null(euseamap_data())) {
+      return()
+    }
+
+    custom_bbox <- resolve_emodnet_bbox(
+      lon = input$sampling_longitude,
+      lat = input$sampling_latitude,
+      meta = ecopath_native_metadata()$metadata
+    )
+    if (is.null(custom_bbox)) {
+      showNotification(
+        paste("Enter the sampling latitude and longitude: the EMODnet habitat layer is",
+              "loaded around that point at import."),
+        type = "message", duration = 10
+      )
+      return()
+    }
+
+    load_euseamap_for_bbox(custom_bbox)
   })
 
   # Handle ECOPATH native import when button clicked
@@ -1783,7 +1792,7 @@ install.packages('Hmisc')</pre>
         # ============================================================
         # Add EMODnet habitat data if enabled
         # ============================================================
-        if (isTRUE(input$enable_emodnet_habitat) && !is.null(euseamap_data())) {
+        if (isTRUE(input$enable_emodnet_habitat)) {
           tryCatch({
             # Get sampling location from inputs
             sampling_lon <- input$sampling_longitude
@@ -1793,21 +1802,40 @@ install.packages('Hmisc')</pre>
             if (!is.null(sampling_lon) && !is.null(sampling_lat) &&
                 !is.na(sampling_lon) && !is.na(sampling_lat)) {
 
-              # Add habitat data to all species
-              species_data <- add_habitat_to_species(
-                species_data,
-                sampling_lon,
-                sampling_lat,
-                euseamap_data()
-              )
+              # The layer loaded when the box was ticked may not cover this
+              # point (other coordinates, or none loaded yet): reload around it.
+              layer <- euseamap_data()
+              if (euseamap_needs_reload(euseamap_layer_bbox(layer), sampling_lon, sampling_lat)) {
+                layer <- load_euseamap_for_bbox(resolve_emodnet_bbox(
+                  lon = sampling_lon, lat = sampling_lat,
+                  meta = ecopath_native_metadata()$metadata
+                ))
+              }
 
-              showNotification(
-                sprintf("✓ Added habitat data at %.4f°E, %.4f°N", sampling_lon, sampling_lat),
-                type = "message",
-                duration = 3
-              )
+              if (!is.null(layer)) {
+                species_data <- add_habitat_to_species(species_data, sampling_lon, sampling_lat, layer)
+                if (emodnet_habitat_assigned(species_data)) {
+                  showNotification(
+                    sprintf("✓ Added habitat data at %.4f°E, %.4f°N", sampling_lon, sampling_lat),
+                    type = "message",
+                    duration = 3
+                  )
+                } else {
+                  showNotification(
+                    sprintf(paste("No EMODnet habitat at %.4f°E, %.4f°N (location outside EUSeaMap",
+                                  "coverage); habitat columns left empty."), sampling_lon, sampling_lat),
+                    type = "warning",
+                    duration = 8
+                  )
+                }
+              }
             } else {
-              warning("Invalid sampling coordinates for habitat enrichment")
+              warning("Invalid sampling coordinates for habitat enrichment", call. = FALSE)
+              showNotification(
+                "EMODnet habitat skipped: enter the sampling latitude and longitude before importing.",
+                type = "warning",
+                duration = 8
+              )
             }
           }, error = function(e) {
             warning("Failed to add habitat data: ", e$message)

@@ -282,6 +282,56 @@ test_that("EMODnet observer has no current_network() and an app_path() GDB path 
   expect_true(any(grepl("resolve_emodnet_bbox(", code, fixed = TRUE)))
 })
 
+gdansk_bbox <- c(16.6466, 52.5189, 20.6466, 56.5189)
+
+test_that("point_in_bbox: a Lithuanian point is outside the Gdansk box (H-2)", {
+  expect_false(point_in_bbox(21.0, 55.7, gdansk_bbox))
+  expect_true(point_in_bbox(18.6466, 54.5189, gdansk_bbox))
+  expect_false(point_in_bbox(18.6, 54.5, NULL))
+  expect_false(point_in_bbox(NA, 54.5, gdansk_bbox))
+  expect_false(point_in_bbox(NULL, NULL, gdansk_bbox))
+})
+
+test_that("euseamap_needs_reload: no layer or a point outside it forces a reload (H-2)", {
+  expect_true(euseamap_needs_reload(NULL, 21.0, 55.7))
+  expect_true(euseamap_needs_reload(gdansk_bbox, 21.0, 55.7))
+  expect_false(euseamap_needs_reload(gdansk_bbox, 18.6466, 54.5189))
+})
+
+test_that("euseamap_layer_bbox reads the load filter box (H-2)", {
+  layer <- data.frame(x = 1)
+  attr(layer, "bbox_filter") <- gdansk_bbox
+  expect_equal(unname(euseamap_layer_bbox(layer)), gdansk_bbox)
+  expect_null(euseamap_layer_bbox(NULL))
+})
+
+test_that("emodnet_habitat_assigned is TRUE only for EMODnet-assigned habitats (H-2)", {
+  expect_true(emodnet_habitat_assigned(data.frame(habitat_source = c("EMODnet EUSeaMap", "EMODnet EUSeaMap"))))
+  expect_false(emodnet_habitat_assigned(data.frame(habitat_source = "None (location outside coverage)")))
+  expect_false(emodnet_habitat_assigned(data.frame(species = "Cod")))
+  expect_false(emodnet_habitat_assigned(NULL))
+})
+
+test_that("sampling lat/lon inputs default to NA with global bounds (H-2)", {
+  code <- paste(readLines(app_path("R/ui/import_ui.R"), warn = FALSE), collapse = "\n")
+  compact <- gsub("\\s+", "", code)
+  expect_false(grepl("54.5189", code, fixed = TRUE))
+  expect_false(grepl("18.6466", code, fixed = TRUE))
+  expect_true(grepl('numericInput("sampling_latitude","Latitude(°N)",value=NA,min=-90,max=90', compact, fixed = TRUE))
+  expect_true(grepl('numericInput("sampling_longitude","Longitude(°E)",value=NA,min=-180,max=180', compact,
+                    fixed = TRUE))
+})
+
+test_that("import reloads EUSeaMap for the point and only claims success when assigned (H-2)", {
+  code <- readLines(app_path("R/modules/ecopath_import_server.R"), warn = FALSE)
+  code <- code[!startsWith(trimws(code), "#")]
+  expect_true(any(grepl("euseamap_needs_reload(", code, fixed = TRUE)))
+  expect_true(any(grepl("emodnet_habitat_assigned(", code, fixed = TRUE)))
+  expect_true(any(grepl("load_euseamap_for_bbox <- function", code, fixed = TRUE)))
+  # the layer is no longer required to be pre-loaded before import
+  expect_false(any(grepl("enable_emodnet_habitat) && !is.null(euseamap_data())", code, fixed = TRUE)))
+})
+
 # ---------------------------------------------------------------------------
 # F74 - trait food web with species not in the first column
 # ---------------------------------------------------------------------------
