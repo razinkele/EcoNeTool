@@ -9,6 +9,7 @@ local({
   source(file.path(root, "R/config.R"), local = FALSE)
   source(file.path(root, "R/functions/network_finalize.R"), local = FALSE)
   source(file.path(root, "R/functions/ecopath/ecopath_group_biomass.R"), local = FALSE)
+  source(file.path(root, "R/functions/data_editor_utils.R"), local = FALSE)
 })
 
 # ---------------------------------------------------------------------------
@@ -169,4 +170,63 @@ test_that("ecopath_import_server.R reads the EwE Type column (F49)", {
   code <- readLines(app_path("R/modules/ecopath_import_server.R"), warn = FALSE)
   code <- code[!startsWith(trimws(code), "#")]
   expect_true(any(grepl("assign_ewe_functional_groups(", code, fixed = TRUE)))
+})
+
+# ---------------------------------------------------------------------------
+# F68 - data editor keeps numeric columns numeric
+# ---------------------------------------------------------------------------
+
+editor_frame <- function() {
+  data.frame(
+    meanB = c(1, 2),
+    fg = factor(c("Fish", "Benthos"), levels = get_functional_group_levels()),
+    met.types = c("invertebrates", "invertebrates"),
+    stringsAsFactors = FALSE,
+    row.names = c("Cod", "Mussel")
+  )
+}
+
+test_that("editing a meanB cell with '3.5' keeps meanB numeric (F68)", {
+  df <- apply_cell_edit(editor_frame(), row = 1, col = 1, value = "3.5")
+  expect_true(is.numeric(df$meanB))
+  expect_equal(df$meanB, c(3.5, 2))
+})
+
+test_that("editing fg to a valid level keeps the factor", {
+  df <- apply_cell_edit(editor_frame(), row = 2, col = 2, value = "Fish")
+  expect_true(is.factor(df$fg))
+  expect_equal(as.character(df$fg), c("Fish", "Fish"))
+})
+
+test_that("an edit on the row-name column is ignored with a warning", {
+  expect_warning(df <- apply_cell_edit(editor_frame(), row = 1, col = 0, value = "X"),
+                 "outside the data")
+  expect_identical(df, editor_frame())
+})
+
+test_that("text that is not a number is rejected, not written as NA", {
+  expect_warning(df <- apply_cell_edit(editor_frame(), row = 1, col = 1, value = "abc"),
+                 "not a valid value for column 'meanB'")
+  expect_identical(df, editor_frame())
+})
+
+test_that("an fg outside the canonical levels is rejected", {
+  expect_warning(df <- apply_cell_edit(editor_frame(), row = 1, col = 2, value = "Krill"),
+                 "not a valid value for column 'fg'")
+  expect_identical(df, editor_frame())
+})
+
+test_that("non_numeric_info_columns names character-typed numeric columns", {
+  df <- editor_frame()
+  df$bodymasses <- c("1", "2")
+  df$efficiencies <- c(0.7, 0.8)
+  expect_equal(non_numeric_info_columns(df), "bodymasses")
+})
+
+test_that("dataeditor_inline_server.R routes edits through apply_cell_edit (F68)", {
+  code <- readLines(app_path("R/modules/dataeditor_inline_server.R"), warn = FALSE)
+  code <- code[!startsWith(trimws(code), "#")]
+  expect_true(any(grepl("apply_cell_edit(", code, fixed = TRUE)))
+  expect_true(any(grepl("non_numeric_info_columns(", code, fixed = TRUE)))
+  expect_false(any(grepl("<- info_edit$value", code, fixed = TRUE)))
 })

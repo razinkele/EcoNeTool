@@ -99,11 +99,16 @@ dataeditor_inline_server <- function(input, output, session, net_reactive, info_
   })
 
   # Handle Species Info Table edits
+  # DT sends the value as a string; apply_cell_edit() coerces it to the
+  # column class so one edit cannot turn a numeric column into character.
+  # A rejected edit is reported to the user as well as logged via warning().
   observeEvent(input$species_info_table_cell_edit, {
-    species_data_df <- species_data()
     info_edit <- input$species_info_table_cell_edit
-    species_data_df[info_edit$row, info_edit$col] <- info_edit$value
-    species_data(species_data_df)
+    updated <- withCallingHandlers(
+      apply_cell_edit(species_data(), info_edit$row, info_edit$col, info_edit$value),
+      warning = function(w) showNotification(conditionMessage(w), type = "warning", duration = 6)
+    )
+    species_data(updated)
   })
 
   # Save Species Info button
@@ -117,6 +122,11 @@ dataeditor_inline_server <- function(input, output, session, net_reactive, info_
       missing_cols <- setdiff(required_cols, colnames(edited_info))
       if (length(missing_cols) > 0) {
         stop(paste("Missing required columns:", paste(missing_cols, collapse=", ")))
+      }
+
+      non_numeric <- non_numeric_info_columns(edited_info)
+      if (length(non_numeric) > 0) {
+        stop(paste("These columns must be numeric:", paste(non_numeric, collapse = ", ")))
       }
 
       # Reassign colors by matching functional group names to COLOR_SCHEME
