@@ -351,3 +351,10 @@ test_that("no graph builder constructs a predator -> prey edge list", {
     }
   }
 })
+
+test_that("README minimal example uses the same species order as the import help (F-5)", {
+  readme <- readLines(app_path("README.md"), warn = FALSE)
+  fg_line <- grep("fg *= *factor[(]c[(]", readme, value = TRUE)
+  expect_length(fg_line, 1)
+  expect_match(fg_line, "\"Phytoplankton\", \"Zooplankton\", \"Fish\"", fixed = TRUE)
+})

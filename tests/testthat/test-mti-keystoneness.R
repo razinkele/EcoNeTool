@@ -138,3 +138,20 @@ test_that("an NA biomass gives an Undefined status, not an error", {
   expect_equal(ks$keystone_status[ks$species == "Z"], "Undefined")
   expect_true(all(ks$keystone_status[ks$species != "Z"] %in% c("Keystone", "Dominant", "Other")))
 })
+
+# ---------------------------------------------------------------------------
+# F-5: help text matches the four statuses calculate_keystoneness() returns
+# ---------------------------------------------------------------------------
+
+test_that("dashboard and keystoneness help name the current statuses (F-5)", {
+  root <- get_app_root()
+  dash <- paste(readLines(file.path(root, "R/ui/dashboard_ui.R"), warn = FALSE), collapse = "\n")
+  expect_false(grepl("Keystone, Dominant, or Rare", dash, fixed = TRUE))
+  expect_true(grepl("Keystone, Dominant, Other or Undefined", dash, fixed = TRUE))
+
+  ks_ui <- paste(readLines(file.path(root, "R/ui/keystoneness_ui.R"), warn = FALSE), collapse = "\n")
+  expect_false(grepl("Producers now show", ks_ui, fixed = TRUE))
+  undefined_item <- regmatches(ks_ui, regexpr("<strong>Undefined:</strong>[^<]*", ks_ui))
+  expect_match(undefined_item, "biomass", ignore.case = TRUE)
+  expect_match(undefined_item, "missing|NA", ignore.case = FALSE)
+})

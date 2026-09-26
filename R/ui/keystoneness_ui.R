@@ -24,7 +24,7 @@ keystoneness_ui <- function() {
               <h5>Key Concepts:</h5>
               <ul>
                 <li><strong>Mixed Trophic Impact (MTI):</strong> net effect (direct + indirect) of a small increase
-                of one species on every other (Ulanowicz &amp; Puccia 1990). Producers now show positive impacts
+                of one species on every other (Ulanowicz &amp; Puccia 1990). Producers show positive impacts
                 on their consumers, and predators negative impacts on their prey.</li>
                 <li><strong>Overall Effect (&epsilon;):</strong> sqrt of the sum of squared MTI values of a
                 species on all others (its own self-impact excluded)</li>
@@ -38,7 +38,8 @@ keystoneness_ui <- function() {
                 <li><strong>Keystone:</strong> KS in the top quartile of the web and biomass &lt; 5% of total</li>
                 <li><strong>Dominant:</strong> KS in the top quartile and biomass &ge; 5% of total</li>
                 <li><strong>Other:</strong> every other species with a defined KS</li>
-                <li><strong>Undefined:</strong> KS cannot be computed (no impact, or the only biomass in the web)</li>
+                <li><strong>Undefined:</strong> KS cannot be computed (no impact, missing (NA) biomass, or the
+                only biomass in the web)</li>
               </ul>
 
               <h5>Approximations used when EwE data are missing:</h5>
