@@ -17,7 +17,8 @@ get_topological_indicators <- function(net) {
     sp <- distances(net)
     ShortPath <- mean(sp[upper.tri(sp)])
     tlnodes <- calculate_trophic_levels(net)
-    TL <- mean(tlnodes)
+    # NA = no path from a basal species; excluded from the mean.
+    TL <- if (all(is.na(tlnodes))) NA_real_ else mean(tlnodes, na.rm = TRUE)
     netmatrix <- as_adjacency_matrix(net, sparse = FALSE)
     webtl <- netmatrix * tlnodes
     webtl[webtl == 0] <- NA
@@ -90,7 +91,13 @@ get_node_weighted_indicators <- function(net, info) {
     nwG <- sum((degree(net, mode = "in") * biomass)[pred]) / (sum(biomass[pred]))
     prey <- degree(net, mode = "out") > 0
     nwV <- sum((degree(net, mode = "out") * biomass)[prey]) / (sum(biomass[prey]))
-    nwTL <- sum(tlnodes * biomass) / sum(biomass)
+    # nwTL over nodes with a defined TL only, biomass re-normalised over those nodes.
+    has_tl <- !is.na(tlnodes) & !is.na(biomass)
+    nwTL <- if (any(has_tl) && sum(biomass[has_tl]) > 0) {
+      sum(tlnodes[has_tl] * biomass[has_tl]) / sum(biomass[has_tl])
+    } else {
+      NA_real_
+    }
 
     list(nwC = nwC, nwG = nwG, nwV = nwV, nwTL = nwTL)
 

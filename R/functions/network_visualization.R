@@ -59,11 +59,16 @@ plotfw <- function(net, col = NULL, lab = NULL, size = NULL,
   }
 
   tl <- calculate_trophic_levels(net)
-  dgpred <- tl
+  # NA = no path from a basal species / not converged (see calculate_trophic_levels).
+  # Those nodes are drawn on their own "unplaced" bottom row at y = 0.5.
+  placed <- !is.na(tl)
+  tl_max <- if (any(placed)) max(tl[placed]) else 1
 
-  bks <- c(0.9, seq(1.9, max(tl), length.out = nylevel))
+  bks <- c(0.9, seq(1.9, tl_max, length.out = nylevel))
   ynod <- cut(tl, breaks = bks, include.lowest = TRUE,
               labels = 1:(length(bks) - 1))
+  ynod <- factor(ifelse(placed, as.character(ynod), as.character(nylevel + 1)),
+                 levels = as.character(seq_len(nylevel + 1)))
 
   # Vectorized x-position calculation (replaces loop for better performance)
   # Split node indices by trophic level bin, calculate positions, then unsplit
@@ -76,14 +81,15 @@ plotfw <- function(net, col = NULL, lab = NULL, size = NULL,
   })
   xnod <- unsplit(xpos_by_group, ynod)
 
-  coo <- cbind(xnod, tl)
+  coo <- cbind(xnod, ifelse(placed, tl, 0.5))
 
   # y axis with 1 and continuous axis from 2 to max TL.
-  yax <- c(1, seq(2, max(tl), length.out = ynum - 1))
+  yax <- c(1, seq(2, tl_max, length.out = ynum - 1))
   labax <- round(yax, 1)
-  # rescale xax between -1 and 1
-  yax_range <- max(yax) - min(yax)
-  laby <- if (yax_range == 0) rep(0, length(yax)) else (yax - min(yax)) / yax_range * 2 - 1
+  # plot.igraph rescales the layout's y range to [-1, 1]; map the ticks the same way
+  y_lo <- min(coo[, 2])
+  y_range <- max(coo[, 2]) - y_lo
+  laby <- if (y_range == 0) rep(0, length(yax)) else (yax - y_lo) / y_range * 2 - 1
 
   plot(net, layout = coo, vertex.label.color = "black",
        vertex.label.cex = labcex, ...)
@@ -144,8 +150,13 @@ create_foodweb_visnetwork <- function(net,
     tl <- trophic_levels
   }
 
-  # Set Y positions (highest TL at top, lowest at bottom)
-  y_pos <- (max(tl) - tl) * VIS_TROPHIC_LEVEL_SPACING
+  # Set Y positions (highest TL at top, lowest at bottom). NA-TL nodes (no path
+  # from a basal species) go one row below the lowest placed node.
+  placed <- !is.na(tl)
+  tl_top <- if (any(placed)) max(tl[placed]) else 1
+  y_pos <- (tl_top - tl) * VIS_TROPHIC_LEVEL_SPACING
+  y_pos[!placed] <- (if (any(placed)) max(y_pos[placed]) else 0) + VIS_TROPHIC_LEVEL_SPACING
+  tl_group_key <- ifelse(placed, tl, -1)  # NA nodes share one x-spread group
 
   # Calculate node sizes based on method
   if (node_size_method == "biomass_sqrt") {
@@ -264,8 +275,8 @@ create_foodweb_visnetwork <- function(net,
   x_positions <- numeric(vcount(net))
   for (i in 1:vcount(net)) {
     # Group nodes by similar trophic levels (within 0.1 units)
-    tl_group <- round(tl[i] * 10) / 10
-    nodes_in_group <- which(abs(tl - tl_group) < 0.1)
+    tl_group <- round(tl_group_key[i] * 10) / 10
+    nodes_in_group <- which(abs(tl_group_key - tl_group) < 0.1)
     position_in_group <- which(nodes_in_group == i)
     n_in_group <- length(nodes_in_group)
 
@@ -285,7 +296,8 @@ create_foodweb_visnetwork <- function(net,
   nodes$title <- sapply(1:vcount(net), function(i) {
     tooltip <- paste0("<b>", V(net)$name[i], "</b><br>",
                      "Functional Group: ", info$fg[i], "<br>",
-                     "Trophic Level: ", round(tl[i], 3), "<br>",
+                     "Trophic Level: ",
+                     if (placed[i]) round(tl[i], 3) else "NA (no path from a basal species)", "<br>",
                      "Biomass: ", round(info$meanB[i], 2), " g/km²")
 
     # Add confidence information if available

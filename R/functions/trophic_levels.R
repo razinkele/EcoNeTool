@@ -5,25 +5,34 @@
 
 #' Calculate Trophic Levels for a Food Web (Iterative Method)
 #'
-#' Computes trophic levels using an iterative algorithm. Basal species
-#' (no prey) are assigned TL = 1. Consumer species have TL = 1 + mean(TL of prey).
-#' The algorithm iterates until convergence or maximum iterations reached.
+#' Computes trophic levels by fixed-point iteration under the edge contract
+#' (prey -> predator, `adj[prey, predator]`; see R/functions/network_finalize.R).
+#' Basal species (no incoming edge) get TL = 1; every other species gets
+#' TL = 1 + mean(TL of its prey).
 #'
 #' @param net An igraph object representing the food web (directed graph)
 #' @param max_iter Maximum number of iterations (default: 100)
 #' @param convergence Convergence threshold (default: 0.0001)
 #'
-#' @return A numeric vector of trophic levels for each species/node
+#' @return A named numeric vector, one trophic level per vertex. `NA` marks a
+#'   vertex whose TL is undefined:
+#'   \itemize{
+#'     \item no path from any basal species (e.g. a pure cannibal loop), or
+#'     \item still changing by more than `convergence` after `max_iter` passes.
+#'   }
+#'   Every `NA` is announced with a `warning()` naming the vertices. Callers
+#'   must use `na.rm = TRUE` (or equivalent) when aggregating.
 #'
 #' @details
-#' The algorithm uses fixed-point iteration:
-#' - Initialize all species to TL = 1
-#' - Iterate: for each consumer, TL = 1 + mean(prey TL)
-#' - Stop when max change < convergence or max iterations reached
+#' - A self-loop counts as an incoming edge, so a vertex whose only prey is
+#'   itself is not basal.
+#' - Only vertices reachable from a basal vertex are iterated, and a consumer
+#'   averages only over prey in that reachable set.
+#' - With no basal vertex at all, every TL is `NA` (one warning).
 #'
 #' @examples
 #' tl <- calculate_trophic_levels(net)
-#' mean(tl)  # Mean trophic level of the food web
+#' mean(tl, na.rm = TRUE)  # Mean trophic level of the food web
 #'
 #' @references
 #' Williams, R. J., & Martinez, N. D. (2004). Limits to trophic levels and
@@ -31,61 +40,66 @@
 #'
 #' @export
 calculate_trophic_levels <- function(net, max_iter = 100, convergence = 0.0001) {
-  # Input validation
   tryCatch({
-    # Validate network
     validate_network(net, require_directed = TRUE, min_vertices = 1)
-
-    # Validate parameters
     validate_numeric_range(max_iter, "max_iter", min = 1, max = 10000)
     validate_numeric_range(convergence, "convergence", min = 0, max = 1)
 
     n <- vcount(net)
+    node_names <- V(net)$name
+    if (is.null(node_names)) node_names <- as.character(seq_len(n))
+    .name_list <- function(idx) {
+      shown <- head(node_names[idx], 10)
+      paste0(paste(shown, collapse = ", "), if (length(idx) > 10) ", ..." else "")
+    }
 
-    # Initialize trophic levels
-    tl <- rep(1, n)
-    adj <- as_adjacency_matrix(net, sparse = FALSE)
+    # adj[prey, predator]: prey of i are the non-zero rows of column i.
+    adj <- as.matrix(as_adjacency_matrix(net, sparse = FALSE))
+    basal <- which(colSums(adj) == 0)
+    tl <- rep(NA_real_, n)
 
-    # Iterate until convergence
-    converged <- FALSE
-    for (iter in 1:max_iter) {
-      tl_old <- tl
+    if (length(basal) == 0) {
+      warning(sprintf(
+        "No basal species (every node has prey): all %d trophic levels are NA", n
+      ), call. = FALSE)
+    } else {
+      hops <- igraph::distances(net, v = basal, mode = "out")
+      reach <- which(colSums(is.finite(hops)) > 0)
+      unreachable <- setdiff(seq_len(n), reach)
+      if (length(unreachable) > 0) {
+        warning(sprintf("%d node(s) have no path from a basal species: %s",
+                        length(unreachable), .name_list(unreachable)), call. = FALSE)
+      }
 
-      for (i in 1:n) {
-        # Find prey of species i (incoming edges in prey->predator convention)
-        # In igraph directed networks: edge from A to B means A is eaten by B
-        # So prey of species i are those with edges TO i (column i)
-        prey_indices <- which(adj[, i] > 0)
-
-        if (length(prey_indices) > 0) {
-          # TL = 1 + mean TL of prey
-          tl[i] <- 1 + mean(tl[prey_indices])
-        } else {
-          # Basal species
-          tl[i] <- 1
+      tl[reach] <- 1
+      consumers <- setdiff(reach, basal)
+      prey_of <- lapply(consumers, function(i) intersect(which(adj[, i] > 0), reach))
+      change <- rep(0, n)
+      converged <- length(consumers) == 0
+      iter <- 0
+      while (!converged && iter < max_iter) {
+        iter <- iter + 1
+        tl_old <- tl
+        for (k in seq_along(consumers)) {
+          tl[consumers[k]] <- 1 + mean(tl[prey_of[[k]]])
         }
+        change <- abs(tl - tl_old)
+        change[is.na(change)] <- 0
+        converged <- max(change) < convergence
       }
 
-      # Check for convergence
-      max_change <- max(abs(tl - tl_old))
-      if (max_change < convergence) {
-        converged <- TRUE
-        break
+      if (!converged) {
+        stuck <- which(change >= convergence)
+        tl[stuck] <- NA_real_
+        warning(sprintf(
+          "Trophic levels of %d node(s) did not converge after %d iterations and are NA: %s",
+          length(stuck), max_iter, .name_list(stuck)
+        ), call. = FALSE)
       }
     }
 
-    if (!converged) {
-      warning(sprintf("Trophic level calculation did not converge after %d iterations (max change: %.6f)",
-                      max_iter, max_change))
-    }
-
-    # Set names if available
-    if (!is.null(V(net)$name)) {
-      names(tl) <- V(net)$name
-    }
-
-    return(tl)
-
+    names(tl) <- V(net)$name
+    tl
   }, error = function(e) {
     stop(sprintf("Failed to calculate trophic levels: %s", e$message), call. = FALSE)
   })
