@@ -941,7 +941,7 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
 
       for (col in diet_cols) {
         col_sum <- sum(diet[[col]], na.rm = TRUE)
-        if (col_sum > 1.01) {
+        if (col_sum > 1 + RPATH_DIET_SUM_TOL) {
           issues <- c(issues, paste0(col, " (sum = ", round(col_sum, 3), ")"))
         }
       }

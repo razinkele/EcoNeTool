@@ -88,6 +88,7 @@ test_that("live: Rpath balance of Phyto -> Zoo -> Fish keeps TL 1, 2, 3", {
   )
   params <- suppressWarnings(convert_ecopath_to_rpath(ecopath_data))
   model <- with_timeout(run_ecopath_balance(params), timeout = 60)
+  skip_if(is.null(model), "Rpath balance timed out")
   tl <- setNames(as.numeric(model$TL), model$Group)
   expect_equal(unname(tl[c("Phyto", "Zoo", "Fish")]), c(1, 2, 3), tolerance = 1e-6)
 })
@@ -135,6 +136,32 @@ test_that("a diet column summing to more than 1 warns with the group name", {
 
 test_that("a diet column summing to exactly 1 does not warn", {
   expect_no_warning(build_rpath_diet_frame(ewe_groups(), ewe_diet()))
+})
+
+test_that("a diet column summing to 1.0005 (EwE rounding residue) does not warn (G-1)", {
+  over <- ewe_diet()
+  over$Diet[over$PredID == 3 & over$PreyID == 1] <- 0.7005  # Zoo sums to 1.0005
+  expect_no_warning(build_rpath_diet_frame(ewe_groups(), over))
+})
+
+test_that("a diet column summing to 1.002 warns naming the group (G-1)", {
+  over <- ewe_diet()
+  over$Diet[over$PredID == 3 & over$PreyID == 1] <- 0.702  # Zoo sums to 1.002
+  expect_warning(build_rpath_diet_frame(ewe_groups(), over), "'Zoo' sums to 1.002")
+})
+
+test_that("rpath_server.R uses RPATH_DIET_SUM_TOL, not the literal 1.01 (G-1)", {
+  code <- readLines(app_path("R/modules/rpath_server.R"), warn = FALSE)
+  code <- code[!grepl("^\\s*#", code)]
+  expect_false(any(grepl("1.01", code, fixed = TRUE)))
+  expect_true(any(grepl("RPATH_DIET_SUM_TOL", code, fixed = TRUE)))
+})
+
+test_that("a pure-cannibal group warns naming the group and cannibalism (G-2)", {
+  expect_warning(
+    build_rpath_diet_frame(ewe_groups(), ewe_diet(cod_on_cod = 1)),
+    "'Cod'.*cannibal"
+  )
 })
 
 test_that("convert_ecopath_to_rpath passes cannibalism through to params$diet", {

@@ -19,6 +19,14 @@
 #
 # ==============================================================================
 
+#' Diet-column sum tolerance shared by the converter and the UI diet panel
+#'
+#' EwE exports round-trip diet fractions with small residues above 1 (e.g.
+#' 1.000500). 1e-3 clears those rounding residues (up to 5e-4 seen in
+#' examples/LT2022_0.5ST_final7.eweaccdb) while still catching real
+#' over-full diets.
+RPATH_DIET_SUM_TOL <- 1e-3
+
 # ==============================================================================
 # DIET-MATRIX CELL EDITING
 # ==============================================================================
@@ -143,10 +151,10 @@ build_rpath_diet_frame <- function(living_groups, diet) {
 #' user must fix, and silently rescaling it would hide that.
 #'
 #' @param diet_df Diet data frame from build_rpath_diet_frame().
-#' @param tol Tolerance above 1 before warning (default 1e-6).
+#' @param tol Tolerance above 1 before warning (default RPATH_DIET_SUM_TOL).
 #' @return Invisibly, the names of the offending predator columns.
 #' @export
-check_rpath_diet_sums <- function(diet_df, tol = 1e-6) {
+check_rpath_diet_sums <- function(diet_df, tol = RPATH_DIET_SUM_TOL) {
   cols <- setdiff(names(diet_df), "Group")
   sums <- vapply(cols, function(col) sum(diet_df[[col]], na.rm = TRUE), numeric(1))
   over <- cols[sums > 1 + tol]
@@ -154,6 +162,19 @@ check_rpath_diet_sums <- function(diet_df, tol = 1e-6) {
     warning(sprintf("[rpath conversion] diet of '%s' sums to %.6f (> 1); data left unchanged",
                     col, sums[[col]]), call. = FALSE)
   }
+
+  # A group whose diet is (almost) entirely itself makes Rpath's TL/balance
+  # system singular (an opaque Lapack error). Warn so the cause is visible.
+  for (col in cols) {
+    self_row <- diet_df$Group == col
+    self_val <- diet_df[[col]][self_row]
+    if (length(self_val) == 1 && !is.na(self_val) && self_val >= 1 - tol) {
+      warning(sprintf(
+        "[rpath conversion] '%s' is a pure-cannibal group (self-diet = %.6f); Rpath balance may fail",
+        col, self_val), call. = FALSE)
+    }
+  }
+
   invisible(over)
 }
 

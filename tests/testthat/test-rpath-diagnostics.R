@@ -3,7 +3,7 @@
 # =============================================================================
 # Both read trophic levels. rpath_values$params$model is the Rpath *input*
 # object from create.rpath.params(): it carries uppercase $Type and has no $TL
-# at all. TL is an *output* of balancing (rpath_balancing.R sets model$TL), and
+# at all. TL is an *output* of Rpath::rpath() itself (kept unmodified), and
 # the balanced model uses lowercase $type. Reading TL off params$model gave
 # mean TL = NA for every model, and max(NULL) = -Inf made the pyramid's
 # seq(1, ceiling(-Inf)) throw "'to' must be a finite number".
