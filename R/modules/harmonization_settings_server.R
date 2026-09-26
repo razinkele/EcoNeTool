@@ -2,46 +2,57 @@
 
 harmonization_settings_server <- function(input, output, session) {
 
+  # Read the server-default JSON ONCE per session, outside any reactive.
+  # Pre-B0 (F1/F76) this load lived in an observe() that also read
+  # rv$config, while the slider observer below wrote rv$config: the two
+  # observers re-triggered each other forever and pinned the R process.
+  initial_cfg <- if (file.exists(HARMONIZATION_CONFIG_FILE)) {
+    load_harmonization_config(HARMONIZATION_CONFIG_FILE)
+  } else {
+    HARMONIZATION_CONFIG
+  }
+
   rv <- reactiveValues(
-    config = HARMONIZATION_CONFIG,
+    config = initial_cfg,
     unsaved_changes = FALSE
   )
 
-  # Seed the per-session harm config from the global default so the
-  # harmonize_* helpers have something to read from session$userData
-  # right from page load. Pre-PR9α the helpers read globalenv directly,
-  # so the slider's writeback contaminated other sessions; now the read
-  # path goes through get_harm_config() which prefers session$userData.
-  session$userData$harm_config <- HARMONIZATION_CONFIG
+  # Seed the per-session harm config so the harmonize_* helpers (which
+  # read through get_harm_config() -> session$userData) see the server
+  # default from page load. Never write HARMONIZATION_CONFIG to globalenv:
+  # that contaminated every concurrent session (pre-PR9α).
+  session$userData$harm_config <- initial_cfg
 
-  # INITIALIZE
-  observe({
-    if (file.exists(HARMONIZATION_CONFIG_FILE)) {
-      rv$config <- load_harmonization_config(HARMONIZATION_CONFIG_FILE)
-      session$userData$harm_config <- rv$config
-    }
-    updateSliderInput(session, "harm_thresh_MS1_MS2", value = rv$config$size_thresholds$MS1_MS2)
-    updateSliderInput(session, "harm_thresh_MS2_MS3", value = rv$config$size_thresholds$MS2_MS3)
-    updateSliderInput(session, "harm_thresh_MS3_MS4", value = rv$config$size_thresholds$MS3_MS4)
-    updateSliderInput(session, "harm_thresh_MS4_MS5", value = rv$config$size_thresholds$MS4_MS5)
-    updateSliderInput(session, "harm_thresh_MS5_MS6", value = rv$config$size_thresholds$MS5_MS6)
-    updateSliderInput(session, "harm_thresh_MS6_MS7", value = rv$config$size_thresholds$MS6_MS7)
-  })
+  # INITIALIZE: push the loaded thresholds to the widgets once. No
+  # reactive read of rv$config, so nothing can re-trigger this.
+  observeEvent(TRUE, {
+    thr <- initial_cfg$size_thresholds
+    updateSliderInput(session, "harm_thresh_MS1_MS2", value = thr$MS1_MS2)
+    updateSliderInput(session, "harm_thresh_MS2_MS3", value = thr$MS2_MS3)
+    updateSliderInput(session, "harm_thresh_MS3_MS4", value = thr$MS3_MS4)
+    updateSliderInput(session, "harm_thresh_MS4_MS5", value = thr$MS4_MS5)
+    updateSliderInput(session, "harm_thresh_MS5_MS6", value = thr$MS5_MS6)
+    updateSliderInput(session, "harm_thresh_MS6_MS7", value = thr$MS6_MS7)
+  }, once = TRUE)
 
-  # UPDATE CONFIG. Mirror writes into session$userData so the helpers
-  # see the user's customised thresholds for THIS session immediately;
-  # cross-session persistence still routes through the JSON save below.
+  # UPDATE CONFIG. Depends on the six slider inputs only: rv$config is
+  # read under isolate() and written once, so the write cannot re-trigger
+  # this observer. Mirror into session$userData so the helpers see the
+  # user's thresholds for THIS session immediately; cross-session
+  # persistence still routes through the JSON save below.
   observe({
     req(input$harm_thresh_MS1_MS2, input$harm_thresh_MS2_MS3,
         input$harm_thresh_MS3_MS4, input$harm_thresh_MS4_MS5,
         input$harm_thresh_MS5_MS6, input$harm_thresh_MS6_MS7)
-    rv$config$size_thresholds$MS1_MS2 <- input$harm_thresh_MS1_MS2
-    rv$config$size_thresholds$MS2_MS3 <- input$harm_thresh_MS2_MS3
-    rv$config$size_thresholds$MS3_MS4 <- input$harm_thresh_MS3_MS4
-    rv$config$size_thresholds$MS4_MS5 <- input$harm_thresh_MS4_MS5
-    rv$config$size_thresholds$MS5_MS6 <- input$harm_thresh_MS5_MS6
-    rv$config$size_thresholds$MS6_MS7 <- input$harm_thresh_MS6_MS7
-    session$userData$harm_config <- rv$config
+    cfg <- isolate(rv$config)
+    cfg$size_thresholds$MS1_MS2 <- input$harm_thresh_MS1_MS2
+    cfg$size_thresholds$MS2_MS3 <- input$harm_thresh_MS2_MS3
+    cfg$size_thresholds$MS3_MS4 <- input$harm_thresh_MS3_MS4
+    cfg$size_thresholds$MS4_MS5 <- input$harm_thresh_MS4_MS5
+    cfg$size_thresholds$MS5_MS6 <- input$harm_thresh_MS5_MS6
+    cfg$size_thresholds$MS6_MS7 <- input$harm_thresh_MS6_MS7
+    rv$config <- cfg
+    session$userData$harm_config <- cfg
     rv$unsaved_changes <- TRUE
   })
 

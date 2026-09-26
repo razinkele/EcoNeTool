@@ -291,13 +291,13 @@ load_version_info <- function() {
 
   # Default version info (fallback)
   version_info <- list(
-    VERSION = "1.4.2",
-    VERSION_NAME = "Local Databases Integration + Performance & Robustness",
-    RELEASE_DATE = "2025-12-26",
+    VERSION = "1.4.5",
+    VERSION_NAME = "Harmonization Loop Hotfix",
+    RELEASE_DATE = "2026-09-26",
     STATUS = "stable",
     MAJOR = 1,
     MINOR = 4,
-    PATCH = 2
+    PATCH = 5
   )
 
   # Try to read VERSION file
