@@ -2229,6 +2229,92 @@ git commit -m "fix(import): trait food web keys vertices on species; observer tr
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
+### Task 12b: EwE body masses stay with their species when technical groups are filtered
+
+Added 2026-09-26 at the user's request. This was found while writing this plan and is not in the report. In the native import observer, lines ~161-178 of
+`R/modules/ecopath_import_server.R` drop Import/Export/empty groups by subsetting
+`species_names`, `biomass_values`, `pb_values` and `qb_values` with `valid_idx`, but **not**
+`bodymass_values_raw` (read at ~L101). Later (~L681-686) `bodymass_values_clean[i]` is indexed
+by the *filtered* position `i`. So when a technical group precedes a real one, every later
+species receives the body mass of the row above it. This is the same row-misalignment class as the
+July findings.
+
+**Files:**
+- Modify: `R/modules/ecopath_import_server.R` (the `valid_idx` subsetting block; locate by the
+  text `qb_values <- qb_values[valid_idx]`, since Tasks 5 and 9 move lines in this file)
+- Test: `tests/testthat/test-import-attributes.R` (append)
+
+**Interfaces:**
+- Consumes: nothing from earlier tasks.
+- Produces: nothing new; the invariant "every per-group vector read from `group_table` is
+  subset by `valid_idx`" is pinned by a guard test.
+
+- [ ] **Step 1: Append the failing guard test**
+
+The subsetting lives inside a Shiny observer, so the test is structural. It uses the same style as the
+F51 guard, but it checks the invariant rather than one variable name, so a future per-group
+column cannot repeat the bug.
+
+```r
+
+# ---------------------------------------------------------------------------
+# EwE body masses must be filtered with the other per-group vectors
+# ---------------------------------------------------------------------------
+
+test_that("every per-group vector read from group_table is subset by valid_idx", {
+  code <- readLines(app_path("R/modules/ecopath_import_server.R"), warn = FALSE)
+  # Vectors assigned directly from group_table[[<col>]] (e.g. biomass_values, bodymass_values_raw)
+  read_lines <- grep("^\\s*([A-Za-z_.]+)\\s*<-.*group_table\\[\\[", code, value = TRUE)
+  vars <- unique(sub("^\\s*([A-Za-z_.]+)\\s*<-.*$", "\\1", read_lines))
+  # area_proportions is consumed (biomass_values * area_proportions) BEFORE the valid_idx
+  # filter and never used after it, so it needs no subsetting. If Task 5 (F52) removes that
+  # read in favour of ewe_group_biomass(), this setdiff is a harmless no-op.
+  vars <- setdiff(vars, "area_proportions")
+  expect_true("bodymass_values_raw" %in% vars)
+  for (v in vars) {
+    subset_pat <- paste0(v, "\\s*<-\\s*", v, "\\[valid_idx\\]")
+    expect_true(any(grepl(subset_pat, code)),
+                info = sprintf("%s is read from group_table but never subset by valid_idx", v))
+  }
+})
+```
+
+- [ ] **Step 2: Run and verify the failure**
+
+Run: `"/c/Program Files/R/R-4.4.1/bin/Rscript.exe" -e "testthat::test_file('tests/testthat/test-import-attributes.R')"`
+Expected: FAIL with "bodymass_values_raw is read from group_table but never subset by valid_idx".
+(Dry-run on master 7a96789 on 2026-09-26: the regex finds species_names, biomass_values, pb_values, qb_values,
+bodymass_values_raw and area_proportions. Only bodymass_values_raw fails once area_proportions is excluded.)
+If any *other* variable is reported, it is a real sibling of this bug: subset it too in Step 3
+and name it in the commit body.
+
+- [ ] **Step 3: Subset the body masses with the other vectors**
+
+Directly after the line `qb_values <- qb_values[valid_idx]`, add:
+
+```r
+      if (!is.null(bodymass_values_raw)) {
+        bodymass_values_raw <- bodymass_values_raw[valid_idx]
+      }
+```
+
+- [ ] **Step 4: Parse-check and run the tests**
+
+Run: `"/c/Program Files/R/R-4.4.1/bin/Rscript.exe" -e "parse(file='R/modules/ecopath_import_server.R'); cat('OK\n')"`
+then the test file again. Expected: OK, then all PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add R/modules/ecopath_import_server.R tests/testthat/test-import-attributes.R
+git commit -m "fix(import): keep EwE body masses aligned when technical groups are filtered
+
+bodymass_values_raw was not subset by valid_idx with the other per-group
+vectors, so body masses shifted one row per dropped Import/Export group.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
 ### Task 13: A3 full suite and PR
 
 - [ ] **Step 1: Full suite + lint**
@@ -2241,7 +2327,7 @@ Run `lintr::lint()` on every file touched in Tasks 5-12. Expected: no new lints 
 
 ```bash
 git push -u origin fix/a3-finalize-import
-gh pr create --base master --title "fix(import): finalize and import attributes (F66, F67, F50, F49, F52, F68, F51, F74)" --body "$(cat <<'EOF'
+gh pr create --base master --title "fix(import): finalize and import attributes (F66, F67, F50, F49, F52, F68, F51, F74, body masses)" --body "$(cat <<'EOF'
 Spec A3 - docs/superpowers/specs/2026-09-26-fix-a-network-science-correctness-design.md
 
 F52 finding (A3 step 1): EcopathGroup.Biomass is biomass in habitat area (both example DBs: inputs only, no total-area column). Network path (x Area) was right; Rpath path was wrong -> both now use ewe_group_biomass(). Rpath results change for models with Area < 1.

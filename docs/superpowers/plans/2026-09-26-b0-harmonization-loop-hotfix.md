@@ -61,31 +61,25 @@ Deploy scripts are NOT modified (that is B2). Task 3 works around their pre-B2 d
 
 - [ ] **Step 1: Create the branch from master and bring in the specs**
 
-The specs live on `docs/deep-analysis-2026-09-specs` (commits `abb866e`, `4457d9d`), which is strictly ahead of `master` (`7a96789`) with docs-only changes. Merge it so the spec travels with the fix; this is a fast-forward.
+The specs and plans were merged to `master` before execution (the user decided on 2026-09-26 that the docs branch goes in first, so fix PRs stay code-only). Branch straight from master.
 
 ```bash
 cd "/c/Users/arturas.baziukas/OneDrive - ku.lt/HORIZON_EUROPE/MARBEFES/Traits/Networks/EcoNeTool"
-git fetch --all --prune
-git log master..docs/deep-analysis-2026-09-specs --oneline   # expect exactly 4457d9d and abb866e (unless already merged)
-git checkout -b fix/b0-harmonization-loop master
-git merge --ff-only docs/deep-analysis-2026-09-specs
+git checkout master
+git checkout -b fix/b0-harmonization-loop
 ```
 
-Expected: `Fast-forward`, and `docs/superpowers/specs/2026-09-26-fix-b-platform-safety-design.md` exists. If `git log master..docs/...` prints nothing, the docs are already on master; skip the merge.
+Expected: `docs/superpowers/specs/2026-09-26-fix-b-platform-safety-design.md` and this plan exist on the branch.
 
-- [ ] **Step 2: Commit this plan on the branch**
+- [ ] **Step 2: Confirm the plan is already tracked**
 
-`docs/superpowers/plans/` is in `.gitignore` (line 98); earlier plans were force-added, so do the same. The file is untracked, so it survives the branch switch in Step 1.
+The plan reached master with the docs merge (force-added, because `docs/superpowers/plans/` is in `.gitignore:98`).
 
 ```bash
-git add -f docs/superpowers/plans/2026-09-26-b0-harmonization-loop-hotfix.md
-git commit -m "$(cat <<'EOF'
-docs(plan): B0 harmonization loop hotfix implementation plan
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-EOF
-)"
+git ls-files docs/superpowers/plans/2026-09-26-b0-harmonization-loop-hotfix.md
 ```
+
+Expected: the path is printed. Nothing to commit.
 
 - [ ] **Step 3: Record the baseline full-suite counts**
 
