@@ -14,6 +14,7 @@ local({
   root <- get_app_root()
   source(file.path(root, "R/functions/rpath/rpath_workflows.R"), local = FALSE)
   source(file.path(root, "R/functions/rpath/rpath_conversion.R"), local = FALSE)
+  source(file.path(root, "R/functions/ecopath/ecopath_group_biomass.R"), local = FALSE)
 })
 
 # What Rpath::rpath() returns: a LIST of per-group vectors, class "Rpath".

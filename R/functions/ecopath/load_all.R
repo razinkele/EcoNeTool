@@ -12,6 +12,9 @@
 # CSV/Excel import
 source("R/functions/ecopath/ecopath_csv.R")
 
+# Shared EwE group-table helpers (biomass semantics, F52)
+source("R/functions/ecopath/ecopath_group_biomass.R")
+
 # Platform-specific importers
 source("R/functions/ecopath/ecopath_windows.R")
 source("R/functions/ecopath/ecopath_unix.R")
@@ -22,4 +25,4 @@ source("R/functions/ecopath/ecopath_import.R")
 # Diagnostics and validation utilities
 source("R/functions/ecopath/ecopath_diagnostics.R")
 
-message("✓ ECOPATH import functions loaded (5 files)")
+message("✓ ECOPATH import functions loaded (6 files)")

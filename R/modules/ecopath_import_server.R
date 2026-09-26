@@ -95,7 +95,16 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
 
       # Extract data
       species_names <- as.character(group_table[[name_col]])
-      biomass_values <- if (!is.na(biomass_col)) as.numeric(group_table[[biomass_col]]) else rep(1, length(species_names))
+      # Habitat area fraction column (EwE "Area"); ewe_group_biomass() turns
+      # biomass-in-habitat-area into total-area biomass, exactly as the Rpath
+      # conversion does.
+      area_col <- which(grepl("^area$|habitat.*prop|^habarea$|^habprop$", col_names))[1]
+      biomass_values <- if (!is.na(biomass_col)) {
+        ewe_group_biomass(group_table, biomass_col = col_names_orig[biomass_col],
+                          area_col = if (!is.na(area_col)) col_names_orig[area_col] else NULL)
+      } else {
+        rep(1, length(species_names))
+      }
       pb_values <- if (!is.na(pb_col)) as.numeric(group_table[[pb_col]]) else rep(0.5, length(species_names))
       qb_values <- if (!is.na(qb_col)) as.numeric(group_table[[qb_col]]) else rep(1.5, length(species_names))
       bodymass_values_raw <- if (!is.na(bodymass_col)) as.numeric(group_table[[bodymass_col]]) else NULL
@@ -126,17 +135,8 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
       # Clean biomass values (default to 1 if missing)
       biomass_values <- clean_ecopath_value(biomass_values, 1, "Biomass")
 
-      # Apply habitat area proportion if available
-      # ECOPATH biomass is given per unit area, but organisms may use only fraction of total habitat
-      # Area column contains habitat area proportion (0-1), representing fraction of habitat used
-      area_col <- which(grepl("^area$|habitat.*prop|^habarea$|^habprop$", col_names))[1]
       if (!is.na(area_col)) {
-        area_proportions <- as.numeric(group_table[[area_col]])
-        area_proportions <- clean_ecopath_value(area_proportions, 1, "")  # Default to 1 (full area)
-        # Multiply biomass by area proportion to get actual biomass
-        biomass_values <- biomass_values * area_proportions
-        message("  Applied habitat area proportions to biomass")
-        message("    Range: ", round(min(area_proportions, na.rm = TRUE), 3), " - ", round(max(area_proportions, na.rm = TRUE), 3))
+        message("  Biomass = Biomass in habitat area x ", col_names_orig[area_col], " (ewe_group_biomass)")
       }
 
       # Clean P/B values (default to 0.5 if missing)
