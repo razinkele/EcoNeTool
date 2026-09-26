@@ -154,3 +154,133 @@ test_that("trait food webs are exported prey -> predator (N3)", {
   expect_false(any(simple$FS[match(heads, simple$species)] == "FS0"))
   assert_prey_to_predator(g, "Phytoplankton", "Benthic_filter_feeder")
 })
+
+# ---------------------------------------------------------------------------
+# F64 - metaweb_to_igraph, and the bundled metawebs it reads
+# ---------------------------------------------------------------------------
+
+# Vertex labels by species name. metaweb_to_igraph() names vertices by
+# species_id today (A3 renames them to species_name); species_name travels as
+# a vertex attribute, so this works either way.
+vertex_labels <- function(g) {
+  if (!is.null(V(g)$species_name)) V(g)$species_name else V(g)$name
+}
+
+BASAL_PATTERN <- "detrit|phyto|diatom|autotroph|macroalgae|microalgae"
+
+test_that("metaweb_to_igraph builds prey -> predator edges (F64)", {
+  # Cod eats herring, herring eats Calanus. IDs equal names so the assertion
+  # is independent of which column names the vertices.
+  sp <- c("Gadus morhua", "Clupea harengus", "Calanus finmarchicus")
+  mw <- create_metaweb(
+    species = data.frame(species_id = sp, species_name = sp, stringsAsFactors = FALSE),
+    interactions = data.frame(predator_id = sp[1:2], prey_id = sp[2:3], stringsAsFactors = FALSE)
+  )
+  g <- metaweb_to_igraph(mw)
+
+  assert_prey_to_predator(g, "Clupea harengus", "Gadus morhua")
+  assert_prey_to_predator(g, "Calanus finmarchicus", "Clupea harengus")
+  tl <- calculate_trophic_levels(g)
+  expect_equal(unname(tl[sp]), c(3, 2, 1))
+})
+
+test_that("every bundled metaweb has detritus and producers at the base", {
+  # Guards the migration: fails for Kongsfjorden before F64, for the other
+  # four after F64 until scripts/initialization/fix_metaweb_orientation.R runs.
+  for (key in names(METAWEB_PATHS)) {
+    rds <- app_path(METAWEB_PATHS[[key]])
+    expect_true(file.exists(rds), label = paste(key, ".rds exists"))
+    g <- metaweb_to_igraph(readRDS(rds))
+    basal <- grepl(BASAL_PATTERN, vertex_labels(g), ignore.case = TRUE)
+    expect_true(any(basal), label = paste(key, "has basal-named vertices"))
+
+    expect_equal(unname(degree(g, V(g)[basal], mode = "in")), rep(0, sum(basal)),
+                 label = paste(key, "basal vertices have no prey"))
+    tl <- suppressWarnings(calculate_trophic_levels(g))
+    expect_equal(unname(tl[basal]), rep(1, sum(basal)),
+                 label = paste(key, "basal TL"))
+    expect_lt(mean(tl[basal], na.rm = TRUE), mean(tl[!basal], na.rm = TRUE),
+              label = paste(key, "basal mean TL below consumers"))
+  }
+})
+
+# ---------------------------------------------------------------------------
+# F56 - extract_local_network + per-hexagon TL
+# ---------------------------------------------------------------------------
+
+test_that("local networks are prey -> predator and get correct per-hexagon TL (F56)", {
+  sp <- c("Phyto", "Zoo1", "Zoo2", "Fish")
+  mw <- create_metaweb(
+    species = data.frame(species_id = sp, species_name = sp, stringsAsFactors = FALSE),
+    interactions = data.frame(predator_id = c("Zoo1", "Zoo2", "Fish"),
+                              prey_id = c("Phyto", "Phyto", "Zoo1"),
+                              stringsAsFactors = FALSE)
+  )
+  local_net <- extract_local_network(mw, sp, "HEX_1")
+
+  assert_prey_to_predator(local_net, "Phyto", "Zoo1")
+  assert_prey_to_predator(local_net, "Zoo1", "Fish")
+
+  metrics <- calculate_spatial_metrics(list(HEX_1 = local_net),
+                                       metrics = c("meanTL", "maxTL"), progress = FALSE)
+  # TL: Phyto 1, Zoo1 2, Zoo2 2, Fish 3
+  expect_equal(metrics$meanTL, 2, tolerance = 1e-6)
+  expect_equal(metrics$maxTL, 3, tolerance = 1e-6)
+})
+
+# ---------------------------------------------------------------------------
+# N1 - EwE -> metaweb writer
+# ---------------------------------------------------------------------------
+
+test_that("the EwE -> metaweb writer labels prey and predator correctly (N1)", {
+  native_net <- make_graph(c("Phyto", "Zoo", "Zoo", "Cod", "Detritus", "Zoo"), directed = TRUE)
+  interactions <- igraph_to_metaweb_interactions(native_net, quality_code = 3, source = "test")
+
+  expect_equal(interactions$prey_id[interactions$predator_id == "Cod"], "Zoo")
+  expect_setequal(interactions$prey_id[interactions$predator_id == "Zoo"], c("Phyto", "Detritus"))
+
+  sp <- V(native_net)$name
+  mw <- create_metaweb(
+    species = data.frame(species_id = sp, species_name = sp, stringsAsFactors = FALSE),
+    interactions = interactions
+  )
+  back <- metaweb_to_igraph(mw)
+  edge_key <- function(g) sort(apply(as_edgelist(g), 1, paste, collapse = "->"))
+  expect_equal(edge_key(back), edge_key(native_net))
+})
+
+test_that("the ECOPATH import module writes metawebs through the shared writer (N1)", {
+  code <- readLines(app_path("R/modules/ecopath_import_server.R"), warn = FALSE)
+  code <- code[!startsWith(trimws(code), "#")]
+  expect_true(any(grepl("igraph_to_metaweb_interactions(", code, fixed = TRUE)))
+  expect_false(any(grepl("predator_id = edges[,1]", code, fixed = TRUE)))
+})
+
+test_that("the metaweb preview draws arrows prey -> predator (N2)", {
+  code <- readLines(app_path("R/modules/metaweb_manager_server.R"), warn = FALSE)
+  code <- code[!startsWith(trimws(code), "#")]
+  expect_true(any(grepl("from = metaweb$interactions$prey_id", code, fixed = TRUE)))
+  expect_false(any(grepl("from = metaweb$interactions$predator_id", code, fixed = TRUE)))
+})
+
+# ---------------------------------------------------------------------------
+# Guard: no predator -> prey edge-list construct in the graph builders
+# ---------------------------------------------------------------------------
+
+test_that("no graph builder constructs a predator -> prey edge list", {
+  # Scoped to the two edge-list constructs that fed graph_from_data_frame();
+  # c("predator_id", "prey_id") legitimately appears elsewhere (required
+  # columns, duplicate-link detection in merge_metawebs()).
+  edge_list_constructs <- c(
+    'metaweb$interactions[, c("predator_id", "prey_id")]',
+    'local_interactions[, c("predator_id", "prey_id")]'
+  )
+  for (f in c("R/functions/metaweb_core.R", "R/functions/spatial_analysis.R")) {
+    code <- readLines(app_path(f), warn = FALSE)
+    code <- code[!startsWith(trimws(code), "#")]
+    for (pat in edge_list_constructs) {
+      expect_false(any(grepl(pat, code, fixed = TRUE)),
+                   label = paste(f, "builds predator -> prey edges via", pat))
+    }
+  }
+})

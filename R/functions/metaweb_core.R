@@ -126,16 +126,19 @@ print.metaweb <- function(x, ...) {
 
 #' Convert metaweb to igraph network
 #'
+#' Edges follow the app-wide contract (R/functions/network_finalize.R):
+#' `prey_id -> predator_id`, i.e. an edge A -> B means B eats A.
+#'
 #' @param metaweb Metaweb object
-#' @return igraph object
+#' @return igraph object; vertices are named by `species_id`
 #' @export
 metaweb_to_igraph <- function(metaweb) {
   if (!requireNamespace("igraph", quietly = TRUE)) {
     stop("Package 'igraph' is required")
   }
 
-  # Create edge list
-  edges <- metaweb$interactions[, c("predator_id", "prey_id")]
+  # Create edge list: prey -> predator
+  edges <- metaweb$interactions[, c("prey_id", "predator_id")]
 
   # Create igraph object
   g <- igraph::graph_from_data_frame(
@@ -153,6 +156,27 @@ metaweb_to_igraph <- function(metaweb) {
   }
 
   return(g)
+}
+
+#' Build a metaweb interactions table from a prey -> predator igraph
+#'
+#' The inverse of the edge step in metaweb_to_igraph(): for every edge
+#' A -> B (B eats A) it writes `prey_id = A`, `predator_id = B`.
+#'
+#' @param net igraph network following the edge contract, vertices named
+#' @param quality_code Link quality code (1-4) for every row
+#' @param source Source string for every row
+#' @return data.frame with predator_id, prey_id, quality_code, source
+#' @export
+igraph_to_metaweb_interactions <- function(net, quality_code = 3, source = "unspecified") {
+  edges <- igraph::as_edgelist(net, names = TRUE)
+  data.frame(
+    predator_id = edges[, 2],
+    prey_id = edges[, 1],
+    quality_code = rep(quality_code, nrow(edges)),
+    source = rep(source, nrow(edges)),
+    stringsAsFactors = FALSE
+  )
 }
 
 #' Get link quality description

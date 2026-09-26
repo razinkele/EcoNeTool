@@ -109,7 +109,12 @@ metaweb_ui <- function() {
                       icon = icon("upload")
                     ),
                     hr(),
-                    HTML("<p><small>Use template files in <code>metawebs/</code> folder as examples.</small></p>")
+                    HTML(paste0(
+                      "<p><small>Use template files in <code>metawebs/</code> folder as examples. ",
+                      "Each interactions row means <code>predator_id</code> eats <code>prey_id</code>; ",
+                      "the network drawn from it points prey &rarr; predator (direction of energy flow).",
+                      "</small></p>"
+                    ))
                   )
                 )
               ),

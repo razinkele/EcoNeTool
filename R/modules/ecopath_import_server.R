@@ -1804,14 +1804,12 @@ install.packages('Hmisc')</pre>
         }
         # ============================================================
 
-        # Create interactions data frame for metaweb (use native_net, not reactive value)
-        edges <- as_edgelist(native_net)
-        interactions_data <- data.frame(
-          predator_id = edges[,1],
-          prey_id = edges[,2],
+        # Create interactions data frame for metaweb (use native_net, not reactive value).
+        # native_net is prey -> predator, so edge column 1 is the prey (N1).
+        interactions_data <- igraph_to_metaweb_interactions(
+          native_net,
           quality_code = 3,  # ECOPATH data = code 3 (model-derived)
-          source = paste0("ECOPATH: ", input$ecopath_native_file$name),
-          stringsAsFactors = FALSE
+          source = paste0("ECOPATH: ", input$ecopath_native_file$name)
         )
 
         # Create metaweb object

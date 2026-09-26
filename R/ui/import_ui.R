@@ -301,16 +301,17 @@ import_ui <- function() {
                   <tr><td><strong>Species_C</strong></td><td>0</td><td>0</td><td>0</td></tr>
                 </tbody>
               </table>
-              <p><em>Value = 1 means Species A eats Species B (row → column)</em></p>
+              <p><em>Rows = prey, columns = predators: a 1 in row A, column B means B eats A
+              (edge A → B, prey → predator). Here B eats A and C eats B.</em></p>
 
               <h6><strong>Sheet 2: Species_Info</strong></h6>
               <p>Species attributes (one row per species):</p>
               <table class='table table-sm table-bordered' style='width: auto; margin: 10px 0;'>
                 <thead><tr><th>species</th><th>fg</th><th>meanB</th><th>losses</th><th>efficiencies</th></tr></thead>
                 <tbody>
-                  <tr><td>Species_A</td><td>Fish</td><td>1250.5</td><td>0.12</td><td>0.85</td></tr>
+                  <tr><td>Species_A</td><td>Phytoplankton</td><td>2100.0</td><td>0.05</td><td>0.40</td></tr>
                   <tr><td>Species_B</td><td>Zooplankton</td><td>850.2</td><td>0.08</td><td>0.75</td></tr>
-                  <tr><td>Species_C</td><td>Phytoplankton</td><td>2100.0</td><td>0.05</td><td>0.40</td></tr>
+                  <tr><td>Species_C</td><td>Fish</td><td>1250.5</td><td>0.12</td><td>0.85</td></tr>
                 </tbody>
               </table>
 
@@ -345,9 +346,9 @@ Species_C,0,0,0</pre>
               <h6><strong>File 2: species_info.csv</strong></h6>
               <pre style='background: #f8f9fa; padding: 10px; border-radius: 5px;'>
 species,fg,meanB,losses,efficiencies
-Species_A,Fish,1250.5,0.12,0.85
+Species_A,Phytoplankton,2100.0,0.05,0.40
 Species_B,Zooplankton,850.2,0.08,0.75
-Species_C,Phytoplankton,2100.0,0.05,0.40</pre>
+Species_C,Fish,1250.5,0.12,0.85</pre>
 
               <hr>
 
@@ -362,7 +363,7 @@ Species_C,Phytoplankton,2100.0,0.05,0.40</pre>
               <pre style='background: #f8f9fa; padding: 10px; border-radius: 5px;'>
 library(igraph)
 
-# Create adjacency matrix
+# Create adjacency matrix: rows = prey, columns = predators (B eats A, C eats B)
 adj_matrix <- matrix(c(0,1,0, 0,0,1, 0,0,0), nrow=3, byrow=TRUE)
 rownames(adj_matrix) <- colnames(adj_matrix) <- c('Species_A', 'Species_B', 'Species_C')
 
@@ -372,10 +373,10 @@ net <- graph_from_adjacency_matrix(adj_matrix, mode='directed')
 # Create species info
 info <- data.frame(
   species = c('Species_A', 'Species_B', 'Species_C'),
-  fg = factor(c('Fish', 'Zooplankton', 'Phytoplankton')),
-  meanB = c(1250.5, 850.2, 2100.0),
-  losses = c(0.12, 0.08, 0.05),
-  efficiencies = c(0.85, 0.75, 0.40)
+  fg = factor(c('Phytoplankton', 'Zooplankton', 'Fish')),
+  meanB = c(2100.0, 850.2, 1250.5),
+  losses = c(0.05, 0.08, 0.12),
+  efficiencies = c(0.40, 0.75, 0.85)
 )
 
 # Save

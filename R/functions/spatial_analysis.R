@@ -253,10 +253,10 @@ extract_local_network <- function(metaweb, species_list, hexagon_id = NA) {
      metaweb$interactions$prey_id %in% local_species_df$species_name),
   ]
 
-  # Create igraph network
+  # Create igraph network. Edge contract: prey -> predator (B eats A for A -> B).
   if (nrow(local_interactions) > 0) {
     local_net <- igraph::graph_from_data_frame(
-      d = local_interactions[, c("predator_id", "prey_id")],
+      d = local_interactions[, c("prey_id", "predator_id")],
       directed = TRUE,
       vertices = local_species_df
     )
