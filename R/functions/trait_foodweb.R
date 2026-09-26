@@ -360,13 +360,15 @@ trait_foodweb_to_igraph <- function(species_data, threshold = 0.05, include_prob
     probability = prob_matrix[edges]
   )
 
+  # graph_from_data_frame() keys vertices on the FIRST column, so put
+  # `species` first whatever the uploaded column order was.
+  vertices <- species_data[, c("species", setdiff(names(species_data), "species")), drop = FALSE]
+
   # Create igraph
   if (include_probs) {
-    g <- igraph::graph_from_data_frame(edge_list, directed = TRUE,
-                                       vertices = species_data)
+    g <- igraph::graph_from_data_frame(edge_list, directed = TRUE, vertices = vertices)
   } else {
-    g <- igraph::graph_from_data_frame(edge_list[, 1:2], directed = TRUE,
-                                       vertices = species_data)
+    g <- igraph::graph_from_data_frame(edge_list[, 1:2], directed = TRUE, vertices = vertices)
   }
 
   return(g)

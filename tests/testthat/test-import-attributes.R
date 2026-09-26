@@ -11,6 +11,7 @@ local({
   source(file.path(root, "R/functions/ecopath/ecopath_group_biomass.R"), local = FALSE)
   source(file.path(root, "R/functions/data_editor_utils.R"), local = FALSE)
   source(file.path(root, "R/functions/euseamap_regional_config.R"), local = FALSE)
+  source(file.path(root, "R/functions/trait_foodweb.R"), local = FALSE)
 })
 
 # ---------------------------------------------------------------------------
@@ -259,4 +260,29 @@ test_that("EMODnet observer has no current_network() and an app_path() GDB path 
   expect_true(any(grepl('app_path("data/EUSeaMap_2025/EUSeaMap_2025.gdb")', code, fixed = TRUE)))
   expect_false(any(grepl("custom_bbox <- c(20, 55, 21, 56)", code, fixed = TRUE)))
   expect_true(any(grepl("resolve_emodnet_bbox(", code, fixed = TRUE)))
+})
+
+# ---------------------------------------------------------------------------
+# F74 - trait food web with species not in the first column
+# ---------------------------------------------------------------------------
+
+test_that("trait_foodweb_to_igraph works when species is not the first column (F74)", {
+  path <- app_path("examples/trait_foodweb_simple.csv")
+  skip_if_not(file.exists(path), "examples/trait_foodweb_simple.csv not found")
+  traits <- utils::read.csv(path, stringsAsFactors = FALSE)
+  shuffled <- traits[, c("MS", "species", "FS", "MB", "EP", "PR")]
+
+  expect_no_error(g <- trait_foodweb_to_igraph(shuffled, threshold = 0.05))
+  expect_equal(igraph::V(g)$name, shuffled$species)
+  expect_no_error(g2 <- trait_foodweb_to_igraph(shuffled, threshold = 0.05, include_probs = FALSE))
+  expect_equal(igraph::V(g2)$name, shuffled$species)
+})
+
+test_that("the construct observer is wrapped in tryCatch (F74)", {
+  code <- readLines(app_path("R/modules/foodweb_construction_server.R"), warn = FALSE)
+  start <- grep("observeEvent(input$foodweb_construct_network", code, fixed = TRUE)
+  expect_length(start, 1L)
+  block <- code[start:min(length(code), start + 60L)]
+  expect_true(any(grepl("tryCatch(", block, fixed = TRUE)))
+  expect_true(any(grepl("warning(", block, fixed = TRUE)))
 })
