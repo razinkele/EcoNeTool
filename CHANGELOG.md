@@ -394,4 +394,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.4.5]: https://github.com/razinkele/EcoNeTool/compare/v1.4.4...HEAD
 [1.4.4]: https://github.com/razinkele/EcoNeTool/compare/v1.4.3...v1.4.4
 [1.4.3]: https://github.com/razinkele/EcoNeTool/releases/tag/v1.4.3
-
