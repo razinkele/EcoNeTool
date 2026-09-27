@@ -291,13 +291,13 @@ load_version_info <- function() {
 
   # Default version info (fallback)
   version_info <- list(
-    VERSION = "1.5.0",
-    VERSION_NAME = "Network Science Correctness",
+    VERSION = "1.5.1",
+    VERSION_NAME = "Deploy and CI Hardening",
     RELEASE_DATE = "2026-09-27",
     STATUS = "stable",
     MAJOR = 1,
     MINOR = 5,
-    PATCH = 0
+    PATCH = 1
   )
 
   # Try to read VERSION file
