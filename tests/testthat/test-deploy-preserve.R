@@ -54,3 +54,44 @@ test_that("no deploy script wipes the live tree with rm -rf .../EcoNeTool/*", {
     expect_equal(length(offenders), 0L, info = paste(rel, ":", paste(offenders, collapse = " | ")))
   }
 })
+
+# --- deployment/deploy.sh (F81, F5, F7) --------------------------------------
+
+test_that("deployment/deploy.sh keeps dotfiles, data, cache, r-libs, models and config", {
+  keep <- protected_deployment_sh(deploy_file("deployment/deploy.sh"))
+  missing <- setdiff(c(DEPLOY_PROTECTED, "restart.txt"), keep)
+  expect_equal(missing, character(0), info = "not preserved by the find-based wipe")
+})
+
+test_that("deployment/deploy.sh never copies data/ or config/ over the live tree", {
+  code <- code_lines(deploy_file("deployment/deploy.sh"))
+  items <- script_array(code, "CRITICAL_ITEMS")
+  expect_false("data" %in% items)
+  expect_false("config" %in% items)
+  expect_true("models" %in% items, info = "models/ is tracked and loaded by ml_trait_prediction.R")
+  # only the template goes into the preserved config/
+  expect_true(any(grepl("config/api_keys.R.template", code, fixed = TRUE)))
+})
+
+test_that("deployment/deploy.sh copies with cp -rT, not rsync, and keeps *.csv", {
+  code <- code_lines(deploy_file("deployment/deploy.sh"))
+  expect_false(any(grepl("\\brsync\\b", code)), info = "rsync is not installed on laguna")
+  expect_true(any(grepl("cp -rT \"$SRC\" \"$DEST/$ITEM\"", code, fixed = TRUE)))
+  expect_false(any(grepl("--exclude='*.csv'", code, fixed = TRUE)))
+})
+
+test_that("deployment/deploy.sh writes tar backups outside site_dir, mode 600", {
+  path <- deploy_file("deployment/deploy.sh")
+  dirs <- backup_dirs(path)
+  expect_equal(dirs, "/srv/shiny-server-data/EcoNeTool/backups")
+  code <- code_lines(path)
+  expect_true(any(grepl("tar -czf", code, fixed = TRUE)))
+  expect_true(any(grepl("chmod 600", code, fixed = TRUE)))
+})
+
+test_that("the reference shiny-server.conf has no directory index anywhere", {
+  conf <- code_lines(deploy_file("deployment/shiny-server.conf"))
+  expect_false(any(grepl("directory_index\\s+on", conf)))
+  # the fallback heredoc in deployment/deploy.sh writes the same file
+  expect_false(any(grepl("directory_index\\s+on", code_lines(deploy_file("deployment/deploy.sh")))))
+})
