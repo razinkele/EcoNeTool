@@ -276,3 +276,18 @@ test_that("deploy-windows.ps1 Test-ShouldExclude drops runtime config by relativ
   names(got) <- sub("=[^=]*$", "", out)
   expect_equal(got[names(cases)], cases)
 })
+
+# --- deploy.sh (root; F5, F7) ------------------------------------------------
+
+test_that("deploy.sh rsync --delete excludes server state and runtime config", {
+  prot <- protected_root_sh(deploy_file("deploy.sh"))
+  # config/ itself ships (templates); its runtime files are excluded below
+  expect_equal(setdiff(c(".*", "data", "cache", "r-libs", "models"), prot), character(0))
+  expect_equal(setdiff(RUNTIME_CONFIG_FILES, prot), character(0))
+})
+
+test_that("deploy.sh backups live outside site_dir", {
+  path <- deploy_file("deploy.sh")
+  expect_equal(backup_dirs(path), "/srv/shiny-server-data/EcoNeTool/backups")
+  expect_true(any(grepl("chmod 600", code_lines(path), fixed = TRUE)))
+})
