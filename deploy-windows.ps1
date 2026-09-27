@@ -25,6 +25,8 @@ param(
     [switch]$UseSCP,        # Skip tar, use SCP directly (more reliable)
     [switch]$NoSudo,        # Deploy to home dir staging area (no sudo required)
     [switch]$SkipData,      # Skip data/ directory (faster deployment)
+    # Interpolated into remote shell commands: a plain login name only
+    [ValidatePattern('^[a-z_][a-z0-9_-]*$')]
     [string]$User = "razinka",
     [string]$Server = "laguna.ku.lt",
     [int]$Port = 22
@@ -373,7 +375,7 @@ function Deploy-Application {
         # and config/ included - on EVERY upload path (tar and scp), so the
         # follow-up `cp -rT staging live` copies only this upload and never a
         # stale data/ or a stripped-then-reuploaded config/api_keys.R.
-        if ($APP_DEPLOY_PATH -notmatch '^/home/[^/]+/EcoNeTool_staging$') {
+        if ($APP_DEPLOY_PATH -notmatch '^/home/[a-z_][a-z0-9_-]*/EcoNeTool_staging$') {
             throw "Refusing to clear unexpected staging path: $APP_DEPLOY_PATH"
         }
         # Invoke-RemoteCommand ignores ssh's exit status, so a failed wipe

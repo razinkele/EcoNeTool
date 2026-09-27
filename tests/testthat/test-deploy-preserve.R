@@ -234,6 +234,16 @@ test_that("deploy-windows.ps1 empties staging on every upload path, and only sta
   expect_false(grepl(rx, "/srv/shiny-server/EcoNeTool", perl = TRUE))
   expect_false(grepl(rx, "/home/razinka/EcoNeTool_staging/data", perl = TRUE))
   expect_false(grepl(rx, "/home//EcoNeTool_staging", perl = TRUE), info = "empty -User")
+  # M1: the path is interpolated into remote shell commands
+  expect_false(grepl(rx, "/home/a;b/EcoNeTool_staging", perl = TRUE), info = "shell metacharacter in -User")
+  expect_false(grepl(rx, "/home/a b/EcoNeTool_staging", perl = TRUE), info = "space in -User")
+  expect_false(grepl(rx, "/home/$(id)/EcoNeTool_staging", perl = TRUE), info = "substitution in -User")
+
+  # ... and -User itself is validated with the same character class
+  user <- grep("^\\s*\\[string\\]\\$User\\s*=", code)
+  expect_length(user, 1L)
+  expect_true(any(grepl("[ValidatePattern('^[a-z_][a-z0-9_-]*$')]", code[user + c(-1L, 0L)], fixed = TRUE)),
+              info = "-User needs [ValidatePattern('^[a-z_][a-z0-9_-]*$')]")
 })
 
 # Invoke-RemoteCommand does not check ssh's exit status (I2). A failed
