@@ -53,19 +53,18 @@ test_that("WoRMS returns correct structure for invertebrate", {
 test_that("WoRMS returns marine flag for marine species", {
   result <- load_fixture("worms_gadus_morhua")
 
-  if (result$success && !is.null(result$traits$isMarine)) {
-    expect_true(result$traits$isMarine %in% c(TRUE, 1),
-                info = "Gadus morhua should be flagged as marine")
-  }
+  skip_if(!isTRUE(result$success) || is.null(result$traits$isMarine),
+          "worms_gadus_morhua fixture has no isMarine flag; refresh with capture_fixtures.R")
+  expect_true(result$traits$isMarine %in% c(TRUE, 1),
+              info = "Gadus morhua should be flagged as marine")
 })
 
 test_that("WoRMS lookup uses multiple strategies", {
   result <- load_fixture("worms_gadus_morhua")
 
-  # Should have a strategy field
-  if (!is.null(result$strategy)) {
-    expect_true(is.character(result$strategy))
-  }
+  skip_if(is.null(result$strategy),
+          "worms_gadus_morhua fixture has no strategy field; refresh with capture_fixtures.R")
+  expect_true(is.character(result$strategy))
 })
 
 test_that("WoRMS body-size unit fallback handles marine mammals", {
@@ -95,23 +94,21 @@ test_that("lookup_fishbase_traits returns correct structure", {
 test_that("FishBase returns traits for Atlantic cod", {
   result <- load_fixture("fishbase_gadus_morhua")
 
-  if (result$success) {
-    traits <- result$traits
+  skip_if(!isTRUE(result$success),
+          "fishbase_gadus_morhua fixture has success=FALSE; refresh with capture_fixtures.R")
+  traits <- result$traits
+  skip_if(is.null(traits$max_length_cm) || is.null(traits$trophic_level),
+          "fishbase_gadus_morhua fixture lacks max_length_cm/trophic_level; refresh with capture_fixtures.R")
 
-    # Cod should have reasonable size data
-    if (!is.null(traits$max_length_cm)) {
-      expect_gt(traits$max_length_cm, 50,
-                label = "Cod max length should be > 50 cm")
-      expect_lt(traits$max_length_cm, 250,
-                label = "Cod max length should be < 250 cm")
-    }
+  # Cod should have reasonable size data
+  expect_gt(traits$max_length_cm, 50,
+            label = "Cod max length should be > 50 cm")
+  expect_lt(traits$max_length_cm, 250,
+            label = "Cod max length should be < 250 cm")
 
-    # Cod trophic level should be around 4
-    if (!is.null(traits$trophic_level)) {
-      expect_gt(traits$trophic_level, 3.0)
-      expect_lt(traits$trophic_level, 5.0)
-    }
-  }
+  # Cod trophic level should be around 4
+  expect_gt(traits$trophic_level, 3.0)
+  expect_lt(traits$trophic_level, 5.0)
 })
 
 test_that("FishBase returns traits for herring", {
@@ -119,35 +116,33 @@ test_that("FishBase returns traits for herring", {
 
   expect_valid_fishbase_result(result)
 
-  if (result$success) {
-    traits <- result$traits
+  skip_if(!isTRUE(result$success),
+          "fishbase_clupea_harengus fixture has success=FALSE; refresh with capture_fixtures.R")
+  traits <- result$traits
+  skip_if(is.null(traits$max_length_cm) || is.null(traits$trophic_level),
+          "fishbase_clupea_harengus fixture lacks max_length_cm/trophic_level; refresh with capture_fixtures.R")
 
-    # Herring should be smaller than cod
-    if (!is.null(traits$max_length_cm)) {
-      expect_gt(traits$max_length_cm, 15)
-      expect_lt(traits$max_length_cm, 60)
-    }
+  # Herring should be smaller than cod
+  expect_gt(traits$max_length_cm, 15)
+  expect_lt(traits$max_length_cm, 60)
 
-    # Herring trophic level should be lower (planktivore)
-    if (!is.null(traits$trophic_level)) {
-      expect_gt(traits$trophic_level, 2.5)
-      expect_lt(traits$trophic_level, 4.5)
-    }
-  }
+  # Herring trophic level should be lower (planktivore)
+  expect_gt(traits$trophic_level, 2.5)
+  expect_lt(traits$trophic_level, 4.5)
 })
 
 test_that("FishBase trait list has expected fields", {
   result <- load_fixture("fishbase_gadus_morhua")
 
-  if (result$success) {
-    trait_names <- names(result$traits)
+  skip_if(!isTRUE(result$success),
+          "fishbase_gadus_morhua fixture has success=FALSE; refresh with capture_fixtures.R")
+  trait_names <- names(result$traits)
 
-    # These are the key fields FishBase should provide
-    expected_fields <- c("max_length_cm", "trophic_level")
-    for (field in expected_fields) {
-      expect_true(field %in% trait_names,
-                  info = paste("FishBase should return", field))
-    }
+  # These are the key fields FishBase should provide
+  expected_fields <- c("max_length_cm", "trophic_level")
+  for (field in expected_fields) {
+    expect_true(field %in% trait_names,
+                info = paste("FishBase should return", field))
   }
 })
 
@@ -295,29 +290,29 @@ test_that("fish species routes to FishBase, not SeaLifeBase", {
   worms_cod <- load_fixture("worms_gadus_morhua")
 
   # Verify the routing logic: Chordata + Actinopterygii -> FishBase
-  if (worms_cod$success) {
-    phylum <- tolower(worms_cod$traits$phylum)
-    class <- tolower(worms_cod$traits$class)
+  skip_if(!isTRUE(worms_cod$success),
+          "worms_gadus_morhua fixture has success=FALSE; refresh with capture_fixtures.R")
+  phylum <- tolower(worms_cod$traits$phylum)
+  class <- tolower(worms_cod$traits$class)
 
-    expect_equal(phylum, "chordata")
-    fish_classes <- c("actinopterygii", "actinopteri", "elasmobranchii",
-                      "holocephali", "myxini", "petromyzonti",
-                      "teleostei", "chondrichthyes", "osteichthyes")
-    expect_true(class %in% fish_classes,
-                info = paste("Class", class, "should trigger FishBase routing"))
-  }
+  expect_equal(phylum, "chordata")
+  fish_classes <- c("actinopterygii", "actinopteri", "elasmobranchii",
+                    "holocephali", "myxini", "petromyzonti",
+                    "teleostei", "chondrichthyes", "osteichthyes")
+  expect_true(class %in% fish_classes,
+              info = paste("Class", class, "should trigger FishBase routing"))
 })
 
 test_that("mollusc species routes to SeaLifeBase, not FishBase", {
   worms_mussel <- load_fixture("worms_mytilus_edulis")
 
-  if (worms_mussel$success) {
-    phylum <- tolower(worms_mussel$traits$phylum)
-    invertebrate_phyla <- c("mollusca", "arthropoda", "annelida", "echinodermata",
-                            "cnidaria", "porifera")
-    expect_true(phylum %in% invertebrate_phyla,
-                info = paste("Phylum", phylum, "should trigger SeaLifeBase routing"))
-  }
+  skip_if(!isTRUE(worms_mussel$success),
+          "worms_mytilus_edulis fixture has success=FALSE; refresh with capture_fixtures.R")
+  phylum <- tolower(worms_mussel$traits$phylum)
+  invertebrate_phyla <- c("mollusca", "arthropoda", "annelida", "echinodermata",
+                          "cnidaria", "porifera")
+  expect_true(phylum %in% invertebrate_phyla,
+              info = paste("Phylum", phylum, "should trigger SeaLifeBase routing"))
 })
 
 # ============================================================================

@@ -1,61 +1,56 @@
 # =============================================================================
-# deployment/deploy.sh must not destroy server-only state
+# Deploy scripts must not destroy server-only state (F81, F4, F5, F7, F86)
 # =============================================================================
-# This is the third deploy script (the others are ./deploy.sh and
-# ./deploy-windows.ps1). It wiped the deploy tree with
-# `rm -rf /srv/shiny-server/EcoNeTool/*` and then copied back only the names in
-# CRITICAL_ITEMS. Two runtime-critical directories were in neither list:
-#
-#   r-libs/  app-local R library (icesSAG); server-only, absent from the repo,
-#            and made discoverable at app.R:9. Recoverable only by unpacking
-#            the backup tar by hand.
-#   models/  trait_ml_models.rds, loaded by ml_trait_prediction.R:83. Tracked
-#            in git, so the fix is simply to deploy it.
-#
-# Bash is not exercised by this suite, so these are source guards. The delete
-# behaviour itself was verified separately against a scratch tree.
+# Three scripts can deploy EcoNeTool: deploy.sh (rsync, unusable against
+# laguna, which has no rsync), deployment/deploy.sh (run as root on the
+# server) and deploy-windows.ps1 (the path actually used, with -NoSudo).
+# The suite does not execute them, so these are source guards over
+# code_lines() (helper-deploy.R): comments are stripped first, so a comment
+# mentioning `.Renviron` can no longer make a guard pass.
 
-source_app_dependencies()
+deploy_file <- function(rel) file.path(get_app_root(), rel)
 
-deploy_sh <- function() {
-  readLines(app_path("deployment/deploy.sh"), warn = FALSE)
-}
+# --- helper self-test --------------------------------------------------------
 
-test_that("deploy.sh no longer wipes the deploy tree unconditionally", {
-  code <- deploy_sh()
-  code <- code[!startsWith(trimws(code), "#")]
+test_that("code_lines() ignores comments, so a commented-out keep does not count", {
+  fixture <- tempfile(fileext = ".sh")
+  on.exit(unlink(fixture), add = TRUE)
+  writeLines(c(
+    "#!/bin/bash",
+    "# PRESERVE_ITEMS=(\"r-libs\" \"cache\" \"data\" \"config\" \"models\")",
+    "# find /srv/shiny-server/EcoNeTool -mindepth 1 ! -name '.*' -exec rm -rf {} +",
+    "PRESERVE_ITEMS=(\"r-libs\" \"cache\")  # keep .Renviron data config models too",
+    "find /srv/shiny-server/EcoNeTool -mindepth 1 -maxdepth 1 \"${FIND_KEEP[@]}\" -exec rm -rf {} +",
+    "echo \"${#PRESERVE_ITEMS[@]} kept\"",
+    "cp -rT \"$SRC\" \\",
+    "      \"$DEST/$ITEM\"",
+    "echo \"   # shown to the user\""
+  ), fixture)
 
-  offenders <- grep("rm -rf /srv/shiny-server/EcoNeTool/*", code,
-                    value = TRUE, fixed = TRUE)
+  # The pre-F86 guard grepped the raw text and would have passed:
+  raw <- paste(readLines(fixture), collapse = "\n")
+  expect_true(grepl("-name '.*'", raw, fixed = TRUE))
 
-  expect_equal(length(offenders), 0L,
-               label = paste("unconditional wipe:",
-                             paste(trimws(offenders), collapse = " | ")))
+  keep <- protected_deployment_sh(fixture)
+  expect_setequal(keep, c("r-libs", "cache"))
+  expect_false(".*" %in% keep)
+  expect_false(all(DEPLOY_PROTECTED %in% keep))
+
+  code <- code_lines(fixture)
+  # `${#arr[@]}` is not a comment
+  expect_true(any(grepl("${#PRESERVE_ITEMS[@]}", code, fixed = TRUE)))
+  # continuation lines are joined into one logical line
+  expect_true(any(grepl("cp -rT \"\\$SRC\"\\s+\"\\$DEST/\\$ITEM\"", code)))
+  # Known limitation: a " #" inside a quoted string is cut like a comment.
+  # That can only hide text from a guard, never invent a keep.
+  expect_true("echo \"" %in% code)
 })
 
-test_that("deploy.sh preserves the server-only state it cannot restore", {
-  code <- paste(deploy_sh(), collapse = "\n")
+# --- all three scripts -------------------------------------------------------
 
-  for (keep in c("r-libs", "cache", "restart.txt")) {
-    expect_true(grepl(keep, code, fixed = TRUE),
-                info = paste("no preserve entry for", keep))
+test_that("no deploy script wipes the live tree with rm -rf .../EcoNeTool/*", {
+  for (rel in c("deploy.sh", "deployment/deploy.sh", "deploy-windows.ps1")) {
+    offenders <- grep("rm\\s+-rf\\s+\\S*EcoNeTool/\\*", code_lines(deploy_file(rel)), value = TRUE)
+    expect_equal(length(offenders), 0L, info = paste(rel, ":", paste(offenders, collapse = " | ")))
   }
-})
-
-test_that("deploy.sh keeps dotfiles, so .Renviron survives", {
-  # The old `rm -rf dir/*` never matched dotfiles. A find-based delete does,
-  # so dropping .Renviron would be a regression introduced by the fix itself.
-  code <- paste(deploy_sh(), collapse = "\n")
-  expect_true(grepl("-name '.*'", code, fixed = TRUE) ||
-                grepl('-name ".*"', code, fixed = TRUE) ||
-                grepl(".Renviron", code, fixed = TRUE),
-              info = "nothing protects dotfiles from the find-based delete")
-})
-
-test_that("deploy.sh deploys models/, which the ML tier loads at runtime", {
-  code <- deploy_sh()
-  in_list <- which(trimws(code) == '"models"')
-
-  expect_true(length(in_list) > 0,
-              info = "models/ missing from CRITICAL_ITEMS; ml_trait_prediction.R would find no model file")
 })
