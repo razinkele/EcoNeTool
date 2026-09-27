@@ -239,10 +239,11 @@ lookup_species_traits <- function(species_name,
 
   # Check cache first. read_cache_field validates envelope shape + freshness, so
   # a classify_species_api {data,...} file colliding on the same name is treated
-  # as a miss instead of returning NULL traits (deep-analysis #4).
+  # as a miss instead of returning NULL traits (deep-analysis #4). The config
+  # hash makes a row harmonized under another session's settings a miss (F72).
   if (!is.null(cache_dir) && dir.exists(cache_dir)) {
     cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species_name), ".rds"))
-    cached_traits <- read_cache_field(cache_file, "traits")
+    cached_traits <- read_cache_field(cache_file, "traits", config_hash = harm_config_hash())
     if (!is.null(cached_traits)) {
       message("Using cached traits for ", species_name)
       return(cached_traits)
@@ -422,7 +423,9 @@ lookup_species_traits <- function(species_name,
       if (!is.null(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
         cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species_name), ".rds"))
-        saveRDS(list(traits = result, timestamp = Sys.time()), cache_file)
+        # Offline-DB codes were harmonized at build time with the defaults.
+        saveRDS(list(traits = result, timestamp = Sys.time(),
+                     config_hash = harm_default_config_hash()), cache_file)
       }
 
       total_time <- round(as.numeric(difftime(Sys.time(), total_start, units = "secs")), 2)
@@ -1736,7 +1739,8 @@ lookup_species_traits <- function(species_name,
       traits = result,
       harmonized = harmonized_data,
       species = species_name,
-      timestamp = Sys.time()
+      timestamp = Sys.time(),
+      config_hash = harm_config_hash()
     )
 
     # Include raw traits for reference

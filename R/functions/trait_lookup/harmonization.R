@@ -75,6 +75,39 @@ get_harm_config <- function() {
 }
 
 
+#' Hash of the effective harmonization config (trait-cache key, F72)
+#'
+#' Harmonized codes in cache/taxonomy/<species>.rds depend on the config that
+#' produced them, and every session shares those files. Writers stamp this
+#' hash into the envelope; readers pass their own hash to read_cache_field()
+#' and treat a mismatch as a miss. `last_modified` and `version` are dropped
+#' (they do not change any code). The JSON text is hashed rather than the R
+#' object, so 150L after a JSON round trip hashes like 150.
+#'
+#' @param cfg Config list; defaults to this session's config.
+#' @return Character(1) xxhash64 digest, or NULL when no config is loaded.
+harm_config_hash <- function(cfg = get_harm_config()) {
+  if (is.null(cfg)) return(NULL)
+  cfg$last_modified <- NULL
+  cfg$version <- NULL
+  json <- jsonlite::toJSON(cfg, auto_unbox = TRUE, digits = NA)
+  digest::digest(as.character(json), algo = "xxhash64", serialize = FALSE)
+}
+
+
+#' Hash of the process-wide default config
+#'
+#' For cache writes whose codes were NOT harmonized with the session config:
+#' offline-DB rows were harmonized at build time with the defaults. Reads the
+#' same global fallback as get_harm_config() and never writes it.
+#'
+#' @return Character(1) digest, or NULL when no config is loaded.
+harm_default_config_hash <- function() {
+  if (!exists("HARMONIZATION_CONFIG", envir = .GlobalEnv)) return(NULL)
+  harm_config_hash(get("HARMONIZATION_CONFIG", envir = .GlobalEnv))
+}
+
+
 #' Extract Primary Feeding Mode from Ontology Traits
 #'
 #' Determines the primary (highest-scored) feeding mode from fuzzy ontology data.

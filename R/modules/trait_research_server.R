@@ -361,6 +361,8 @@ trait_research_server <- function(input, output, session, shared_data) {
     tryCatch({
       results_list <- list()
       raw_list <- list()
+      # This session's harmonization settings key the shared trait cache (F72).
+      cfg_hash <- harm_config_hash()
 
       for (i in seq_along(species_list)) {
         species <- species_list[i]
@@ -373,29 +375,26 @@ trait_research_server <- function(input, output, session, shared_data) {
 
         cat(sprintf("[%d/%d] %s\n", i, length(species_list), species))
 
-        # Check cache
+        # Check cache. read_cache_field() applies the 30-day TTL, the shape
+        # guard (a classify_species_api {data,...} envelope collides on the
+        # same filename - deep-analysis #4) and the config-hash match (F72).
         cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species), ".rds"))
-        if (file.exists(cache_file)) {
-          cached <- readRDS(cache_file)
-          cache_age_days <- as.numeric(difftime(Sys.time(), cached$timestamp %||% Sys.time(), units = "days"))
-          # Shape guard: a classify_species_api {data,...} envelope collides on
-          # the same filename; without !is.null(cached$traits) we'd cache NULL
-          # trait rows and misalign the results list (deep-analysis #4).
-          if (cache_age_days < 30 && !is.null(cached$traits)) {
-            cat("  -> Using cached data\n")
-            results_list[[i]] <- cached$traits
-            # cached$raw_data is only present in legacy caches written by the
-            # old re-save here; orchestrator-written caches don't carry it.
-            # Synthesise a minimal raw_data summary from the traits row so the
-            # raw-details UI still has something to render either way.
-            raw_list[[species]] <- if (!is.null(cached$raw_data)) {
-              cached$raw_data
-            } else {
-              list(species = species,
-                   source = if (is.data.frame(cached$traits)) cached$traits$source else NA)
-            }
-            next
+        cached_traits <- read_cache_field(cache_file, "traits", config_hash = cfg_hash)
+        if (!is.null(cached_traits)) {
+          cat("  -> Using cached data\n")
+          results_list[[i]] <- cached_traits
+          # raw_data is only present in legacy caches written by the old
+          # re-save here; orchestrator-written caches don't carry it.
+          # Synthesise a minimal raw_data summary from the traits row so the
+          # raw-details UI still has something to render either way.
+          cached_raw <- read_cache_field(cache_file, "raw_data", config_hash = cfg_hash)
+          raw_list[[species]] <- if (!is.null(cached_raw)) {
+            cached_raw
+          } else {
+            list(species = species,
+                 source = if (is.data.frame(cached_traits)) cached_traits$source else NA)
           }
+          next
         }
 
         # Run harmonized lookup via orchestrator (handles smart routing,

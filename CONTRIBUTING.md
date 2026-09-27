@@ -190,6 +190,14 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   refused ("Admin gate not configured on this instance; server defaults are
   read-only"). For local work, put a `set_admin_password()` line in
   `.Renviron` or run the build script from a console.
+- **Trait-cache envelopes carry `config_hash`.** Harmonized codes depend on
+  the session's harmonization settings, and every session shares
+  `cache/taxonomy/<species>.rds`. A writer stamps `config_hash =
+  harm_config_hash()` (or `harm_default_config_hash()` when the codes were
+  harmonized with the defaults, e.g. offline-DB rows); a reader passes
+  `config_hash = harm_config_hash()` to `read_cache_field()`, which treats a
+  different or missing hash as a miss. Compute the hash in the calling
+  process, never inside a `future` worker (a worker has no Shiny session).
 
 ## Commit Messages
 

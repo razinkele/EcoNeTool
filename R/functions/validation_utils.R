@@ -481,9 +481,13 @@ validate_file_exists <- function(file_path, param_name = "file") {
 #' @param cache_file Path to the .rds cache file.
 #' @param field Name of the payload field to read (e.g. "traits" or "data").
 #' @param max_age_days Maximum cache age in days (default 30).
-#' @return The field's value, or NULL if absent/stale/missing/unreadable.
+#' @param config_hash Optional harm_config_hash() of the reader's session. When
+#'   given, an envelope stamped with a different hash - or with none, i.e.
+#'   written before B1 - is a miss (spec B F72: harmonized codes depend on the
+#'   session's harmonization config).
+#' @return The field's value, or NULL if absent/stale/missing/unreadable/foreign-config.
 #' @export
-read_cache_field <- function(cache_file, field, max_age_days = 30) {
+read_cache_field <- function(cache_file, field, max_age_days = 30, config_hash = NULL) {
   if (!file.exists(cache_file)) return(NULL)
   cached <- tryCatch(readRDS(cache_file), error = function(e) {
     warning(sprintf("[cache] unreadable cache file '%s': %s",
@@ -494,6 +498,9 @@ read_cache_field <- function(cache_file, field, max_age_days = 30) {
     return(NULL)
   }
   if (difftime(Sys.time(), cached$timestamp, units = "days") >= max_age_days) {
+    return(NULL)
+  }
+  if (!is.null(config_hash) && !identical(cached$config_hash, config_hash)) {
     return(NULL)
   }
   cached[[field]]
