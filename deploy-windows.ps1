@@ -47,7 +47,9 @@ if ($NoSudo) {
     $BACKUP_DIR = "/home/$User/backups"
 } else {
     $APP_DEPLOY_PATH = "$SHINY_SERVER_ROOT/$APP_NAME"
-    $BACKUP_DIR = "$SHINY_SERVER_ROOT/backups"
+    # Outside site_dir (/srv/shiny-server): everything under site_dir is
+    # served by shiny-server, and a backup holds config/api_keys.* (F7).
+    $BACKUP_DIR = "/srv/shiny-server-data/$APP_NAME/backups"
 }
 
 # Local paths
@@ -74,7 +76,9 @@ $DEPLOY_ITEMS = @(
     "examples/",
     "metawebs/",
     "data/",
-    "config/"
+    "config/",
+    # Tracked in git and loaded at runtime by ml_trait_prediction.R.
+    "models/"
 )
 
 # Patterns to exclude
@@ -109,7 +113,14 @@ $EXCLUDE_PATTERNS = @(
     "*.md",
     "*.log",
     "archive/",
-    "data_conversion/"
+    "data_conversion/",
+    # Runtime config: server-only state or a developer's local keys. Never
+    # uploaded, so `cp -rT staging live` cannot overwrite the server's copy
+    # (F5). Patterns with an inner '/' match one relative path.
+    "config/api_keys.R",
+    "config/api_keys.json",
+    "config/harmonization_custom.json",
+    ".Renviron"
 )
 
 # ==============================================================================
@@ -326,22 +337,27 @@ function New-RemoteBackup {
 
     Write-Log "Creating backup on server..."
 
-    $backupName = "${APP_NAME}_backup_$TIMESTAMP"
+    $backupName = "${APP_NAME}_backup_$TIMESTAMP.tar.gz"
     $backupPath = "$BACKUP_DIR/$backupName"
     $sudoPrefix = if ($NoSudo) { "" } else { "sudo " }
+    $appParent = $APP_DEPLOY_PATH -replace '/[^/]+$', ''
+    $appLeaf = $APP_DEPLOY_PATH -replace '^.*/', ''
 
-    # Create backup directory
-    Invoke-RemoteCommand "${sudoPrefix}mkdir -p $BACKUP_DIR"
+    # Create backup directory (private: backups hold config/api_keys.*)
+    Invoke-RemoteCommand "${sudoPrefix}mkdir -p $BACKUP_DIR && ${sudoPrefix}chmod 700 $BACKUP_DIR"
 
     # Check if app exists
     $appExists = Invoke-RemoteCommand "test -d $APP_DEPLOY_PATH && echo 'yes' || echo 'no'" -IgnoreError
 
     if ($appExists.Trim() -eq "yes") {
-        Invoke-RemoteCommand "${sudoPrefix}cp -r $APP_DEPLOY_PATH $backupPath"
+        # A tar archive, not a `cp -r` copy: a copied tree is a runnable app
+        # wherever it lands (F7). data/ (~3.1 GB) is left out: it is managed
+        # out of band and would overrun Invoke-RemoteCommand's 60 s limit.
+        Invoke-RemoteCommand "${sudoPrefix}tar --exclude=$appLeaf/data -czf $backupPath -C $appParent $appLeaf && ${sudoPrefix}chmod 600 $backupPath"
         Write-Log "Backup created: $backupPath" "SUCCESS"
 
         # Keep only last 5 backups
-        Invoke-RemoteCommand "cd $BACKUP_DIR && ls -t | tail -n +6 | xargs -r ${sudoPrefix}rm -rf" -IgnoreError
+        Invoke-RemoteCommand "cd $BACKUP_DIR && ls -t ${APP_NAME}_backup_*.tar.gz | tail -n +6 | xargs -r ${sudoPrefix}rm -f" -IgnoreError
     } else {
         Write-Log "No existing deployment to backup" "INFO"
     }
@@ -352,8 +368,19 @@ function Deploy-Application {
 
     $sudoPrefix = if ($NoSudo) { "" } else { "sudo " }
 
-    # Ensure deploy directory exists
-    Invoke-RemoteCommand "${sudoPrefix}mkdir -p $APP_DEPLOY_PATH"
+    if ($NoSudo) {
+        # Staging holds no live state. Empty it completely - dotfiles, data/
+        # and config/ included - on EVERY upload path (tar and scp), so the
+        # follow-up `cp -rT staging live` copies only this upload and never a
+        # stale data/ or a stripped-then-reuploaded config/api_keys.R.
+        if ($APP_DEPLOY_PATH -notmatch '^/home/[^/]+/EcoNeTool_staging$') {
+            throw "Refusing to clear unexpected staging path: $APP_DEPLOY_PATH"
+        }
+        Invoke-RemoteCommand "rm -rf $APP_DEPLOY_PATH && mkdir -p $APP_DEPLOY_PATH"
+    } else {
+        # Ensure deploy directory exists
+        Invoke-RemoteCommand "${sudoPrefix}mkdir -p $APP_DEPLOY_PATH"
+    }
 
     # Get files to deploy
     $files = Get-FilesToDeploy
@@ -369,8 +396,17 @@ function Deploy-Application {
             param([string]$Path)
             $name = Split-Path -Leaf $Path
             $fullPath = $Path
+            $unixPath = $Path -replace '\\', '/'
 
             foreach ($pattern in $EXCLUDE_PATTERNS) {
+                # A pattern with an inner '/' (config/api_keys.R) names one
+                # relative path: match it against the end of the full path
+                # only. Trailing-slash directory patterns (cache/) keep the
+                # old component matching below.
+                if ($pattern.TrimEnd('/').Contains('/')) {
+                    if ($unixPath -like "*/$pattern") { return $true }
+                    continue
+                }
                 # Check filename against pattern
                 if ($name -like $pattern) { return $true }
                 # Check if any path component matches (for .git, .Rproj.user, etc.)
@@ -480,13 +516,19 @@ function Deploy-Application {
                     Copy-ToRemote -LocalPath $tarFile -RemotePath "/tmp/econetool_deploy.tar.gz"
 
                     # Extract on server.
-                    # Clean stale top-level entries BUT preserve persistent
-                    # server-only state that lives under the app dir and is NOT
-                    # in the tar: data/ (incl. data/feedback/feedback.db),
-                    # cache/ (offline_traits.db), and r-libs/ (app-local R
-                    # packages e.g. icesSAG). A blanket `rm -rf APP/*` would
-                    # silently wipe user feedback, the offline DB, and icesSAG.
-                    $preserve = "! -name data ! -name cache ! -name r-libs"
+                    # Live tree: clean stale top-level entries BUT preserve
+                    # server-only state that is NOT in the tar: dotfiles
+                    # (.Renviron with the admin hash), data/ (~3.1 GB), cache/
+                    # (offline_traits.db), r-libs/ (icesSAG), config/ (runtime
+                    # keys and harmonization_custom.json) and models/. A
+                    # blanket `rm -rf APP/*` would wipe them (F4).
+                    # Staging (-NoSudo) holds no live state and was emptied at
+                    # the start of Deploy-Application, so nothing is kept.
+                    if ($NoSudo) {
+                        $preserve = ""
+                    } else {
+                        $preserve = "! -name '.*' ! -name data ! -name cache ! -name r-libs ! -name models ! -name config"
+                    }
                     Invoke-RemoteCommand "${sudoPrefix}find $APP_DEPLOY_PATH -mindepth 1 -maxdepth 1 $preserve -exec rm -rf {} + && ${sudoPrefix}tar -xzf /tmp/econetool_deploy.tar.gz -C $APP_DEPLOY_PATH && rm /tmp/econetool_deploy.tar.gz"
                 }
 
@@ -692,6 +734,8 @@ try {
             Write-Host "   # cp -rT copies staging CONTENTS over the live tree WITHOUT" -ForegroundColor DarkGray
             Write-Host "   # deleting siblings, so the live data/ (feedback.db), cache/" -ForegroundColor DarkGray
             Write-Host "   # (offline_traits.db) and r-libs/ survive. Do NOT 'rm -rf' the tree." -ForegroundColor DarkGray
+            Write-Host "   # Staging was emptied before this upload and holds no runtime" -ForegroundColor DarkGray
+            Write-Host "   # config (api_keys.*, harmonization_custom.json): nothing to strip." -ForegroundColor DarkGray
             Write-Host "   ssh $SSH_TARGET ""cp -rT $APP_DEPLOY_PATH /srv/shiny-server/$APP_NAME && touch /srv/shiny-server/$APP_NAME/restart.txt""" -ForegroundColor Gray
             Write-Host ""
         } else {

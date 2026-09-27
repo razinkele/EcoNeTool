@@ -187,3 +187,92 @@ test_that("deployment/deploy.sh backups leave out data/", {
   member <- regexpr("-C /srv/shiny-server EcoNeTool", tar_line, fixed = TRUE)
   expect_true(excl > 0 && member > 0 && excl < member, info = tar_line)
 })
+
+# --- deploy-windows.ps1 (F4, F5, F7) -----------------------------------------
+
+test_that("deploy-windows.ps1 keeps dotfiles, data, cache, r-libs, models and config on the live tree", {
+  keep <- protected_windows_ps1(deploy_file("deploy-windows.ps1"))
+  expect_equal(setdiff(DEPLOY_PROTECTED, keep), character(0))
+})
+
+test_that("deploy-windows.ps1 -NoSudo wipes staging completely", {
+  code <- code_lines(deploy_file("deploy-windows.ps1"))
+  # staging holds no live state; anything left there is cp -rT'd over live
+  expect_true(any(grepl('^\\s*\\$preserve\\s*=\\s*""\\s*$', code)))
+})
+
+test_that("deploy-windows.ps1 ships models/ and never uploads runtime config", {
+  code <- code_lines(deploy_file("deploy-windows.ps1"))
+  expect_true("models/" %in% script_array(code, "DEPLOY_ITEMS"))
+  excl <- script_array(code, "EXCLUDE_PATTERNS")
+  expect_equal(setdiff(RUNTIME_CONFIG_FILES, excl), character(0))
+})
+
+test_that("deploy-windows.ps1 backups are tar archives outside site_dir", {
+  path <- deploy_file("deploy-windows.ps1")
+  dirs <- backup_dirs(path)
+  expect_setequal(dirs, c("/home/$User/backups", "/srv/shiny-server-data/EcoNeTool/backups"))
+  code <- code_lines(path)
+  expect_false(any(grepl("cp\\s+-r\\s", code)), info = "a cp -r backup is a live, runnable app copy")
+  expect_true(any(grepl("tar -czf", code, fixed = TRUE)))
+  expect_true(any(grepl("chmod 600", code, fixed = TRUE)))
+  # data/ (~3.1 GB) would overrun Invoke-RemoteCommand's 60 s limit
+  expect_true(any(grepl("tar --exclude=$appLeaf/data -czf", code, fixed = TRUE)))
+})
+
+test_that("deploy-windows.ps1 empties staging on every upload path, and only staging", {
+  code <- code_lines(deploy_file("deploy-windows.ps1"))
+  # Through Invoke-RemoteCommand, so -DryRun only logs it
+  expect_true(any(grepl('Invoke-RemoteCommand "rm -rf $APP_DEPLOY_PATH && mkdir -p $APP_DEPLOY_PATH"',
+                        code, fixed = TRUE)))
+
+  guard <- grep("-notmatch '", code, value = TRUE, fixed = TRUE)
+  expect_length(guard, 1L)
+  rx <- sub("^.*-notmatch '([^']+)'.*$", "\\1", guard)
+  expect_true(grepl(rx, "/home/razinka/EcoNeTool_staging", perl = TRUE))
+  expect_true(grepl(rx, "/home/alice/EcoNeTool_staging", perl = TRUE), info = "-User alice")
+  expect_false(grepl(rx, "/srv/shiny-server/EcoNeTool", perl = TRUE))
+  expect_false(grepl(rx, "/home/razinka/EcoNeTool_staging/data", perl = TRUE))
+  expect_false(grepl(rx, "/home//EcoNeTool_staging", perl = TRUE), info = "empty -User")
+})
+
+test_that("deploy-windows.ps1 Test-ShouldExclude drops runtime config by relative path only", {
+  pwsh <- Sys.which("pwsh")
+  skip_if(!nzchar(pwsh), "pwsh (PowerShell 7) not on PATH")
+  q <- function(x) if (.Platform$OS.type == "windows") shQuote(x, type = "cmd") else shQuote(x)
+
+  # Evaluate the script's own $EXCLUDE_PATTERNS and Test-ShouldExclude
+  # (nested in Deploy-Application) without running the deploy.
+  runner <- tempfile(fileext = ".ps1")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(c(
+    "param([string]$Script, [string]$Paths)",
+    "$ast = [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref]$null, [ref]$null)",
+    "$arr = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and",
+    "  $n.Left.Extent.Text -eq '$EXCLUDE_PATTERNS' }, $true)",
+    "$fn = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and",
+    "  $n.Name -eq 'Test-ShouldExclude' }, $true)",
+    "Invoke-Expression $arr.Extent.Text",
+    "Invoke-Expression $fn.Extent.Text",
+    "foreach ($p in $Paths.Split('|')) { '{0}={1}' -f $p, (Test-ShouldExclude $p) }"
+  ), runner)
+
+  cases <- c(
+    "C:\\repo\\config\\api_keys.R"                = "True",
+    "C:\\repo\\config\\api_keys.json"             = "True",
+    "C:\\repo\\config\\harmonization_custom.json" = "True",
+    "/repo/config/api_keys.R"                     = "True",
+    "C:\\repo\\config\\.Renviron"                 = "True",
+    "C:\\repo\\config\\api_keys.R.template"       = "False",
+    "C:\\repo\\R\\functions\\api_keys.R"          = "False",
+    "C:\\repo\\models\\trait_ml_models.rds"       = "False",
+    "C:\\repo\\R\\modules\\plugin_server.R"       = "False"
+  )
+  out <- system2(pwsh, c("-NoProfile", "-NonInteractive", "-File", q(runner),
+                         "-Script", q(normalizePath(deploy_file("deploy-windows.ps1"))),
+                         "-Paths", q(paste(names(cases), collapse = "|"))),
+                 stdout = TRUE, stderr = TRUE)
+  got <- sub("^.*=", "", out)
+  names(got) <- sub("=[^=]*$", "", out)
+  expect_equal(got[names(cases)], cases)
+})
