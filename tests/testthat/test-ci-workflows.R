@@ -104,3 +104,35 @@ test_that("testthat-offline installs packages the suite unguardedly needs", {
     expect_match(pkgs, paste0("any::", p), fixed = TRUE, label = paste("package list contains", p))
   }
 })
+
+# The nightly live job runs the same test_dir() as the offline job plus the
+# live tests, so it needs at least the offline job's R packages - and the
+# system libraries those packages build against (sf needs GDAL/GEOS/PROJ/
+# udunits). Run 36293106958 failed on master with "no package called 'DT'"
+# because the nightly list had drifted behind (M6).
+job_r_packages <- function(file, job) {
+  steps <- read_workflow(file)$jobs[[job]]$steps
+  step <- Filter(function(s) identical(s$name, "Install R dependencies"), steps)
+  if (length(step) != 1L) stop(sprintf("%s/%s: no single 'Install R dependencies' step", file, job))
+  pkgs <- trimws(strsplit(step[[1]]$with$packages, "\n", fixed = TRUE)[[1]])
+  sub("^any::", "", pkgs[nzchar(pkgs)])
+}
+
+job_apt_packages <- function(file, job) {
+  run <- workflow_step_run(file, job, "Install system dependencies")
+  tokens <- strsplit(gsub("\\\\", " ", run), "\\s+")[[1]]
+  grep("^lib[[:alnum:]._+-]+$", tokens, value = TRUE)
+}
+
+test_that("the nightly live job installs every package the offline job installs", {
+  skip_if_not_installed("yaml")
+  offline <- job_r_packages("ci.yml", "testthat-offline")
+  nightly <- job_r_packages("nightly-live-tests.yml", "live-tests")
+  expect_true(all(c("DT", "data.table") %in% offline), info = "premise: offline list has DT and data.table")
+  expect_equal(setdiff(offline, nightly), character(0))
+
+  offline_apt <- job_apt_packages("ci.yml", "testthat-offline")
+  nightly_apt <- job_apt_packages("nightly-live-tests.yml", "live-tests")
+  expect_gt(length(offline_apt), 0L)
+  expect_equal(setdiff(offline_apt, nightly_apt), character(0))
+})

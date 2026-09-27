@@ -54,13 +54,21 @@ jobs:
             libxml2-dev \
             libfontconfig1-dev \
             libfreetype6-dev \
-            libpng-dev
+            libpng-dev \
+            libgdal-dev \
+            libgeos-dev \
+            libproj-dev \
+            libudunits2-dev
 
+      # Must stay a superset of the testthat-offline job's list in ci.yml
+      # (guarded by tests/testthat/test-ci-workflows.R): this job runs the
+      # same test_dir() plus the live tests.
       - name: Install R dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           packages: |
             any::testthat
+            any::data.table
             any::worrms
             any::rfishbase
             any::httr
@@ -82,6 +90,20 @@ jobs:
             any::digest
             any::openssl
             any::shiny
+            any::withr
+            any::yaml
+            any::sf
+            any::visNetwork
+            any::fluxweb
+            any::R6
+            any::MASS
+            any::leaflet
+            any::DT
+            any::bs4Dash
+            any::shinyWidgets
+            any::shinyBS
+            any::future
+            any::future.apply
 
       - name: Run live testthat suite (fail on any test failure)
         run: |
