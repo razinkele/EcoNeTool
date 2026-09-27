@@ -217,6 +217,7 @@ jobs:
         with:
           packages: |
             any::testthat
+            any::data.table
             any::worrms
             any::rfishbase
             any::httr

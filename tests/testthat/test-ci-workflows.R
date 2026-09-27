@@ -68,7 +68,10 @@ test_that("ci.yml runs the offline testthat suite and CI Status depends on it", 
   expect_equal(job[["timeout-minutes"]], 20L)
   expect_null(job$env$RUN_LIVE_TESTS)
 
-  runs <- paste(vapply(job$steps, function(s) s$run %||% "", character(1)), collapse = "\n")
+  runs <- paste(
+    vapply(job$steps, function(s) if (is.null(s$run)) "" else s$run, character(1)),
+    collapse = "\n"
+  )
   expect_match(runs, "testthat::test_dir(", fixed = TRUE)
   expect_match(runs, '"tests/testthat"', fixed = TRUE)
   expect_match(runs, "stop_on_failure = TRUE", fixed = TRUE)
@@ -77,4 +80,27 @@ test_that("ci.yml runs the offline testthat suite and CI Status depends on it", 
   expect_true("testthat-offline" %in% unlist(wf$jobs[["ci-status"]]$needs))
   status_run <- wf$jobs[["ci-status"]]$steps[[1]]$run
   expect_match(status_run, "needs.testthat-offline.result", fixed = TRUE)
+})
+
+# Packages confirmed (2026-09-27, F-A) to be genuinely required - not merely
+# transitively installed - by the offline suite: their loading namespaces
+# were derived empirically by running the full offline suite once and
+# diffing loadedNamespaces() against installed.packages(priority = c("base",
+# "recommended")). data.table is called unguarded (no requireNamespace /
+# skip_if) by make_diet() in test-deep-analysis-fixes.R, used by 3
+# test_that() blocks - if data.table is missing, those blocks error rather
+# than skip. This guard pins that package's presence in the install list so
+# it can't silently regress back out.
+test_that("testthat-offline installs packages the suite unguardedly needs", {
+  skip_if_not_installed("yaml")
+  wf <- read_workflow("ci.yml")
+  job <- wf$jobs[["testthat-offline"]]
+  install_step <- Filter(function(s) identical(s$name, "Install R dependencies"), job$steps)
+  expect_equal(length(install_step), 1L, info = "no single 'Install R dependencies' step")
+  pkgs <- install_step[[1]]$with$packages
+
+  required <- c("data.table")
+  for (p in required) {
+    expect_match(pkgs, paste0("any::", p), fixed = TRUE, label = paste("package list contains", p))
+  }
 })
