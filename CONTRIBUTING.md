@@ -180,6 +180,16 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   writes anything under `/etc/shiny-server/`: laguna is shared with ~30
   other apps, so conf changes are printed as a snippet and applied by
   hand after review.
+- **Server-wide writes use the strict (fail-closed) gate.**
+  `admin_authorized()` fails OPEN when `ECONETOOL_ADMIN_PASSWORD_HASH` is
+  unset, which is right for the API-key modal only. Anything that changes
+  what every session sees (the harmonization server default, the offline DB
+  rebuild) must call `admin_authorized_strict(session$userData$admin_unlocked)`
+  - or `admin_strict_refusal(unlocked, "<action>")`, which also warns and
+  returns the user-facing reason. With no hash configured these actions are
+  refused ("Admin gate not configured on this instance; server defaults are
+  read-only"). For local work, put a `set_admin_password()` line in
+  `.Renviron` or run the build script from a console.
 
 ## Commit Messages
 

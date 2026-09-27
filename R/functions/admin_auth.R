@@ -202,6 +202,47 @@ admin_authorized <- function(unlocked) {
   !admin_gate_enabled() || isTRUE(unlocked)
 }
 
+#' May this session change SERVER-WIDE state? (fail-closed)
+#'
+#' admin_authorized() fails OPEN when no hash is configured, so the API-key
+#' modal keeps working on instances nobody has set up. Actions that change
+#' what every session sees - saving the harmonization server default (B1),
+#' rebuilding the offline trait DB (B3) - must not: on an unconfigured
+#' instance they are refused outright. For local development, set a hash with
+#' set_admin_password() in .Renviron, or run the build script from a console.
+#'
+#' @param unlocked The session's unlock flag, normally
+#'   \code{session$userData$admin_unlocked}. Only TRUE counts.
+#' @return TRUE only when the gate is configured AND this session unlocked it.
+#' @export
+admin_authorized_strict <- function(unlocked) {
+  admin_gate_enabled() && isTRUE(unlocked)
+}
+
+# User-facing refusal texts for strict-gated actions. B3 shows the same two
+# texts for the offline-DB rebuild, so keep them word-for-word.
+ADMIN_STRICT_MSG_UNSET <- "Admin gate not configured on this instance; server defaults are read-only"
+ADMIN_STRICT_MSG_LOCKED <- "Unlock via Trait Research > Configure API Keys first"
+
+#' Why is a strict-gated action refused? (NULL when it is allowed)
+#'
+#' Emits warning("[admin auth] ...") on refusal - warning, not message,
+#' because production shiny-server.conf keeps no message() logs.
+#'
+#' @param unlocked The session's unlock flag.
+#' @param action Short label for the log line, e.g. "save server default".
+#' @return NULL when admin_authorized_strict(unlocked) is TRUE, otherwise
+#'   ADMIN_STRICT_MSG_UNSET (no hash configured) or ADMIN_STRICT_MSG_LOCKED.
+#' @export
+admin_strict_refusal <- function(unlocked, action = "admin action") {
+  if (admin_authorized_strict(unlocked)) {
+    return(NULL)
+  }
+  msg <- if (admin_gate_enabled()) ADMIN_STRICT_MSG_LOCKED else ADMIN_STRICT_MSG_UNSET
+  warning(sprintf("[admin auth] %s refused: %s", action, msg), call. = FALSE)
+  msg
+}
+
 #' Print a pasteable environment line for a new admin password
 #'
 #' Deliberately writes nothing: silently creating a secrets file is worse than
