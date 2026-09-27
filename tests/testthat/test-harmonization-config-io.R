@@ -163,3 +163,52 @@ test_that("save replaces the file through a temp file and leaves nothing behind"
   expect_equal(load_harmonization_config(target)$size_thresholds$MS3_MS4, 8)
   expect_identical(list.files(dir), "harmonization_custom.json")
 })
+
+# --- Fix round 1 (F-A): the bare-noun FS0 guard was easily bypassed by a
+# plural, a compound/adjective form, or a realistic diet phrase that never
+# appears verbatim in HARM_FS0_DIET_NOUNS. HARM_FS0_DIET_PROBES broadens the
+# net; HARM_FS0_DIET_NOUNS itself is kept as-is (it still feeds the probe
+# set), so nothing that read that constant before is broken.
+test_that("FS0 patterns that bypass the bare diet nouns via plural/compound/phrase are rejected", {
+  bypasses <- c("photosyn|plants", "photosyn|diatoms", "photosyn|dinoflagellates",
+               "photosyn|microalgae", "photosyn|algal")
+  for (p in bypasses) {
+    cfg <- HARMONIZATION_CONFIG
+    cfg$foraging_patterns$FS0_primary_producer <- p
+    v <- validate_harmonization_config(cfg)
+    expect_false(v$ok, info = p)
+    expect_match(paste(v$errors, collapse = " | "), "diet nouns", info = p)
+  }
+})
+
+test_that("the built-in FS0 default matches none of the broadened diet probes", {
+  fs0 <- HARMONIZATION_CONFIG$foraging_patterns$FS0_primary_producer
+  expect_false(any(grepl(fs0, HARM_FS0_DIET_PROBES, ignore.case = TRUE)))
+  expect_true(validate_harmonization_config(HARMONIZATION_CONFIG)$ok)
+})
+
+test_that("the stale 2026-09 production FS0 string is still rejected under the broadened probes", {
+  cfg <- HARMONIZATION_CONFIG
+  cfg$foraging_patterns$FS0_primary_producer <-
+    "photosyn|autotrop|producer|plant|algae|phytoplankton|diatom|dinoflagellate"
+  v <- validate_harmonization_config(cfg)
+  expect_false(v$ok)
+  expect_match(paste(v$errors, collapse = " | "), "diet nouns")
+})
+
+# --- Fix round 1 (F-B): save_harmonization_config() must never leave a
+# stray <file>.tmp behind, even when the tmp path itself is unwritable, and
+# the target must stay untouched.
+test_that("save removes the tmp file and leaves the target untouched when the write is blocked", {
+  dir <- tempfile("harm_save_blocked_")
+  dir.create(dir)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+  target <- file.path(dir, "harmonization_custom.json")
+  tmp <- paste0(target, ".tmp")
+  dir.create(tmp) # block the tmp path so writeLines() must fail
+
+  expect_error(save_harmonization_config(HARMONIZATION_CONFIG, target))
+  expect_false(file.exists(target))
+  expect_true(dir.exists(tmp)) # the blocking directory itself is left alone
+  expect_identical(list.files(dir), "harmonization_custom.json.tmp")
+})

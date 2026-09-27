@@ -302,6 +302,24 @@ HARM_THRESHOLD_KEYS <- c("MS1_MS2", "MS2_MS3", "MS3_MS4", "MS4_MS5", "MS5_MS6", 
 HARM_FS0_DIET_NOUNS <- c("plant", "algae", "phytoplankton", "diatom", "dinoflagellate",
                          "seaweed", "macroalgae")
 
+# Fix round 1 (2026-09-28 review): checking an FS0 pattern only against the
+# seven bare nouns above missed forms like "photosyn|algal" or
+# "photosyn|microalgae" - "algal" and "microalgae" are not substrings of any
+# HARM_FS0_DIET_NOUNS entry, so grepl(fs0, HARM_FS0_DIET_NOUNS) never fired,
+# yet both match real feeding text ("algal film", "grazes microalgae"). This
+# probe set folds in plurals, common compounds/adjectives, and realistic
+# pasted diet phrases, so an FS0 pattern is checked against what a real
+# feeding-text field is likely to contain, not just the seven bare nouns.
+# HARM_FS0_DIET_NOUNS itself is unchanged (still the base of the probe set).
+HARM_FS0_DIET_PROBES <- unique(c(
+  HARM_FS0_DIET_NOUNS,
+  paste0(HARM_FS0_DIET_NOUNS, "s"),
+  c("microalgae", "macroalgae", "algal", "seagrass", "seagrasses", "kelp",
+    "seaweed", "seaweeds", "plant material", "planktonic algae"),
+  c("feeds on diatoms", "grazes microalgae", "algal film",
+    "herbivore eating plants", "phytoplankton feeder")
+))
+
 #' Does a foraging pattern compile the way harmonize_foraging_strategy() uses it?
 #'
 #' A length-1, non-blank string that grepl(..., ignore.case = TRUE) accepts.
@@ -360,7 +378,7 @@ validate_harmonization_config <- function(cfg) {
   }
   fs0 <- pats$FS0_primary_producer
   if (harm_pattern_compiles(fs0)) {
-    diet_hits <- HARM_FS0_DIET_NOUNS[grepl(fs0, HARM_FS0_DIET_NOUNS, ignore.case = TRUE)]
+    diet_hits <- HARM_FS0_DIET_PROBES[grepl(fs0, HARM_FS0_DIET_PROBES, ignore.case = TRUE)]
     if (length(diet_hits) > 0L) {
       errors <- c(errors, sprintf(paste0(
         "foraging_patterns: FS0_primary_producer matches diet nouns (%s); FS0 is tested first, ",
@@ -391,11 +409,18 @@ save_harmonization_config <- function(config = HARMONIZATION_CONFIG,
   dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
   json_data <- jsonlite::toJSON(config, pretty = TRUE, auto_unbox = TRUE, digits = NA)
   # Write beside the target, then rename over it, so a crash or a full disk
-  # mid-write can never leave a truncated server default behind.
+  # mid-write can never leave a truncated server default behind. Fix round 1:
+  # writeLines() itself can fail (tmp path blocked, disk full mid-write) and
+  # used to leave a stray/partial <file>.tmp behind - clean it up on ANY
+  # failure, but only ever remove a regular file we could have written
+  # ourselves, never a directory that happens to occupy the tmp path (that
+  # is a pre-existing filesystem condition, not something this function made).
   tmp <- paste0(file, ".tmp")
+  on.exit({
+    if (file.exists(tmp) && !dir.exists(tmp)) unlink(tmp, force = TRUE)
+  }, add = TRUE)
   writeLines(json_data, tmp)
   if (!file.rename(tmp, file)) {
-    unlink(tmp)
     stop(sprintf("could not move '%s' into place", tmp), call. = FALSE)
   }
   message("✓ Harmonization configuration saved to: ", file)
