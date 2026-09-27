@@ -106,6 +106,12 @@ calculate_taxonomic_distance <- function(taxonomy1, taxonomy2) {
 #' @param max_distance Maximum taxonomic distance to consider (default: 3 = within family)
 #' @param min_matches Minimum number of relatives required (default: 3)
 #' @param traits_needed Which traits to look for (default: c("MS", "FS", "MB", "EP", "PR"))
+#' @param config_hash Optional harm_config_hash() of the calling session. When
+#'   given, a cached envelope stamped with a different hash - or with none,
+#'   i.e. written before B1 - is skipped: its harmonized codes were produced
+#'   under different (or unknown) harmonization settings, so voting them in
+#'   would leak one session's thresholds into another's imputation (F72).
+#'   NULL (default) preserves the old, unkeyed behaviour.
 #' @return Data frame with: species, distance, and trait values for each relative
 #'
 #' @examples
@@ -123,7 +129,8 @@ find_closest_relatives <- function(target_taxonomy,
                                    cache_dir,
                                    max_distance = 3,
                                    min_matches = 3,
-                                   traits_needed = c("MS", "FS", "MB", "EP", "PR")) {
+                                   traits_needed = c("MS", "FS", "MB", "EP", "PR"),
+                                   config_hash = NULL) {
 
   if (!dir.exists(cache_dir)) {
     return(data.frame())
@@ -160,6 +167,12 @@ find_closest_relatives <- function(target_taxonomy,
   for (cache_file in cache_files) {
     tryCatch({
       cache_data <- readRDS(cache_file)
+
+      # A relative harmonized under another session's settings (or before B1,
+      # when no hash was stamped at all) must not vote here (F72).
+      if (!is.null(config_hash) && !identical(cache_data$config_hash, config_hash)) {
+        next
+      }
 
       # Extract taxonomy
       relative_taxonomy <- NULL
@@ -408,6 +421,8 @@ impute_traits_from_relatives <- function(target_traits,
 #' @param min_relatives Minimum relatives needed (default: 3)
 #' @param min_agreement Minimum voting agreement (default: 0.6)
 #' @param verbose Print detailed information (default: FALSE)
+#' @param config_hash Optional harm_config_hash() of the calling session,
+#'   forwarded to find_closest_relatives() (F72). NULL preserves old behaviour.
 #' @return Updated traits list with imputed values
 #'
 apply_phylogenetic_imputation <- function(species_name,
@@ -417,7 +432,8 @@ apply_phylogenetic_imputation <- function(species_name,
                                           max_distance = 3,
                                           min_relatives = 3,
                                           min_agreement = 0.6,
-                                          verbose = FALSE) {
+                                          verbose = FALSE,
+                                          config_hash = NULL) {
 
   # Check which traits are missing
   missing_traits <- c(
@@ -447,7 +463,8 @@ apply_phylogenetic_imputation <- function(species_name,
     cache_dir = cache_dir,
     max_distance = max_distance,
     min_matches = min_relatives,
-    traits_needed = c("MS", "FS", "MB", "EP", "PR")
+    traits_needed = c("MS", "FS", "MB", "EP", "PR"),
+    config_hash = config_hash
   )
 
   if (nrow(relatives) == 0) {

@@ -1589,7 +1589,10 @@ lookup_species_traits <- function(species_name,
         max_distance = 3,  # Within order
         min_relatives = 3,
         min_agreement = 0.6,
-        verbose = TRUE
+        verbose = TRUE,
+        # Relatives harmonized under another session's settings must not vote
+        # here (F72); a missing hash (pre-B1 envelope) is also excluded.
+        config_hash = harm_config_hash()
       )
 
       # Update sources if phylogenetic imputation was used.

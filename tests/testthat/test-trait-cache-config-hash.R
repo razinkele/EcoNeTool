@@ -103,6 +103,12 @@ test_that("every trait-cache writer stamps the hash and every reader passes one"
   # One reader plus the full-pipeline writer (cache_data <- list(...)).
   n_session_hash <- lengths(regmatches(orch, gregexpr("config_hash = harm_config_hash()", orch, fixed = TRUE)))
   expect_gte(n_session_hash, 2L)
+  # apply_phylogenetic_imputation() reads every envelope in cache_dir too (F72
+  # fix round 1): the orchestrator's call must pass along the session hash.
+  expect_true(grepl("apply_phylogenetic_imputation(", orch, fixed = TRUE))
+  phylo_call_start <- regexpr("apply_phylogenetic_imputation(", orch, fixed = TRUE)
+  phylo_call_tail <- substr(orch, phylo_call_start, phylo_call_start + 600)
+  expect_true(grepl("config_hash = harm_config_hash()", phylo_call_tail, fixed = TRUE))
 
   srv <- readLines(app_path("R/modules/trait_research_server.R"), warn = FALSE)
   srv <- srv[!startsWith(trimws(srv), "#")]
@@ -111,4 +117,66 @@ test_that("every trait-cache writer stamps the hash and every reader passes one"
 
   par <- readLines(app_path("R/functions/parallel_lookup.R"), warn = FALSE)
   expect_true(any(grepl('read_cache_field(cache_file, "traits", config_hash = cfg_hash)', par, fixed = TRUE)))
+
+  phylo <- readLines(app_path("R/functions/phylogenetic_imputation.R"), warn = FALSE)
+  phylo <- paste(phylo[!startsWith(trimws(phylo), "#")], collapse = "\n")
+  expect_true(grepl("find_closest_relatives <- function(", phylo, fixed = TRUE))
+  expect_true(grepl("config_hash = NULL", phylo, fixed = TRUE))
+})
+
+test_that("find_closest_relatives skips envelopes from a different config_hash", {
+  source(file.path(get_app_root(), "R/functions/phylogenetic_imputation.R"), local = FALSE)
+  cache_dir <- tempfile("phylo_cache_")
+  dir.create(cache_dir)
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+
+  target_taxonomy <- list(phylum = "Chordata", class = "Actinopterygii",
+                           order = "Gadiformes", family = "Gadidae", genus = "Gadus")
+  target_traits <- list(MS = NA, FS = "FS1", MB = "MB1", EP = "EP1", PR = "PR1")
+
+  write_relative <- function(file, species, ms, hash) {
+    saveRDS(list(
+      species = species,
+      traits = list(MS = ms, FS = NA, MB = NA, EP = NA, PR = NA),
+      worms_taxonomy = target_taxonomy, # same genus -> distance 0
+      timestamp = Sys.time(),
+      config_hash = hash
+    ), file.path(cache_dir, file))
+  }
+  write_relative("Relative_A.rds", "Relative A", "MS3", "A")
+  write_relative("Relative_B.rds", "Relative B", "MS6", "B")
+
+  with_hash <- find_closest_relatives(target_taxonomy, target_traits, cache_dir, config_hash = "A")
+  expect_equal(nrow(with_hash), 1L)
+  expect_equal(with_hash$MS, "MS3")
+
+  without_hash <- find_closest_relatives(target_taxonomy, target_traits, cache_dir, config_hash = NULL)
+  expect_equal(nrow(without_hash), 2L) # old behaviour: unkeyed, both considered
+})
+
+test_that("apply_phylogenetic_imputation only imputes from the matching config_hash", {
+  source(file.path(get_app_root(), "R/functions/phylogenetic_imputation.R"), local = FALSE)
+  cache_dir <- tempfile("phylo_cache_")
+  dir.create(cache_dir)
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+
+  target_taxonomy <- list(phylum = "Chordata", class = "Actinopterygii",
+                           order = "Gadiformes", family = "Gadidae", genus = "Gadus")
+  current_traits <- list(MS = NA, FS = "FS1", MB = "MB1", EP = "EP1", PR = "PR1")
+
+  saveRDS(list(species = "Relative A", traits = list(MS = "MS3", FS = NA, MB = NA, EP = NA, PR = NA),
+               worms_taxonomy = target_taxonomy, timestamp = Sys.time(), config_hash = "A"),
+          file.path(cache_dir, "Relative_A.rds"))
+
+  imputed <- apply_phylogenetic_imputation(
+    species_name = "Gadus morhua", current_traits = current_traits, taxonomy = target_taxonomy,
+    cache_dir = cache_dir, config_hash = "A"
+  )
+  expect_equal(imputed$MS, "MS3")
+
+  imputed_wrong_hash <- apply_phylogenetic_imputation(
+    species_name = "Gadus morhua", current_traits = current_traits, taxonomy = target_taxonomy,
+    cache_dir = cache_dir, config_hash = "B"
+  )
+  expect_true(is.na(imputed_wrong_hash$MS)) # relative filtered out: no relatives, MS stays NA
 })
