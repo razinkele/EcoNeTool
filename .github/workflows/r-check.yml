@@ -89,12 +89,10 @@ jobs:
 
       - name: Validate all R file syntax
         run: |
-          r_files <- list.files(
-            c(".", "R", "R/config", "R/functions", "R/functions/ecopath",
-              "R/functions/rpath", "R/modules", "R/ui"),
-            pattern = "\\.R$",
-            full.names = TRUE,
-            recursive = FALSE
+          # Root *.R plus everything under R/, recursively (F82).
+          r_files <- c(
+            list.files(".", pattern = "\\.R$", full.names = TRUE),
+            list.files("R", pattern = "\\.R$", full.names = TRUE, recursive = TRUE)
           )
           r_files <- r_files[!grepl("safeBackup", r_files)]
 

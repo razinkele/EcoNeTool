@@ -237,23 +237,33 @@ for (pkg in optional_packages) {
 cat("\n[4] Checking R Syntax...\n")
 
 
-r_files <- c("app.R")
-if (file.exists("run_app.R")) {
-  r_files <- c(r_files, "run_app.R")
-}
-for (file in r_files) {
-  if (file.exists(file)) {
-    result <- tryCatch({
-      parse(file)
-      TRUE
-    }, error = function(e) {
-      print_check(paste("Syntax:", file), "ERROR", e$message)
-      FALSE
-    })
-    if (result) {
-      print_check(paste("Syntax:", file), "PASS")
-    }
+# Parse app.R, run_app.R and every R/**/*.R (F83). Only app.R and run_app.R
+# were parsed before, so a syntax error in a sourced module reached laguna
+# and broke the app at startup. Returns the files checked and a named list
+# of parse errors (file -> message). tests/testthat/test-pre-deploy-check.R
+# evaluates this definition on its own, so keep it self-contained.
+collect_r_syntax_errors <- function(root = ".") {
+  files <- c("app.R", "run_app.R",
+             file.path("R", list.files(file.path(root, "R"), pattern = "\\.R$", recursive = TRUE)))
+  files <- files[file.exists(file.path(root, files))]
+  files <- files[!grepl("safeBackup", files, fixed = TRUE)]
+  errors <- list()
+  for (f in files) {
+    msg <- tryCatch({
+      parse(file.path(root, f))
+      NULL
+    }, error = function(e) conditionMessage(e))
+    if (!is.null(msg)) errors[[f]] <- msg
   }
+  list(files = files, errors = errors)
+}
+
+syntax <- collect_r_syntax_errors(".")
+for (f in names(syntax$errors)) {
+  print_check(paste("Syntax:", f), "ERROR", syntax$errors[[f]])
+}
+if (length(syntax$errors) == 0) {
+  print_check(sprintf("Syntax: %d R files parse", length(syntax$files)), "PASS")
 }
 
 # ============================================================================

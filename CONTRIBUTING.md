@@ -90,7 +90,9 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
 - **Live-API tests gate behind `RUN_LIVE_TESTS=true`** and run on the
   nightly workflow (`.github/workflows/nightly-live-tests.yml`).
   Inside the gate use `with_timeout()` (in `R/functions/validation_utils.R`)
-  so a slow upstream day doesn't hang the whole run.
+  so a slow upstream day doesn't hang the whole run. CI's
+  `testthat-offline` job runs the suite on every PR with the variable
+  unset, so an ungated HTTP call shows up there as a flaky failure.
 
 - **`data/external_traits/*.csv` are intentional header-only stubs.**
   The build script's Sources 7-10 read them and gracefully insert 0
@@ -161,6 +163,23 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
 
   `config/api_keys.json` and `.Renviron` are both gitignored. Check
   before committing if you touch that area.
+
+- **Deploy-script guards read code lines only.** Assertions about
+  `deploy.sh`, `deployment/deploy.sh` or `deploy-windows.ps1` go through
+  `code_lines()` / `script_array()` in `tests/testthat/helper-deploy.R`,
+  which drop comments and join `\` continuations first. A raw `grepl()`
+  over the file also matches comments: the old guard "passed" because a
+  comment mentioned `.Renviron`. Every deploy path must keep dotfiles,
+  `data/`, `cache/`, `r-libs/`, `models/` and `config/` on the server,
+  never upload `config/api_keys.*`, `config/harmonization_custom.json` or
+  `.Renviron`, and write backups as `tar.gz` (mode 600, without `data/`) to
+  `/srv/shiny-server-data/EcoNeTool/backups` (or `/home/$User/backups`
+  for `deploy-windows.ps1 -NoSudo`) - never under `/srv/shiny-server/`,
+  which shiny-server serves. `deploy-windows.bat` is a retired stub; any
+  `.bat`/`.cmd` deploy script must stay one. No deploy script
+  writes anything under `/etc/shiny-server/`: laguna is shared with ~30
+  other apps, so conf changes are printed as a snippet and applied by
+  hand after review.
 
 ## Commit Messages
 

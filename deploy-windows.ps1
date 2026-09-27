@@ -4,7 +4,14 @@
 # This PowerShell script deploys EcoNeTool from Windows to the Shiny Server
 #
 # Usage:
-#   .\deploy-windows.ps1 [-DryRun] [-NoBackup] [-Force] [-Verbose]
+#   .\deploy-windows.ps1 [-NoSudo] [-IncludeData] [-DryRun] [-NoBackup] [-Force] [-Verbose]
+#
+#   Recommended: .\deploy-windows.ps1 -NoSudo
+#     -NoSudo       upload to /home/<User>/EcoNeTool_staging (emptied first,
+#                   runtime config stripped), then cp -rT it live by hand
+#     -IncludeData  also upload the local data/ (skipped by default: it is
+#                   managed out of band on the server)
+#     -SkipData     no-op, kept so old command lines still work
 #
 # Prerequisites:
 #   - Windows 10/11 with OpenSSH client (built-in)
@@ -24,7 +31,10 @@ param(
     [switch]$RestartServer,
     [switch]$UseSCP,        # Skip tar, use SCP directly (more reliable)
     [switch]$NoSudo,        # Deploy to home dir staging area (no sudo required)
-    [switch]$SkipData,      # Skip data/ directory (faster deployment)
+    [switch]$SkipData,      # No-op: data/ is skipped by default (kept for old command lines)
+    [switch]$IncludeData,   # Also upload the local data/ directory (off by default)
+    # Interpolated into remote shell commands: a plain login name only
+    [ValidatePattern('^[a-z_][a-z0-9_-]*$')]
     [string]$User = "razinka",
     [string]$Server = "laguna.ku.lt",
     [int]$Port = 22
@@ -47,7 +57,9 @@ if ($NoSudo) {
     $BACKUP_DIR = "/home/$User/backups"
 } else {
     $APP_DEPLOY_PATH = "$SHINY_SERVER_ROOT/$APP_NAME"
-    $BACKUP_DIR = "$SHINY_SERVER_ROOT/backups"
+    # Outside site_dir (/srv/shiny-server): everything under site_dir is
+    # served by shiny-server, and a backup holds config/api_keys.* (F7).
+    $BACKUP_DIR = "/srv/shiny-server-data/$APP_NAME/backups"
 }
 
 # Local paths
@@ -73,8 +85,11 @@ $DEPLOY_ITEMS = @(
     "www/",
     "examples/",
     "metawebs/",
-    "data/",
-    "config/"
+    # data/ is NOT here: it is managed out of band on the server and is
+    # uploaded only with -IncludeData (see Get-FilesToDeploy).
+    "config/",
+    # Tracked in git and loaded at runtime by ml_trait_prediction.R.
+    "models/"
 )
 
 # Patterns to exclude
@@ -109,7 +124,14 @@ $EXCLUDE_PATTERNS = @(
     "*.md",
     "*.log",
     "archive/",
-    "data_conversion/"
+    "data_conversion/",
+    # Runtime config: server-only state or a developer's local keys. Never
+    # uploaded, so `cp -rT staging live` cannot overwrite the server's copy
+    # (F5). Patterns with an inner '/' match one relative path.
+    "config/api_keys.R",
+    "config/api_keys.json",
+    "config/harmonization_custom.json",
+    ".Renviron"
 )
 
 # ==============================================================================
@@ -280,13 +302,10 @@ function Copy-ToRemote {
 function Get-FilesToDeploy {
     $files = @()
 
-    foreach ($item in $DEPLOY_ITEMS) {
-        # Skip data/ directory if -SkipData is specified
-        if ($SkipData -and ($item -eq "data/" -or $item -like "data/*")) {
-            Write-Log "Skipping data directory (-SkipData specified)" "INFO"
-            continue
-        }
+    $items = $DEPLOY_ITEMS
+    if ($IncludeData) { $items = $DEPLOY_ITEMS + @("data/") }
 
+    foreach ($item in $items) {
         $fullPath = Join-Path $PROJECT_ROOT $item
 
         if (Test-Path $fullPath) {
@@ -326,22 +345,27 @@ function New-RemoteBackup {
 
     Write-Log "Creating backup on server..."
 
-    $backupName = "${APP_NAME}_backup_$TIMESTAMP"
+    $backupName = "${APP_NAME}_backup_$TIMESTAMP.tar.gz"
     $backupPath = "$BACKUP_DIR/$backupName"
     $sudoPrefix = if ($NoSudo) { "" } else { "sudo " }
+    $appParent = $APP_DEPLOY_PATH -replace '/[^/]+$', ''
+    $appLeaf = $APP_DEPLOY_PATH -replace '^.*/', ''
 
-    # Create backup directory
-    Invoke-RemoteCommand "${sudoPrefix}mkdir -p $BACKUP_DIR"
+    # Create backup directory (private: backups hold config/api_keys.*)
+    Invoke-RemoteCommand "${sudoPrefix}mkdir -p $BACKUP_DIR && ${sudoPrefix}chmod 700 $BACKUP_DIR"
 
     # Check if app exists
     $appExists = Invoke-RemoteCommand "test -d $APP_DEPLOY_PATH && echo 'yes' || echo 'no'" -IgnoreError
 
     if ($appExists.Trim() -eq "yes") {
-        Invoke-RemoteCommand "${sudoPrefix}cp -r $APP_DEPLOY_PATH $backupPath"
+        # A tar archive, not a `cp -r` copy: a copied tree is a runnable app
+        # wherever it lands (F7). data/ (~3.1 GB) is left out: it is managed
+        # out of band and would overrun Invoke-RemoteCommand's 60 s limit.
+        Invoke-RemoteCommand "${sudoPrefix}tar --exclude=$appLeaf/data -czf $backupPath -C $appParent $appLeaf && ${sudoPrefix}chmod 600 $backupPath"
         Write-Log "Backup created: $backupPath" "SUCCESS"
 
         # Keep only last 5 backups
-        Invoke-RemoteCommand "cd $BACKUP_DIR && ls -t | tail -n +6 | xargs -r ${sudoPrefix}rm -rf" -IgnoreError
+        Invoke-RemoteCommand "cd $BACKUP_DIR && ls -t ${APP_NAME}_backup_*.tar.gz | tail -n +6 | xargs -r ${sudoPrefix}rm -f" -IgnoreError
     } else {
         Write-Log "No existing deployment to backup" "INFO"
     }
@@ -352,8 +376,25 @@ function Deploy-Application {
 
     $sudoPrefix = if ($NoSudo) { "" } else { "sudo " }
 
-    # Ensure deploy directory exists
-    Invoke-RemoteCommand "${sudoPrefix}mkdir -p $APP_DEPLOY_PATH"
+    if ($NoSudo) {
+        # Staging holds no live state. Empty it completely - dotfiles, data/
+        # and config/ included - on EVERY upload path (tar and scp), so the
+        # follow-up `cp -rT staging live` copies only this upload and never a
+        # stale data/ or a stripped-then-reuploaded config/api_keys.R.
+        if ($APP_DEPLOY_PATH -notmatch '^/home/[a-z_][a-z0-9_-]*/EcoNeTool_staging$') {
+            throw "Refusing to clear unexpected staging path: $APP_DEPLOY_PATH"
+        }
+        # Invoke-RemoteCommand ignores ssh's exit status, so a failed wipe
+        # would leave old files that Test-Deployment accepts: require the
+        # marker echoed by the last && step.
+        $clearOut = Invoke-RemoteCommand "rm -rf $APP_DEPLOY_PATH && mkdir -p $APP_DEPLOY_PATH && echo STAGING_CLEARED"
+        if (-not $DryRun -and -not (($clearOut | Out-String) -match 'STAGING_CLEARED')) {
+            throw "Clearing staging $APP_DEPLOY_PATH failed: $clearOut"
+        }
+    } else {
+        # Ensure deploy directory exists
+        Invoke-RemoteCommand "${sudoPrefix}mkdir -p $APP_DEPLOY_PATH"
+    }
 
     # Get files to deploy
     $files = Get-FilesToDeploy
@@ -362,6 +403,10 @@ function Deploy-Application {
     # Create a temporary directory for staging
     $tempDir = Join-Path $env:TEMP "econetool_deploy_$TIMESTAMP"
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+    # Per-run archive name, set before the try so `finally` always has a
+    # path to remove: a fixed name let a failed tar re-upload the previous
+    # run's archive.
+    $tarFile = Join-Path $env:TEMP "econetool_deploy_$TIMESTAMP.tar.gz"
 
     try {
         # Helper function to check if path should be excluded
@@ -369,8 +414,17 @@ function Deploy-Application {
             param([string]$Path)
             $name = Split-Path -Leaf $Path
             $fullPath = $Path
+            $unixPath = $Path -replace '\\', '/'
 
             foreach ($pattern in $EXCLUDE_PATTERNS) {
+                # A pattern with an inner '/' (config/api_keys.R) names one
+                # relative path: match it against the end of the full path
+                # only. Trailing-slash directory patterns (cache/) keep the
+                # old component matching below.
+                if ($pattern.TrimEnd('/').Contains('/')) {
+                    if ($unixPath -like "*/$pattern") { return $true }
+                    continue
+                }
                 # Check filename against pattern
                 if ($name -like $pattern) { return $true }
                 # Check if any path component matches (for .git, .Rproj.user, etc.)
@@ -435,8 +489,7 @@ function Deploy-Application {
         # Upload staged files
         Write-Log "Uploading files to server..."
 
-        # Create tar archive for faster transfer
-        $tarFile = Join-Path $env:TEMP "econetool_deploy.tar.gz"
+        # Create tar archive ($tarFile, see above) for faster transfer
 
         # Helper function to convert Windows path to Git Bash path
         function Convert-ToGitBashPath {
@@ -469,7 +522,10 @@ function Deploy-Application {
             $tarCommand = "cd '$bashTempDir' && tar -czf '$bashTarFile' ."
             Write-Host "  DEBUG: tar command = $tarCommand" -ForegroundColor Gray
 
+            # Never let Test-Path below see an archive this run did not build
+            Remove-Item $tarFile -Force -ErrorAction SilentlyContinue
             & $gitBash -c $tarCommand 2>&1 | ForEach-Object { Write-Host "  tar: $_" -ForegroundColor Gray }
+            if ($LASTEXITCODE -ne 0) { throw "tar failed (exit $LASTEXITCODE) building $tarFile" }
 
             if (Test-Path $tarFile) {
                 $tarSuccess = $true
@@ -480,14 +536,23 @@ function Deploy-Application {
                     Copy-ToRemote -LocalPath $tarFile -RemotePath "/tmp/econetool_deploy.tar.gz"
 
                     # Extract on server.
-                    # Clean stale top-level entries BUT preserve persistent
-                    # server-only state that lives under the app dir and is NOT
-                    # in the tar: data/ (incl. data/feedback/feedback.db),
-                    # cache/ (offline_traits.db), and r-libs/ (app-local R
-                    # packages e.g. icesSAG). A blanket `rm -rf APP/*` would
-                    # silently wipe user feedback, the offline DB, and icesSAG.
-                    $preserve = "! -name data ! -name cache ! -name r-libs"
-                    Invoke-RemoteCommand "${sudoPrefix}find $APP_DEPLOY_PATH -mindepth 1 -maxdepth 1 $preserve -exec rm -rf {} + && ${sudoPrefix}tar -xzf /tmp/econetool_deploy.tar.gz -C $APP_DEPLOY_PATH && rm /tmp/econetool_deploy.tar.gz"
+                    # Live tree: clean stale top-level entries BUT preserve
+                    # server-only state that is NOT in the tar: dotfiles
+                    # (.Renviron with the admin hash), data/ (~3.1 GB), cache/
+                    # (offline_traits.db), r-libs/ (icesSAG), config/ (runtime
+                    # keys and harmonization_custom.json) and models/. A
+                    # blanket `rm -rf APP/*` would wipe them (F4).
+                    # Staging (-NoSudo) holds no live state and was emptied at
+                    # the start of Deploy-Application, so nothing is kept.
+                    if ($NoSudo) {
+                        $preserve = ""
+                    } else {
+                        $preserve = "! -name '.*' ! -name data ! -name cache ! -name r-libs ! -name models ! -name config"
+                    }
+                    $extractOut = Invoke-RemoteCommand "${sudoPrefix}find $APP_DEPLOY_PATH -mindepth 1 -maxdepth 1 $preserve -exec rm -rf {} + && ${sudoPrefix}tar -xzf /tmp/econetool_deploy.tar.gz -C $APP_DEPLOY_PATH && rm /tmp/econetool_deploy.tar.gz && echo EXTRACT_OK"
+                    if (-not $DryRun -and -not (($extractOut | Out-String) -match 'EXTRACT_OK')) {
+                        throw "Extracting the upload into $APP_DEPLOY_PATH failed: $extractOut"
+                    }
                 }
 
                 Remove-Item $tarFile -Force -ErrorAction SilentlyContinue
@@ -527,7 +592,8 @@ function Deploy-Application {
         Write-Log "Files uploaded successfully" "SUCCESS"
 
     } finally {
-        # Cleanup staging directory
+        # Cleanup staging directory and this run's archive
+        Remove-Item -Path $tarFile -Force -ErrorAction SilentlyContinue
         Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
@@ -632,13 +698,10 @@ $dataDir = Join-Path $PROJECT_ROOT "data"
 if (Test-Path $dataDir) {
     $dataSize = (Get-ChildItem -Path $dataDir -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1MB
     $dataSizeMB = [math]::Round($dataSize, 2)
-    if ($SkipData) {
-        Write-Log "Data directory size: $dataSizeMB MB (will be SKIPPED)" "INFO"
+    if ($IncludeData) {
+        Write-Log "Data directory size: $dataSizeMB MB (will be deployed, -IncludeData)" "WARNING"
     } else {
-        Write-Log "Data directory size: $dataSizeMB MB (will be deployed)" "INFO"
-        if ($dataSizeMB -gt 50) {
-            Write-Host "  TIP: Use -SkipData for faster deployment if data hasn't changed" -ForegroundColor Yellow
-        }
+        Write-Log "Data directory size: $dataSizeMB MB (will be SKIPPED; use -IncludeData to upload it)" "INFO"
     }
 }
 
@@ -679,9 +742,9 @@ try {
         Write-Host "================================================================================" -ForegroundColor Green
         Write-Host ""
 
-        if ($SkipData) {
-            Write-Host " NOTE: data/ directory was skipped (-SkipData)" -ForegroundColor Yellow
-            Write-Host "       To deploy data separately, re-run without -SkipData" -ForegroundColor Yellow
+        if (-not $IncludeData) {
+            Write-Host " NOTE: data/ directory was skipped (the default)" -ForegroundColor Yellow
+            Write-Host "       To upload data/ as well, re-run with -IncludeData" -ForegroundColor Yellow
             Write-Host ""
         }
 
@@ -692,6 +755,8 @@ try {
             Write-Host "   # cp -rT copies staging CONTENTS over the live tree WITHOUT" -ForegroundColor DarkGray
             Write-Host "   # deleting siblings, so the live data/ (feedback.db), cache/" -ForegroundColor DarkGray
             Write-Host "   # (offline_traits.db) and r-libs/ survive. Do NOT 'rm -rf' the tree." -ForegroundColor DarkGray
+            Write-Host "   # Staging was emptied before this upload and holds no runtime" -ForegroundColor DarkGray
+            Write-Host "   # config (api_keys.*, harmonization_custom.json): nothing to strip." -ForegroundColor DarkGray
             Write-Host "   ssh $SSH_TARGET ""cp -rT $APP_DEPLOY_PATH /srv/shiny-server/$APP_NAME && touch /srv/shiny-server/$APP_NAME/restart.txt""" -ForegroundColor Gray
             Write-Host ""
         } else {

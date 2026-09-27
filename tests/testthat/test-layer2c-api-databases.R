@@ -8,17 +8,13 @@ source(file.path(app_root, "R/config/harmonization_config.R"))
 source(file.path(app_root, "R/functions/trait_lookup/harmonization.R"))
 source(file.path(app_root, "R/functions/trait_lookup/api_trait_databases.R"))
 
-# =============================================================================
-# Helper: skip_if_offline
-# =============================================================================
-skip_if_offline <- function() {
-  online <- tryCatch({
-    con <- url("https://www.google.com", open = "r")
-    close(con)
-    TRUE
-  }, error = function(e) FALSE, warning = function(w) FALSE)
-  if (!online) skip("No internet connection — skipping live API test")
-}
+# Every test that can reach the network is gated by skip_if_no_live_tests()
+# (helper-fixtures.R) and bounds the call with with_timeout() (F84). The
+# offline suite runs on every push/PR in CI; these run nightly with
+# RUN_LIVE_TESTS=true. skip_if_offline() is the helper-fixtures.R version:
+# a local redefinition used to shadow it. test-live-gating-guard.R enforces
+# all of this.
+LIVE_TIMEOUT <- 15
 
 # =============================================================================
 # 0. All 5 functions exist
@@ -32,7 +28,7 @@ test_that("all 5 API lookup functions are defined", {
 })
 
 # =============================================================================
-# 1. lookup_worms_traits_api — structure
+# 1. lookup_worms_traits_api - argument validation (returns before any HTTP)
 # =============================================================================
 test_that("lookup_worms_traits_api returns correct structure with NULL aphia_id", {
   res <- lookup_worms_traits_api(species_name = "Nereis diversicolor", aphia_id = NULL)
@@ -56,13 +52,15 @@ test_that("lookup_worms_traits_api returns FALSE for non-numeric aphia_id", {
 })
 
 test_that("lookup_worms_traits_api live lookup for AphiaID 126436 (Gadus morhua)", {
+  skip_if_no_live_tests()
   skip_if_offline()
   skip_if_not_installed("worrms")
-  res <- lookup_worms_traits_api(
+  res <- with_timeout(lookup_worms_traits_api(
     species_name = "Gadus morhua",
     aphia_id     = 126436,
-    timeout      = 20
-  )
+    timeout      = 10
+  ), timeout = LIVE_TIMEOUT)
+  skip_if(is.null(res), "WoRMS did not answer within 15 s")
   expect_type(res, "list")
   expect_equal(res$source, "WoRMS_Traits")
   # Even if WoRMS returns no attributes, structure must be intact
@@ -71,11 +69,13 @@ test_that("lookup_worms_traits_api live lookup for AphiaID 126436 (Gadus morhua)
 })
 
 # =============================================================================
-# 2. lookup_polytraits — structure
+# 2. lookup_polytraits - structure (HTTP even for a nonexistent name)
 # =============================================================================
 test_that("lookup_polytraits returns correct structure", {
-  # Offline: httr not reachable -> should return FALSE gracefully
-  res <- lookup_polytraits("XXXXXXNONEXISTENT_SPECIES_ZZZZ", timeout = 2)
+  skip_if_no_live_tests()
+  res <- with_timeout(lookup_polytraits("XXXXXXNONEXISTENT_SPECIES_ZZZZ", timeout = 2),
+                      timeout = LIVE_TIMEOUT)
+  skip_if(is.null(res), "PolyTraits did not answer within 15 s")
   expect_type(res, "list")
   expect_named(res, c("species", "source", "success", "traits"), ignore.order = TRUE)
   expect_equal(res$source,  "PolyTraits")
@@ -84,15 +84,19 @@ test_that("lookup_polytraits returns correct structure", {
 })
 
 test_that("lookup_polytraits species field matches input", {
-  res <- lookup_polytraits("Hediste diversicolor", timeout = 1)
+  skip_if_no_live_tests()
+  res <- with_timeout(lookup_polytraits("Hediste diversicolor", timeout = 1), timeout = LIVE_TIMEOUT)
+  skip_if(is.null(res), "PolyTraits did not answer within 15 s")
   expect_equal(res$species, "Hediste diversicolor")
 })
 
 test_that("lookup_polytraits live lookup for a known polychaete", {
+  skip_if_no_live_tests()
   skip_if_offline()
   skip_if_not_installed("httr")
   skip_if_not_installed("jsonlite")
-  res <- lookup_polytraits("Nereis diversicolor", timeout = 15)
+  res <- with_timeout(lookup_polytraits("Nereis diversicolor", timeout = 10), timeout = LIVE_TIMEOUT)
+  skip_if(is.null(res), "PolyTraits did not answer within 15 s")
   expect_type(res, "list")
   expect_equal(res$source, "PolyTraits")
   expect_type(res$traits,  "list")
@@ -100,10 +104,14 @@ test_that("lookup_polytraits live lookup for a known polychaete", {
 })
 
 # =============================================================================
-# 3. lookup_emodnet_traits — structure
+# 3. lookup_emodnet_traits - structure
 # =============================================================================
 test_that("lookup_emodnet_traits returns correct structure (Btrait may be absent)", {
-  res <- lookup_emodnet_traits("Abra alba")
+  # Without Btrait the function returns before any I/O. With it,
+  # Btrait::getTrait() may fetch, so that case is a live test.
+  if (requireNamespace("Btrait", quietly = TRUE)) skip_if_no_live_tests()
+  res <- with_timeout(lookup_emodnet_traits("Abra alba"), timeout = LIVE_TIMEOUT)
+  skip_if(is.null(res), "EMODnet did not answer within 15 s")
   expect_type(res, "list")
   expect_named(res, c("species", "source", "success", "traits"), ignore.order = TRUE)
   expect_equal(res$source,  "EMODnet")
@@ -113,19 +121,20 @@ test_that("lookup_emodnet_traits returns correct structure (Btrait may be absent
 })
 
 test_that("lookup_emodnet_traits returns FALSE gracefully without Btrait", {
-  # If Btrait is installed, skip this; if not, it must return FALSE
-  if (requireNamespace("Btrait", quietly = TRUE)) {
-    skip("Btrait is installed — graceful-degradation test not applicable")
-  }
+  skip_if(requireNamespace("Btrait", quietly = TRUE),
+          "Btrait is installed - graceful-degradation test not applicable")
   res <- lookup_emodnet_traits("Abra alba")
   expect_false(res$success)
 })
 
 # =============================================================================
-# 4. lookup_obis_traits — structure
+# 4. lookup_obis_traits - structure (HTTP even for a nonexistent name)
 # =============================================================================
 test_that("lookup_obis_traits returns correct structure", {
-  res <- lookup_obis_traits("XXXXXXNONEXISTENT_SPECIES_ZZZZ", timeout = 5)
+  skip_if_no_live_tests()
+  res <- with_timeout(lookup_obis_traits("XXXXXXNONEXISTENT_SPECIES_ZZZZ", timeout = 5),
+                      timeout = LIVE_TIMEOUT)
+  skip_if(is.null(res), "OBIS did not answer within 15 s")
   expect_type(res, "list")
   expect_named(res, c("species", "source", "success", "traits"), ignore.order = TRUE)
   expect_equal(res$source,  "OBIS")
@@ -134,33 +143,38 @@ test_that("lookup_obis_traits returns correct structure", {
 })
 
 test_that("lookup_obis_traits species field matches input", {
-  res <- lookup_obis_traits("Fake species", timeout = 1)
+  skip_if_no_live_tests()
+  res <- with_timeout(lookup_obis_traits("Fake species", timeout = 1), timeout = LIVE_TIMEOUT)
+  skip_if(is.null(res), "OBIS did not answer within 15 s")
   expect_equal(res$species, "Fake species")
 })
 
 test_that("lookup_obis_traits live lookup for Abra alba", {
+  skip_if_no_live_tests()
   skip_if_offline()
   skip_if_not_installed("robis")
   # OBIS API is very slow and can exceed R's C-level elapsed time limit.
   # Only run when ECONETOOL_TEST_OBIS_LIVE=true is set.
-  if (!identical(Sys.getenv("ECONETOOL_TEST_OBIS_LIVE"), "true")) {
-    skip("OBIS live test skipped by default (set ECONETOOL_TEST_OBIS_LIVE=true to enable)")
-  }
-  res <- lookup_obis_traits("Abra alba", timeout = 20)
+  skip_if(!identical(Sys.getenv("ECONETOOL_TEST_OBIS_LIVE"), "true"),
+          "OBIS live test skipped by default (set ECONETOOL_TEST_OBIS_LIVE=true to enable)")
+  res <- with_timeout(lookup_obis_traits("Abra alba", timeout = 10), timeout = LIVE_TIMEOUT)
+  skip_if(is.null(res), "OBIS did not answer within 15 s")
   expect_type(res, "list")
   expect_equal(res$source, "OBIS")
   expect_type(res$traits,  "list")
   expect_type(res$success, "logical")
-  if (res$success) {
-    expect_true(length(res$traits) > 0)
-  }
+  expect_true(!isTRUE(res$success) || length(res$traits) > 0,
+              info = "a successful OBIS lookup must carry traits")
 })
 
 # =============================================================================
-# 5. lookup_traitbank — structure
+# 5. lookup_traitbank - structure (HTTP even for a nonexistent name)
 # =============================================================================
 test_that("lookup_traitbank returns correct structure", {
-  res <- lookup_traitbank("XXXXXXNONEXISTENT_SPECIES_ZZZZ", timeout = 2)
+  skip_if_no_live_tests()
+  res <- with_timeout(lookup_traitbank("XXXXXXNONEXISTENT_SPECIES_ZZZZ", timeout = 2),
+                      timeout = LIVE_TIMEOUT)
+  skip_if(is.null(res), "TraitBank did not answer within 15 s")
   expect_type(res, "list")
   expect_named(res, c("species", "source", "success", "traits"), ignore.order = TRUE)
   expect_equal(res$source,  "TraitBank")
@@ -169,15 +183,19 @@ test_that("lookup_traitbank returns correct structure", {
 })
 
 test_that("lookup_traitbank species field matches input", {
-  res <- lookup_traitbank("Fake species xyz", timeout = 1)
+  skip_if_no_live_tests()
+  res <- with_timeout(lookup_traitbank("Fake species xyz", timeout = 1), timeout = LIVE_TIMEOUT)
+  skip_if(is.null(res), "TraitBank did not answer within 15 s")
   expect_equal(res$species, "Fake species xyz")
 })
 
 test_that("lookup_traitbank live lookup for Abra alba", {
+  skip_if_no_live_tests()
   skip_if_offline()
   skip_if_not_installed("httr")
   skip_if_not_installed("jsonlite")
-  res <- lookup_traitbank("Abra alba", timeout = 20)
+  res <- with_timeout(lookup_traitbank("Abra alba", timeout = 10), timeout = LIVE_TIMEOUT)
+  skip_if(is.null(res), "TraitBank did not answer within 15 s")
   expect_type(res, "list")
   expect_equal(res$source, "TraitBank")
   expect_type(res$traits,  "list")
@@ -188,15 +206,17 @@ test_that("lookup_traitbank live lookup for Abra alba", {
 # 6. Return-value invariants (all functions)
 # =============================================================================
 test_that("all functions always return the four required list fields", {
+  skip_if_no_live_tests()
   required_fields <- c("species", "source", "success", "traits")
 
-  results <- list(
+  results <- with_timeout(list(
     worms      = lookup_worms_traits_api("X", aphia_id = NULL),
     polytraits = lookup_polytraits("X", timeout = 1),
     emodnet    = lookup_emodnet_traits("X"),
     obis       = lookup_obis_traits("X", timeout = 1),
     traitbank  = lookup_traitbank("X", timeout = 1)
-  )
+  ), timeout = LIVE_TIMEOUT)
+  skip_if(is.null(results), "lookups did not answer within 15 s")
 
   for (nm in names(results)) {
     r <- results[[nm]]

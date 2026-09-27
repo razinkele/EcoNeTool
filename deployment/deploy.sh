@@ -171,14 +171,24 @@ deploy_shiny_server() {
     print_status "Deployment directory status:"
     ls -ld /srv/shiny-server/EcoNeTool
 
-    # Backup existing deployment before removing
-    BACKUP_DIR="/srv/shiny-server/backups/EcoNeTool"
+    # Backup existing deployment before removing. The backup directory is
+    # OUTSIDE site_dir (/srv/shiny-server): everything under site_dir is
+    # served by shiny-server's `location /`, and a copy that contains app.R
+    # and config/api_keys.R would even run as an app. Mode 600: the tar
+    # holds the server's API keys. data/ (~3.1 GB) is left out: the wipe
+    # below preserves it, and keep-last-5 full copies would be ~15 GB.
+    # Members are named EcoNeTool/... (-C /srv/shiny-server EcoNeTool), so
+    # the exclude is EcoNeTool/data and must precede the member argument.
+    BACKUP_DIR="/srv/shiny-server-data/EcoNeTool/backups"
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     mkdir -p "$BACKUP_DIR"
+    chmod 700 "$BACKUP_DIR"
     if [ -f /srv/shiny-server/EcoNeTool/app.R ]; then
-        print_status "Creating timestamped backup..."
-        tar -czf "${BACKUP_DIR}/EcoNeTool_${TIMESTAMP}.tar.gz" -C /srv/shiny-server EcoNeTool
-        print_success "Backup created: EcoNeTool_${TIMESTAMP}.tar.gz"
+        print_status "Creating timestamped backup (without data/)..."
+        tar -czf "${BACKUP_DIR}/EcoNeTool_${TIMESTAMP}.tar.gz" --exclude=EcoNeTool/data \
+            -C /srv/shiny-server EcoNeTool
+        chmod 600 "${BACKUP_DIR}/EcoNeTool_${TIMESTAMP}.tar.gz"
+        print_success "Backup created: ${BACKUP_DIR}/EcoNeTool_${TIMESTAMP}.tar.gz"
         # Keep last 5 backups
         cd "$BACKUP_DIR" && ls -t *.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm
     fi
@@ -194,8 +204,14 @@ deploy_shiny_server() {
     # Dotfiles are preserved explicitly. The old glob never matched them, so a
     # find-based delete that removed .Renviron would be a regression
     # introduced by this very fix.
+    #
+    # data/ (~3.1 GB, managed out of band) and config/ (runtime state:
+    # api_keys.json, api_keys.R, harmonization_custom.json) are server-only
+    # too: deleting them and copying the local tree back replaced production
+    # data and keys with whatever the deploying checkout held (F81, F5).
+    # models/ is kept so a failed copy below cannot leave the ML tier empty.
     print_status "Removing old deployment contents (preserving server state)..."
-    PRESERVE_ITEMS=("r-libs" "cache" "restart.txt")
+    PRESERVE_ITEMS=("r-libs" "cache" "restart.txt" "data" "config" "models")
     FIND_KEEP=()
     for KEEP in "${PRESERVE_ITEMS[@]}"; do
         FIND_KEEP+=(! -name "$KEEP")
@@ -216,8 +232,6 @@ deploy_shiny_server() {
         "www"
         "examples"
         "metawebs"
-        "data"
-        "config"
         # Tracked in git and loaded at runtime by ml_trait_prediction.R:83.
         # Omitting it meant the wipe above removed the trait ML models and
         # nothing put them back, silently disabling the ML tier.
@@ -229,19 +243,23 @@ deploy_shiny_server() {
 
     for ITEM in "${CRITICAL_ITEMS[@]}"; do
         SRC="$APP_DIR/$ITEM"
-        DEST="/srv/shiny-server/EcoNeTool/"
+        DEST="/srv/shiny-server/EcoNeTool"
         if [ -e "$SRC" ]; then
             print_status "Copying $ITEM..."
+            # `|| COPY_STATUS=$?`: under `set -e` a bare failing cp would
+            # abort the script right here, after the wipe, leaving the live
+            # tree half-restored with no error summary. Record the failure,
+            # copy the remaining items, and exit 1 after the loop instead.
+            COPY_STATUS=0
             if [ -d "$SRC" ]; then
-                # Exclude large/sensitive data files to match root deploy.sh
-                rsync -av --exclude='*.zip' --exclude='*.csv' --exclude='*.ewemdb' \
-                      --exclude='*.eweaccdb' --exclude='*.accdb' --exclude='*.xml' \
-                      --exclude='*.doc' --exclude='.claude' \
-                      "$SRC" "$DEST" 2>err.log
+                # cp -rT copies the directory CONTENTS into DEST/ITEM and
+                # never deletes siblings. rsync is not installed on laguna,
+                # so the old rsync call failed after the wipe above. No *.csv
+                # exclude: metawebs/ ships as CSV.
+                cp -rT "$SRC" "$DEST/$ITEM" 2>err.log || COPY_STATUS=$?
             else
-                cp -vf "$SRC" "$DEST" 2>err.log
+                cp -vf "$SRC" "$DEST/" 2>err.log || COPY_STATUS=$?
             fi
-            COPY_STATUS=$?
             if [ $COPY_STATUS -eq 0 ]; then
                 print_success "Copied: $ITEM"
                 log_message "DEPLOY" "Copied $ITEM from $APP_DIR"
@@ -259,6 +277,15 @@ deploy_shiny_server() {
             WARNINGS+=("$ITEM not found")
         fi
     done
+
+    # config/ is preserved above. Ship only the key template into it, never
+    # a local api_keys.R / api_keys.json / harmonization_custom.json (F5).
+    mkdir -p /srv/shiny-server/EcoNeTool/config
+    if cp -f "$APP_DIR/config/api_keys.R.template" /srv/shiny-server/EcoNeTool/config/; then
+        print_success "Copied: config/api_keys.R.template"
+    else
+        ERRORS+=("config/api_keys.R.template: copy failed")
+    fi
 
     # Summary of errors and warnings
     if [ ${#ERRORS[@]} -gt 0 ]; then
@@ -314,53 +341,21 @@ deploy_shiny_server() {
     }
     " && print_success "R packages OK" || print_warning "Package installation had issues (may need manual check)"
 
-    # Configure Shiny Server
-    print_status "Configuring Shiny Server..."
-
-    # Backup original config
-    if [ -f /etc/shiny-server/shiny-server.conf ]; then
-        cp /etc/shiny-server/shiny-server.conf /etc/shiny-server/shiny-server.conf.backup
-        print_success "Original config backed up"
-    fi
-
-    # Create or copy new config
+    # Shiny Server configuration is NEVER written by a deploy script.
+    # laguna is a shared server (~30 apps: BowTie, osmose, marxan, ...);
+    # copying deployment/shiny-server.conf over the live file would drop
+    # every other app's location block. Print the EcoNeTool block from the
+    # repo copy instead, for a manual, reviewed edit.
+    print_warning "Shiny Server config NOT modified (shared server)."
     if [ -f "$DEPLOY_DIR/shiny-server.conf" ]; then
-        cp "$DEPLOY_DIR/shiny-server.conf" /etc/shiny-server/shiny-server.conf
+        echo "If the live config lacks an EcoNeTool location, add this block by hand"
+        echo "(sudo, reviewed), then reload shiny-server:"
+        echo ""
+        sed -n '/location \/EcoNeTool {/,/^  }/p' "$DEPLOY_DIR/shiny-server.conf"
+        echo ""
     else
-        print_status "Creating default shiny-server.conf..."
-        cat > /etc/shiny-server/shiny-server.conf <<'EOF'
-# Shiny Server configuration file for EcoNeTool
-
-# Instruct Shiny Server to run applications as the user "shiny"
-run_as shiny;
-
-# Define a server that listens on port 3838
-server {
-  listen 3838;
-
-  # Define a location at the base URL
-  location / {
-    # Host the directory of Shiny Apps stored in this directory
-    site_dir /srv/shiny-server;
-
-    # Log all Shiny output to files in this directory
-    log_dir /var/log/shiny-server;
-
-    # When a user visits the base URL rather than a particular application,
-    # an index of the applications available in this directory will be shown.
-    directory_index on;
-  }
-
-  # Define EcoNeTool specific location
-  location /EcoNeTool {
-    app_dir /srv/shiny-server/EcoNeTool;
-    log_dir /var/log/shiny-server;
-  }
-}
-EOF
+        print_warning "$DEPLOY_DIR/shiny-server.conf not found; cannot print the EcoNeTool location block."
     fi
-
-    print_success "Shiny Server configured"
 
     # Clear Shiny Server caches
     print_status "Clearing Shiny Server caches..."

@@ -36,7 +36,9 @@ SERVER_PORT=22
 SHINY_SERVER_ROOT="/srv/shiny-server"
 APP_NAME="EcoNeTool"
 APP_DEPLOY_PATH="${SHINY_SERVER_ROOT}/${APP_NAME}"
-BACKUP_DIR="${SHINY_SERVER_ROOT}/backups/${APP_NAME}"
+# Outside site_dir: everything under ${SHINY_SERVER_ROOT} is served by
+# shiny-server, and a backup holds config/api_keys.* (F7).
+BACKUP_DIR="/srv/shiny-server-data/EcoNeTool/backups"
 
 # Local paths
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -65,7 +67,6 @@ FILES=(
   "examples/"
   "R/"
   "metawebs/"
-  "data/"
   "config/"
 )
 
@@ -109,8 +110,17 @@ EXCLUDE_PATTERNS=(
   # These live only on the server (absent from the local repo), so without
   # these excludes --delete would silently wipe them on every deploy.
   ".Renviron"
+  ".*"
   "r-libs"
   "r-libs/*"
+  # data/ (~3.1 GB) is managed out of band; with --delete, shipping the
+  # local data/ would delete every server-only file in it.
+  "/data/"
+  # Runtime config: server-only keys and settings, or a developer's local
+  # copies. Excluded paths are neither sent nor deleted by --delete (F5).
+  "config/api_keys.R"
+  "config/api_keys.json"
+  "config/harmonization_custom.json"
   # Vestigial since 2026-09-13: the feedback DB moved to
   # /srv/shiny-server-data/EcoNeTool/feedback.db, outside the deploy tree,
   # so no rsync can reach it. Kept as defence in case it ever moves back.
@@ -364,22 +374,22 @@ create_backup() {
 
   if [ "$IS_LOCAL_DEPLOYMENT" = true ]; then
     # Local deployment - use direct commands
-    mkdir -p "${BACKUP_DIR}" || {
+    mkdir -p "${BACKUP_DIR}" && chmod 700 "${BACKUP_DIR}" || {
       log_error "Failed to create backup directory"
       return 1
     }
 
     if [ -d "${APP_DEPLOY_PATH}" ]; then
       log_info "Backing up existing application..."
-      cd "${SHINY_SERVER_ROOT}" && tar -czf "${backup_path}" "${APP_NAME}" || {
+      cd "${SHINY_SERVER_ROOT}" && tar --exclude="${APP_NAME}/data" -czf "${backup_path}" "${APP_NAME}" && chmod 600 "${backup_path}" || {
         log_error "Failed to create backup"
         return 1
       }
       log_info "Backup created: ${backup_name}"
 
-      # Clean old backups (keep last 5)
+      # Clean old backups (keep last 5; only our own archives)
       log_info "Cleaning old backups (keeping last 5)..."
-      cd "${BACKUP_DIR}" && ls -t | tail -n +6 | xargs -r rm || {
+      cd "${BACKUP_DIR}" && ls -t ${APP_NAME}_*.tar.gz | tail -n +6 | xargs -r rm -f || {
         log_warn "Failed to clean old backups"
       }
     else
@@ -387,22 +397,22 @@ create_backup() {
     fi
   else
     # Remote deployment - use SSH
-    ssh "${SERVER_USER}@${SERVER_HOST}" "mkdir -p ${BACKUP_DIR}" || {
+    ssh "${SERVER_USER}@${SERVER_HOST}" "mkdir -p ${BACKUP_DIR} && chmod 700 ${BACKUP_DIR}" || {
       log_error "Failed to create backup directory on server"
       return 1
     }
 
     if ssh "${SERVER_USER}@${SERVER_HOST}" "[ -d ${APP_DEPLOY_PATH} ]"; then
       log_info "Backing up existing application..."
-      ssh "${SERVER_USER}@${SERVER_HOST}" "cd ${SHINY_SERVER_ROOT} && tar -czf ${backup_path} ${APP_NAME}" || {
+      ssh "${SERVER_USER}@${SERVER_HOST}" "cd ${SHINY_SERVER_ROOT} && tar --exclude=${APP_NAME}/data -czf ${backup_path} ${APP_NAME} && chmod 600 ${backup_path}" || {
         log_error "Failed to create backup"
         return 1
       }
       log_info "Backup created: ${backup_name}"
 
-      # Clean old backups (keep last 5)
+      # Clean old backups (keep last 5; only our own archives)
       log_info "Cleaning old backups (keeping last 5)..."
-      ssh "${SERVER_USER}@${SERVER_HOST}" "cd ${BACKUP_DIR} && ls -t | tail -n +6 | xargs -r rm" || {
+      ssh "${SERVER_USER}@${SERVER_HOST}" "cd ${BACKUP_DIR} && ls -t ${APP_NAME}_*.tar.gz | tail -n +6 | xargs -r rm -f" || {
         log_warn "Failed to clean old backups"
       }
     else
