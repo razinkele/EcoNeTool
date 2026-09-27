@@ -448,9 +448,31 @@ writes_etc_shiny <- function(lines) {
 deploy_scripts <- function() {
   root <- get_app_root()
   rx <- "\\.(sh|ps1|bat|cmd)$"
-  c(list.files(root, rx),
+  scripts <- c(list.files(root, rx),
     file.path("deployment", list.files(file.path(root, "deployment"), rx)))
+  strip_onedrive_backups(scripts)
 }
+
+# OneDrive resolves a sync conflict by writing a second copy of a file named
+# "<name>-laguna-safeBackup-NNNN.<ext>" alongside the original (see
+# .gitignore's "*-laguna-safeBackup-*" and pre-deploy-check.R's identical
+# `!grepl("safeBackup", ...)` filter, deployment/pre-deploy-check.R:249).
+# These are stale conflict copies, never real deploy scripts, so any guard
+# that lists deploy scripts by glob must ignore them - otherwise a
+# no-longer-maintained copy can fail a guard the real script passes (F87).
+strip_onedrive_backups <- function(paths) {
+  paths[!grepl("safeBackup", paths, fixed = TRUE)]
+}
+
+test_that("deploy_scripts() ignores OneDrive safeBackup conflict copies", {
+  sample <- c("deploy.sh", "deploy-windows.ps1",
+              "deploy-windows-laguna-safeBackup-0001.bat",
+              "deployment/deploy-laguna-safeBackup-0001.sh")
+  expect_equal(strip_onedrive_backups(sample), c("deploy.sh", "deploy-windows.ps1"))
+
+  # Whatever is actually on disk right now must never include one either.
+  expect_false(any(grepl("safeBackup", deploy_scripts(), fixed = TRUE)))
+})
 
 # deploy-windows.bat was a fourth, unguarded deploy path (I1): it wiped the
 # live tree with `sudo rm -rf`, tarred and shipped local data/ and config/,
