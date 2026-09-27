@@ -308,9 +308,27 @@ writes_etc_shiny <- function(lines) {
 
 deploy_scripts <- function() {
   root <- get_app_root()
-  c(list.files(root, "\\.(sh|ps1)$"),
-    file.path("deployment", list.files(file.path(root, "deployment"), "\\.(sh|ps1)$")))
+  rx <- "\\.(sh|ps1|bat|cmd)$"
+  c(list.files(root, rx),
+    file.path("deployment", list.files(file.path(root, "deployment"), rx)))
 }
+
+# deploy-windows.bat was a fourth, unguarded deploy path (I1): it wiped the
+# live tree with `sudo rm -rf`, tarred and shipped local data/ and config/,
+# and restarted every app on the server. Any .bat/.cmd deploy script may
+# only be a stub that points at deploy-windows.ps1 and exits non-zero.
+test_that("every .bat/.cmd deploy script is a retired stub that touches nothing", {
+  scripts <- grep("(^|/)deploy[^/]*\\.(bat|cmd)$", deploy_scripts(), value = TRUE)
+  expect_true("deploy-windows.bat" %in% scripts)
+  for (rel in scripts) {
+    txt <- readLines(deploy_file(rel), warn = FALSE)
+    expect_true(any(grepl("^\\s*exit /b 1\\s*$", txt, ignore.case = TRUE)), info = rel)
+    expect_true(any(grepl("deploy-windows.ps1", txt, fixed = TRUE)), info = rel)
+    for (bad in c("rm -rf", "scp", "ssh", "tar ", "/etc/shiny-server", "systemctl")) {
+      expect_false(any(grepl(bad, tolower(txt), fixed = TRUE)), info = paste(rel, "contains", bad))
+    }
+  }
+})
 
 test_that("writes_etc_shiny() flags writes and ignores prints and reads", {
   writes <- c(

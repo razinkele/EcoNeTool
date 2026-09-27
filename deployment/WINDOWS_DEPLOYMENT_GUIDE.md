@@ -81,19 +81,12 @@ Full-featured deployment with backup, verification, and logging:
 - Verifies deployment success
 - Maintains deployment logs
 
-### Method 2: Batch Script (Simple)
+> `deploy-windows.bat` is **retired**: it wiped the live tree (including
+> `data/` and `config/`), shipped local runtime config and restarted every
+> app on the shared server. It now only prints a pointer to
+> `deploy-windows.ps1` and exits with status 1.
 
-Simple deployment for quick updates:
-
-```cmd
-# Basic deployment
-deploy-windows.bat
-
-# Dry run
-deploy-windows.bat --dry-run
-```
-
-### Method 3: Manual rsync via Git Bash
+### Method 2: Manual rsync via Git Bash
 
 For fine-grained control:
 
