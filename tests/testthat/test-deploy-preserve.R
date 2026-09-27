@@ -20,6 +20,10 @@ test_that("code_lines() ignores comments, so a commented-out keep does not count
     "# PRESERVE_ITEMS=(\"r-libs\" \"cache\" \"data\" \"config\" \"models\")",
     "# find /srv/shiny-server/EcoNeTool -mindepth 1 ! -name '.*' -exec rm -rf {} +",
     "PRESERVE_ITEMS=(\"r-libs\" \"cache\")  # keep .Renviron data config models too",
+    "FIND_KEEP=()",
+    "for KEEP in \"${PRESERVE_ITEMS[@]}\"; do",
+    "    FIND_KEEP+=(! -name \"$KEEP\")",
+    "done",
     "find /srv/shiny-server/EcoNeTool -mindepth 1 -maxdepth 1 \"${FIND_KEEP[@]}\" -exec rm -rf {} +",
     "echo \"${#PRESERVE_ITEMS[@]} kept\"",
     "cp -rT \"$SRC\" \\",
@@ -94,4 +98,92 @@ test_that("the reference shiny-server.conf has no directory index anywhere", {
   expect_false(any(grepl("directory_index\\s+on", conf)))
   # the fallback heredoc in deployment/deploy.sh writes the same file
   expect_false(any(grepl("directory_index\\s+on", code_lines(deploy_file("deployment/deploy.sh")))))
+})
+
+# --- keep lists only count when the delete actually uses them ----------------
+
+write_fixture <- function(lines, ext) {
+  path <- tempfile(fileext = ext)
+  writeLines(lines, path)
+  path
+}
+
+test_that("protected_deployment_sh() ignores PRESERVE_ITEMS the find line does not use", {
+  sh <- c(
+    "PRESERVE_ITEMS=(\"r-libs\" \"cache\" \"data\" \"config\" \"models\")",
+    "FIND_KEEP=()",
+    "for KEEP in \"${PRESERVE_ITEMS[@]}\"; do",
+    "    FIND_KEEP+=(! -name \"$KEEP\")",
+    "done"
+  )
+  find_head <- "find /srv/shiny-server/EcoNeTool -mindepth 1 -maxdepth 1 \\"
+  find_no_keep <- c(find_head, "     ! -name '.*' -exec rm -rf {} +")
+  find_keep <- c(find_head, "     ! -name '.*' \"${FIND_KEEP[@]}\" -exec rm -rf {} +")
+  unused <- write_fixture(c(sh, find_no_keep), ".sh")
+  no_loop <- write_fixture(c(sh[1], find_keep), ".sh")
+  used <- write_fixture(c(sh, find_keep), ".sh")
+  on.exit(unlink(c(unused, no_loop, used)), add = TRUE)
+
+  expect_equal(protected_deployment_sh(unused), ".*")
+  expect_equal(protected_deployment_sh(no_loop), ".*")
+  expect_setequal(protected_deployment_sh(used), c(".*", "r-libs", "cache", "data", "config", "models"))
+})
+
+test_that("protected_windows_ps1() ignores a $preserve the find command does not use", {
+  preserve <- "$preserve = \"! -name '.*' ! -name data ! -name cache ! -name r-libs ! -name models ! -name config\""
+  find_no_keep <- "Invoke-RemoteCommand \"${sudoPrefix}find $APP_DEPLOY_PATH -mindepth 1 -exec rm -rf {} +\""
+  find_keep <- "Invoke-RemoteCommand \"${sudoPrefix}find $APP_DEPLOY_PATH -mindepth 1 $preserve -exec rm -rf {} +\""
+  unused <- write_fixture(c(preserve, find_no_keep), ".ps1")
+  used <- write_fixture(c(preserve, find_keep), ".ps1")
+  on.exit(unlink(c(unused, used)), add = TRUE)
+
+  expect_equal(protected_windows_ps1(unused), character(0))
+  expect_setequal(protected_windows_ps1(used), DEPLOY_PROTECTED)
+})
+
+test_that("protected_root_sh() ignores EXCLUDE_PATTERNS that rsync does not receive", {
+  sh <- c(
+    "EXCLUDE_PATTERNS=(",
+    "  \"/data/\"",
+    "  \"r-libs\"",
+    ")",
+    "  local exclude_opts=\"\"",
+    "  for pattern in \"${EXCLUDE_PATTERNS[@]}\"; do",
+    "    exclude_opts+=\"--exclude='${pattern}' \"",
+    "  done",
+    "    local rsync_cmd=\"rsync -avz --progress --delete\""
+  )
+  unused <- write_fixture(c(sh, "    rsync_cmd+=\" ./\""), ".sh")
+  used <- write_fixture(c(sh, "    rsync_cmd+=\" ${exclude_opts}\"", "    rsync_cmd+=\" ./\""), ".sh")
+  on.exit(unlink(c(unused, used)), add = TRUE)
+
+  expect_equal(protected_root_sh(unused), character(0))
+  expect_setequal(protected_root_sh(used), c("data", "r-libs"))
+})
+
+# --- deployment/deploy.sh: failed copies and backup size ----------------------
+
+test_that("deployment/deploy.sh records a failed copy instead of aborting under set -e", {
+  code <- code_lines(deploy_file("deployment/deploy.sh"))
+  expect_true(any(grepl("^\\s*set -e", code)), info = "premise: the script runs under set -e")
+  copies <- grep("cp -(rT|vf) \"\\$SRC\"", code, value = TRUE)
+  expect_length(copies, 2L)
+  # a bare cp would exit the script mid-restore, before COPY_STATUS is read
+  guarded <- grepl("^\\s*(if|elif)\\s", copies) | grepl("\\|\\|", copies)
+  expect_true(all(guarded), info = paste(copies[!guarded], collapse = " | "))
+  # ... and the recorded errors still end the run with a non-zero status
+  err_check <- grep("if \\[ \\$\\{#ERRORS\\[@\\]\\} -eq 0 \\]", code)
+  expect_length(err_check, 1L)
+  expect_true(any(grepl("^\\s*exit 1\\s*$", code[err_check + 1:4])))
+})
+
+test_that("deployment/deploy.sh backups leave out data/", {
+  code <- code_lines(deploy_file("deployment/deploy.sh"))
+  tar_line <- grep("tar -czf", code, value = TRUE)
+  expect_length(tar_line, 1L)
+  # -C /srv/shiny-server EcoNeTool: members are EcoNeTool/..., so the
+  # exclude must name EcoNeTool/data and come before the member argument
+  excl <- regexpr("--exclude=EcoNeTool/data", tar_line, fixed = TRUE)
+  member <- regexpr("-C /srv/shiny-server EcoNeTool", tar_line, fixed = TRUE)
+  expect_true(excl > 0 && member > 0 && excl < member, info = tar_line)
 })

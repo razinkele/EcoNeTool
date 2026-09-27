@@ -58,23 +58,39 @@ DEPLOY_PROTECTED <- c(".*", "data", "cache", "r-libs", "models", "config")
 RUNTIME_CONFIG_FILES <- c("config/api_keys.R", "config/api_keys.json",
                           "config/harmonization_custom.json", ".Renviron")
 
-# deployment/deploy.sh: names kept by the find-based wipe.
+# deployment/deploy.sh: names kept by the find-based wipe. PRESERVE_ITEMS
+# only counts when it reaches the delete: the loop must turn it into
+# FIND_KEEP and the find line must pass "${FIND_KEEP[@]}". Otherwise a
+# well-populated but unused array would keep the guard green while the
+# find deleted data/, config/, r-libs/, ...
 protected_deployment_sh <- function(path) {
   code <- code_lines(path)
-  keep <- script_array(code, "PRESERVE_ITEMS")
   find_line <- grep("find /srv/shiny-server/EcoNeTool .*-exec rm -rf", code, value = TRUE)
-  if (length(find_line) == 1L && grepl("! -name '.*'", find_line, fixed = TRUE)) {
+  if (length(find_line) != 1L) {
+    return(character(0))
+  }
+  keep <- character(0)
+  loop_builds_keep <- any(grepl("for KEEP in \"${PRESERVE_ITEMS[@]}\"", code, fixed = TRUE)) &&
+    any(grepl("FIND_KEEP+=(! -name \"$KEEP\")", code, fixed = TRUE))
+  if (loop_builds_keep && grepl("\"${FIND_KEEP[@]}\"", find_line, fixed = TRUE)) {
+    keep <- script_array(code, "PRESERVE_ITEMS")
+  }
+  if (grepl("! -name '.*'", find_line, fixed = TRUE)) {
     keep <- c(keep, ".*")
   }
   keep
 }
 
 # deploy-windows.ps1: names kept by the find-based wipe of the LIVE tree
-# (the non-empty `$preserve = "..."`; staging uses `$preserve = ""`).
+# (the non-empty `$preserve = "..."`; staging uses `$preserve = ""`). Counts
+# only when a `find ... $preserve ... -exec rm -rf` command uses it.
 protected_windows_ps1 <- function(path) {
   code <- code_lines(path)
   line <- grep('^\\s*\\$preserve\\s*=\\s*"!', code, value = TRUE)
   if (length(line) != 1L) {
+    return(character(0))
+  }
+  if (!any(grepl("find\\s.*\\$preserve\\s.*-exec rm -rf", code))) {
     return(character(0))
   }
   names <- regmatches(line, gregexpr("-name\\s+'?[^'\"[:space:]]+'?", line))[[1]]
@@ -83,8 +99,18 @@ protected_windows_ps1 <- function(path) {
 
 # deploy.sh (rsync --delete): excluded paths are neither sent nor deleted on
 # the receiver. Normalise "/data/", "cache/*", "r-libs" to bare names.
+# Counts only when the patterns reach rsync: the loop must build
+# exclude_opts from EXCLUDE_PATTERNS and every rsync_cmd must append it.
 protected_root_sh <- function(path) {
-  pats <- script_array(code_lines(path), "EXCLUDE_PATTERNS")
+  code <- code_lines(path)
+  loop_builds_opts <- any(grepl("for pattern in \"${EXCLUDE_PATTERNS[@]}\"", code, fixed = TRUE)) &&
+    any(grepl("exclude_opts+=\"--exclude=", code, fixed = TRUE))
+  n_rsync <- sum(grepl("rsync_cmd=\"rsync", code, fixed = TRUE))
+  n_used <- sum(grepl("rsync_cmd+=\" ${exclude_opts}\"", code, fixed = TRUE))
+  if (!loop_builds_opts || n_rsync == 0L || n_used < n_rsync) {
+    return(character(0))
+  }
+  pats <- script_array(code, "EXCLUDE_PATTERNS")
   unique(sub("/\\*?$", "", sub("^/", "", pats)))
 }
 

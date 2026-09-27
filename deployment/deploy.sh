@@ -175,14 +175,18 @@ deploy_shiny_server() {
     # OUTSIDE site_dir (/srv/shiny-server): everything under site_dir is
     # served by shiny-server's `location /`, and a copy that contains app.R
     # and config/api_keys.R would even run as an app. Mode 600: the tar
-    # holds the server's API keys.
+    # holds the server's API keys. data/ (~3.1 GB) is left out: the wipe
+    # below preserves it, and keep-last-5 full copies would be ~15 GB.
+    # Members are named EcoNeTool/... (-C /srv/shiny-server EcoNeTool), so
+    # the exclude is EcoNeTool/data and must precede the member argument.
     BACKUP_DIR="/srv/shiny-server-data/EcoNeTool/backups"
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     mkdir -p "$BACKUP_DIR"
     chmod 700 "$BACKUP_DIR"
     if [ -f /srv/shiny-server/EcoNeTool/app.R ]; then
-        print_status "Creating timestamped backup..."
-        tar -czf "${BACKUP_DIR}/EcoNeTool_${TIMESTAMP}.tar.gz" -C /srv/shiny-server EcoNeTool
+        print_status "Creating timestamped backup (without data/)..."
+        tar -czf "${BACKUP_DIR}/EcoNeTool_${TIMESTAMP}.tar.gz" --exclude=EcoNeTool/data \
+            -C /srv/shiny-server EcoNeTool
         chmod 600 "${BACKUP_DIR}/EcoNeTool_${TIMESTAMP}.tar.gz"
         print_success "Backup created: ${BACKUP_DIR}/EcoNeTool_${TIMESTAMP}.tar.gz"
         # Keep last 5 backups
@@ -242,16 +246,20 @@ deploy_shiny_server() {
         DEST="/srv/shiny-server/EcoNeTool"
         if [ -e "$SRC" ]; then
             print_status "Copying $ITEM..."
+            # `|| COPY_STATUS=$?`: under `set -e` a bare failing cp would
+            # abort the script right here, after the wipe, leaving the live
+            # tree half-restored with no error summary. Record the failure,
+            # copy the remaining items, and exit 1 after the loop instead.
+            COPY_STATUS=0
             if [ -d "$SRC" ]; then
                 # cp -rT copies the directory CONTENTS into DEST/ITEM and
                 # never deletes siblings. rsync is not installed on laguna,
                 # so the old rsync call failed after the wipe above. No *.csv
                 # exclude: metawebs/ ships as CSV.
-                cp -rT "$SRC" "$DEST/$ITEM" 2>err.log
+                cp -rT "$SRC" "$DEST/$ITEM" 2>err.log || COPY_STATUS=$?
             else
-                cp -vf "$SRC" "$DEST/" 2>err.log
+                cp -vf "$SRC" "$DEST/" 2>err.log || COPY_STATUS=$?
             fi
-            COPY_STATUS=$?
             if [ $COPY_STATUS -eq 0 ]; then
                 print_success "Copied: $ITEM"
                 log_message "DEPLOY" "Copied $ITEM from $APP_DIR"
