@@ -223,8 +223,9 @@ test_that("deploy-windows.ps1 backups are tar archives outside site_dir", {
 test_that("deploy-windows.ps1 empties staging on every upload path, and only staging", {
   code <- code_lines(deploy_file("deploy-windows.ps1"))
   # Through Invoke-RemoteCommand, so -DryRun only logs it
-  expect_true(any(grepl('Invoke-RemoteCommand "rm -rf $APP_DEPLOY_PATH && mkdir -p $APP_DEPLOY_PATH && echo STAGING_CLEARED"',
-                        code, fixed = TRUE)))
+  wipe <- paste0('Invoke-RemoteCommand "rm -rf $APP_DEPLOY_PATH && mkdir -p $APP_DEPLOY_PATH',
+                 ' && echo STAGING_CLEARED"')
+  expect_true(any(grepl(wipe, code, fixed = TRUE)))
 
   guard <- grep("-notmatch '", code, value = TRUE, fixed = TRUE)
   expect_length(guard, 1L)
