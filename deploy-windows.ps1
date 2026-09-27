@@ -376,7 +376,13 @@ function Deploy-Application {
         if ($APP_DEPLOY_PATH -notmatch '^/home/[^/]+/EcoNeTool_staging$') {
             throw "Refusing to clear unexpected staging path: $APP_DEPLOY_PATH"
         }
-        Invoke-RemoteCommand "rm -rf $APP_DEPLOY_PATH && mkdir -p $APP_DEPLOY_PATH"
+        # Invoke-RemoteCommand ignores ssh's exit status, so a failed wipe
+        # would leave old files that Test-Deployment accepts: require the
+        # marker echoed by the last && step.
+        $clearOut = Invoke-RemoteCommand "rm -rf $APP_DEPLOY_PATH && mkdir -p $APP_DEPLOY_PATH && echo STAGING_CLEARED"
+        if (-not $DryRun -and -not (($clearOut | Out-String) -match 'STAGING_CLEARED')) {
+            throw "Clearing staging $APP_DEPLOY_PATH failed: $clearOut"
+        }
     } else {
         # Ensure deploy directory exists
         Invoke-RemoteCommand "${sudoPrefix}mkdir -p $APP_DEPLOY_PATH"
@@ -529,7 +535,10 @@ function Deploy-Application {
                     } else {
                         $preserve = "! -name '.*' ! -name data ! -name cache ! -name r-libs ! -name models ! -name config"
                     }
-                    Invoke-RemoteCommand "${sudoPrefix}find $APP_DEPLOY_PATH -mindepth 1 -maxdepth 1 $preserve -exec rm -rf {} + && ${sudoPrefix}tar -xzf /tmp/econetool_deploy.tar.gz -C $APP_DEPLOY_PATH && rm /tmp/econetool_deploy.tar.gz"
+                    $extractOut = Invoke-RemoteCommand "${sudoPrefix}find $APP_DEPLOY_PATH -mindepth 1 -maxdepth 1 $preserve -exec rm -rf {} + && ${sudoPrefix}tar -xzf /tmp/econetool_deploy.tar.gz -C $APP_DEPLOY_PATH && rm /tmp/econetool_deploy.tar.gz && echo EXTRACT_OK"
+                    if (-not $DryRun -and -not (($extractOut | Out-String) -match 'EXTRACT_OK')) {
+                        throw "Extracting the upload into $APP_DEPLOY_PATH failed: $extractOut"
+                    }
                 }
 
                 Remove-Item $tarFile -Force -ErrorAction SilentlyContinue

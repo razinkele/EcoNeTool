@@ -223,7 +223,7 @@ test_that("deploy-windows.ps1 backups are tar archives outside site_dir", {
 test_that("deploy-windows.ps1 empties staging on every upload path, and only staging", {
   code <- code_lines(deploy_file("deploy-windows.ps1"))
   # Through Invoke-RemoteCommand, so -DryRun only logs it
-  expect_true(any(grepl('Invoke-RemoteCommand "rm -rf $APP_DEPLOY_PATH && mkdir -p $APP_DEPLOY_PATH"',
+  expect_true(any(grepl('Invoke-RemoteCommand "rm -rf $APP_DEPLOY_PATH && mkdir -p $APP_DEPLOY_PATH && echo STAGING_CLEARED"',
                         code, fixed = TRUE)))
 
   guard <- grep("-notmatch '", code, value = TRUE, fixed = TRUE)
@@ -234,6 +234,30 @@ test_that("deploy-windows.ps1 empties staging on every upload path, and only sta
   expect_false(grepl(rx, "/srv/shiny-server/EcoNeTool", perl = TRUE))
   expect_false(grepl(rx, "/home/razinka/EcoNeTool_staging/data", perl = TRUE))
   expect_false(grepl(rx, "/home//EcoNeTool_staging", perl = TRUE), info = "empty -User")
+})
+
+# Invoke-RemoteCommand does not check ssh's exit status (I2). A failed
+# staging wipe or extract would leave old staging files that Test-Deployment
+# accepts, and the follow-up `cp -rT` would push them live. Each command
+# must echo a success marker as its last `&&` step, its output must be
+# captured, and a check on the next code lines must throw when the marker is
+# missing (outside -DryRun, where Invoke-RemoteCommand returns "").
+test_that("deploy-windows.ps1 throws when the staging wipe or the extract prints no success marker", {
+  code <- code_lines(deploy_file("deploy-windows.ps1"))
+  for (marker in c("STAGING_CLEARED", "EXTRACT_OK")) {
+    cmd <- grep(sprintf("^\\s*\\$\\w+\\s*=\\s*Invoke-RemoteCommand \".*&& echo %s\"\\s*$", marker), code)
+    expect_length(cmd, 1L)
+    if (length(cmd) != 1L) next
+    var <- sub("^\\s*(\\$\\w+)\\s*=.*$", "\\1", code[cmd])
+    check <- code[(cmd + 1L):min(length(code), cmd + 3L)]
+    # the `if` on the very next code line, with a throw directly under it
+    cond <- grepl("^\\s*if\\s*\\(", check[1]) &&
+      grepl("-not $DryRun", check[1], fixed = TRUE) &&
+      grepl(sprintf("-not ((%s | Out-String) -match '%s')", var, marker), check[1], fixed = TRUE)
+    expect_true(cond, info = paste(marker, "check:", check[1]))
+    expect_true(grepl("^\\s*throw\\b", check[2]) || grepl("\\{\\s*throw\\b", check[1]),
+                info = paste(marker, "no throw under the check:", paste(check, collapse = " | ")))
+  }
 })
 
 test_that("deploy-windows.ps1 Test-ShouldExclude drops runtime config by relative path only", {
