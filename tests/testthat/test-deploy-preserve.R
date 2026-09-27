@@ -291,3 +291,62 @@ test_that("deploy.sh backups live outside site_dir", {
   expect_equal(backup_dirs(path), "/srv/shiny-server-data/EcoNeTool/backups")
   expect_true(any(grepl("chmod 600", code_lines(path), fixed = TRUE)))
 })
+
+# --- no script writes the shared Shiny Server config -------------------------
+
+# TRUE for a code line that writes under /etc/shiny-server/: a copy/move/tee/
+# install/link/rsync whose command line names it, a `>`/`>>` redirect into
+# it, or `sed -i` on it. Lines that only print or read it (echo, Write-Host,
+# grep, sed -n) are not writes.
+writes_etc_shiny <- function(lines) {
+  cmd <- "(^|[;&|(]\\s*|\\bsudo\\s+)(cp|mv|tee|install|ln|rsync|truncate)\\b[^#]*/etc/shiny-server/"
+  grepl(cmd, lines, perl = TRUE) |
+    grepl(">>?\\s*[\"']?/etc/shiny-server/", lines, perl = TRUE) |
+    grepl("\\bsed\\s+(-[a-zA-Z]*i|--in-place)[^#]*/etc/shiny-server/", lines, perl = TRUE)
+}
+
+deploy_scripts <- function() {
+  root <- get_app_root()
+  c(list.files(root, "\\.(sh|ps1)$"),
+    file.path("deployment", list.files(file.path(root, "deployment"), "\\.(sh|ps1)$")))
+}
+
+test_that("writes_etc_shiny() flags writes and ignores prints and reads", {
+  writes <- c(
+    "cp \"$DEPLOY_DIR/shiny-server.conf\" /etc/shiny-server/shiny-server.conf",
+    "    sudo cp x /etc/shiny-server/shiny-server.conf",
+    "cat > /etc/shiny-server/shiny-server.conf <<'EOF'",
+    "echo x | sudo tee /etc/shiny-server/shiny-server.conf",
+    "sudo sed -i 's/on;/off;/' /etc/shiny-server/shiny-server.conf",
+    "Invoke-RemoteCommand \"sudo cp /tmp/c /etc/shiny-server/shiny-server.conf\""
+  )
+  reads <- c(
+    "echo \"  sudo nano /etc/shiny-server/shiny-server.conf\"",
+    "grep -n directory_index /etc/shiny-server/shiny-server.conf",
+    "sed -n '/location \\/EcoNeTool {/,/^  }/p' \"$DEPLOY_DIR/shiny-server.conf\"",
+    "Write-Host \"edit /etc/shiny-server/shiny-server.conf by hand\""
+  )
+  expect_equal(writes_etc_shiny(writes), rep(TRUE, length(writes)))
+  expect_equal(writes_etc_shiny(reads), rep(FALSE, length(reads)))
+})
+
+test_that("no deploy script writes to /etc/shiny-server/ (shared server)", {
+  scripts <- deploy_scripts()
+  expect_true(all(c("deploy.sh", "deploy-windows.ps1", "deployment/deploy.sh",
+                    "deployment/force-reload.sh") %in% scripts))
+  for (rel in scripts) {
+    code <- code_lines(deploy_file(rel))
+    offenders <- code[writes_etc_shiny(code)]
+    expect_equal(length(offenders), 0L, info = paste(rel, ":", paste(trimws(offenders), collapse = " | ")))
+  }
+})
+
+test_that("deployment/deploy.sh prints the EcoNeTool location block for a manual edit", {
+  code <- code_lines(deploy_file("deployment/deploy.sh"))
+  expect_true(any(grepl("sed -n '/location \\/EcoNeTool {/,/^  }/p' \"$DEPLOY_DIR/shiny-server.conf\"",
+                        code, fixed = TRUE)))
+  conf <- readLines(deploy_file("deployment/shiny-server.conf"), warn = FALSE)
+  start <- grep("location /EcoNeTool {", conf, fixed = TRUE)
+  expect_length(start, 1L)
+  expect_true(any(conf[start:length(conf)] == "  }"), info = "the sed range needs a closing '  }' line")
+})

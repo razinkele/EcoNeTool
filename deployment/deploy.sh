@@ -341,52 +341,17 @@ deploy_shiny_server() {
     }
     " && print_success "R packages OK" || print_warning "Package installation had issues (may need manual check)"
 
-    # Configure Shiny Server
-    print_status "Configuring Shiny Server..."
-
-    # Backup original config
-    if [ -f /etc/shiny-server/shiny-server.conf ]; then
-        cp /etc/shiny-server/shiny-server.conf /etc/shiny-server/shiny-server.conf.backup
-        print_success "Original config backed up"
-    fi
-
-    # Create or copy new config
-    if [ -f "$DEPLOY_DIR/shiny-server.conf" ]; then
-        cp "$DEPLOY_DIR/shiny-server.conf" /etc/shiny-server/shiny-server.conf
-    else
-        print_status "Creating default shiny-server.conf..."
-        cat > /etc/shiny-server/shiny-server.conf <<'EOF'
-# Shiny Server configuration file for EcoNeTool
-
-# Instruct Shiny Server to run applications as the user "shiny"
-run_as shiny;
-
-# Define a server that listens on port 3838
-server {
-  listen 3838;
-
-  # Define a location at the base URL
-  location / {
-    # Host the directory of Shiny Apps stored in this directory
-    site_dir /srv/shiny-server;
-
-    # Log all Shiny output to files in this directory
-    log_dir /var/log/shiny-server;
-
-    # No directory index: it would list everything under site_dir.
-    directory_index off;
-  }
-
-  # Define EcoNeTool specific location
-  location /EcoNeTool {
-    app_dir /srv/shiny-server/EcoNeTool;
-    log_dir /var/log/shiny-server;
-  }
-}
-EOF
-    fi
-
-    print_success "Shiny Server configured"
+    # Shiny Server configuration is NEVER written by a deploy script.
+    # laguna is a shared server (~30 apps: BowTie, osmose, marxan, ...);
+    # copying deployment/shiny-server.conf over the live file would drop
+    # every other app's location block. Print the EcoNeTool block from the
+    # repo copy instead, for a manual, reviewed edit.
+    print_warning "Shiny Server config NOT modified (shared server)."
+    echo "If the live config lacks an EcoNeTool location, add this block by hand"
+    echo "(sudo, reviewed), then reload shiny-server:"
+    echo ""
+    sed -n '/location \/EcoNeTool {/,/^  }/p' "$DEPLOY_DIR/shiny-server.conf"
+    echo ""
 
     # Clear Shiny Server caches
     print_status "Clearing Shiny Server caches..."
