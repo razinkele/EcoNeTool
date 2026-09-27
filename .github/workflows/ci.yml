@@ -146,12 +146,11 @@ jobs:
 
       - name: Parse-check all R files
         run: |
-          r_files <- list.files(
-            c(".", "R", "R/config", "R/functions", "R/functions/ecopath",
-              "R/functions/rpath", "R/modules", "R/ui"),
-            pattern = "\\.R$",
-            full.names = TRUE,
-            recursive = FALSE
+          # Root *.R plus everything under R/, recursively. A fixed directory
+          # list silently skipped R/functions/trait_lookup/ (F82).
+          r_files <- c(
+            list.files(".", pattern = "\\.R$", full.names = TRUE),
+            list.files("R", pattern = "\\.R$", full.names = TRUE, recursive = TRUE)
           )
           # Exclude backup files
           r_files <- r_files[!grepl("safeBackup", r_files)]
@@ -178,6 +177,89 @@ jobs:
           } else {
             cat("All R files have valid syntax\n")
           }
+        shell: Rscript {0}
+
+  # ===========================================================================
+  # Offline testthat suite (F82). RUN_LIVE_TESTS is deliberately unset, so
+  # every live-API test skips; the nightly workflow runs those.
+  # ===========================================================================
+  testthat-offline:
+    name: testthat (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.4.1'
+          use-public-rspm: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libpng-dev \
+            libgdal-dev \
+            libgeos-dev \
+            libproj-dev \
+            libudunits2-dev
+
+      - name: Install R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::testthat
+            any::worrms
+            any::rfishbase
+            any::httr
+            any::jsonlite
+            any::igraph
+            any::dplyr
+            any::tidyr
+            any::readr
+            any::readxl
+            any::RCurl
+            any::XML
+            any::plyr
+            any::ape
+            any::icesVocab
+            any::icesDatras
+            any::randomForest
+            any::DBI
+            any::RSQLite
+            any::digest
+            any::openssl
+            any::shiny
+            any::withr
+            any::yaml
+            any::sf
+            any::visNetwork
+            any::fluxweb
+            any::R6
+            any::MASS
+            any::leaflet
+            any::DT
+            any::bs4Dash
+            any::shinyWidgets
+            any::shinyBS
+            any::future
+            any::future.apply
+
+      - name: Run offline testthat suite (fail on any test failure)
+        run: |
+          testthat::test_dir(
+            "tests/testthat",
+            reporter = "summary",
+            stop_on_failure = TRUE
+          )
         shell: Rscript {0}
 
   # ===========================================================================
@@ -259,7 +341,7 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [pre-commit, repo-hygiene, shellcheck, r-syntax, version-drift]
+    needs: [pre-commit, repo-hygiene, shellcheck, r-syntax, testthat-offline, version-drift]
     if: always()
     steps:
       - name: Check job results
@@ -268,10 +350,12 @@ jobs:
           echo "Repo hygiene: ${{ needs.repo-hygiene.result }}"
           echo "Shellcheck: ${{ needs.shellcheck.result }}"
           echo "R syntax: ${{ needs.r-syntax.result }}"
+          echo "testthat (offline): ${{ needs.testthat-offline.result }}"
 
           if [ "${{ needs.pre-commit.result }}" == "failure" ] || \
              [ "${{ needs.repo-hygiene.result }}" == "failure" ] || \
-             [ "${{ needs.r-syntax.result }}" == "failure" ]; then
+             [ "${{ needs.r-syntax.result }}" == "failure" ] || \
+             [ "${{ needs.testthat-offline.result }}" != "success" ]; then
             echo "::error::CI checks failed"
             exit 1
           fi
