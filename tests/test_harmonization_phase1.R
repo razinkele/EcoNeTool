@@ -159,15 +159,15 @@ if (requireNamespace("jsonlite", quietly = TRUE)) {
   stopifnot("Export succeeded" = success_export)
   stopifnot("JSON created" = file.exists(test_json))
 
-  # Modify config
-  HARMONIZATION_CONFIG$size_thresholds$MS2_MS3 <- 2.0
-
-  # Import from JSON
-  success_import <- import_config_json(file = test_json)
-  stopifnot("Import succeeded" = success_import)
-  stopifnot("Config restored" =
-    HARMONIZATION_CONFIG$size_thresholds$MS2_MS3 == 1.0
+  # Import returns the validated config; it never assigns a global (the
+  # pre-PR9α pattern this test used to expect).
+  global_before <- HARMONIZATION_CONFIG
+  imported <- import_config_json(file = test_json)
+  stopifnot("Import returns a config" = is.list(imported))
+  stopifnot("Thresholds round-trip" =
+    isTRUE(all.equal(unlist(imported$size_thresholds), unlist(HARMONIZATION_CONFIG$size_thresholds)))
   )
+  stopifnot("Global default untouched" = identical(HARMONIZATION_CONFIG, global_before))
 
   # Clean up
   file.remove(test_json)

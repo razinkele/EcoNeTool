@@ -143,7 +143,7 @@ test_that("browser start-up echo (UI defaults, then the file value) settles on t
   expect_equal(calls$n, 1L)
 })
 
-test_that("a server-default file missing a threshold still starts and accepts slider moves", {
+test_that("a server-default file missing a threshold is filled from the defaults at start", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("withr")
   source_harm_module()
@@ -155,7 +155,9 @@ test_that("a server-default file missing a threshold still starts and accepts sl
   calls <- local_harm_loader(path)
 
   shiny::testServer(harmonization_settings_server, {
-    expect_null(session$userData$harm_config$size_thresholds$MS6_MS7)
+    # B1: load_harmonization_config() now runs the shared validator, which
+    # fills missing keys from HARMONIZATION_CONFIG (pre-B1 this was NULL).
+    expect_equal(session$userData$harm_config$size_thresholds$MS6_MS7, 150)
     set_all_thresholds(session, ms3_ms4 = 9)
     expect_equal(session$userData$harm_config$size_thresholds$MS6_MS7, 150)
     expect_equal(session$userData$harm_config$size_thresholds$MS3_MS4, 9)

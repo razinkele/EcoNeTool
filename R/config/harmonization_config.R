@@ -289,23 +289,163 @@ HARMONIZATION_CONFIG_FILE <- if (exists("app_path", mode = "function")) {
   "config/harmonization_custom.json"
 }
 
+# The six size-class boundaries in MS order. The validator, the slider module
+# and the tests all iterate this one vector.
+HARM_THRESHOLD_KEYS <- c("MS1_MS2", "MS2_MS3", "MS3_MS4", "MS4_MS5", "MS5_MS6", "MS6_MS7")
+
+# Diet nouns an FS0 (primary producer) pattern must never match. They were
+# removed from FS0 on 2026-07-17: FS0 is tested before FS1-FS6 on the pasted
+# feeding text, so a consumer whose diet mentions algae or diatoms was coded
+# as an autotroph, inverting the base of the food web. The validator rejects
+# any FS0 pattern matching one of these, so a stale server-default file can
+# never bring the inversion back.
+HARM_FS0_DIET_NOUNS <- c("plant", "algae", "phytoplankton", "diatom", "dinoflagellate",
+                         "seaweed", "macroalgae")
+
+#' Does a foraging pattern compile the way harmonize_foraging_strategy() uses it?
+#'
+#' A length-1, non-blank string that grepl(..., ignore.case = TRUE) accepts.
+#' Blank is refused because an empty pattern matches every text. The tryCatch
+#' is a validation probe, not a swallowed failure: FALSE is reported to the
+#' caller as a validation error.
+#'
+#' @param pattern Candidate regular expression.
+#' @return TRUE or FALSE.
+harm_pattern_compiles <- function(pattern) {
+  if (!is.character(pattern) || length(pattern) != 1L || is.na(pattern) ||
+        !nzchar(trimws(pattern))) {
+    return(FALSE)
+  }
+  tryCatch({
+    suppressWarnings(grepl(pattern, "", ignore.case = TRUE))
+    TRUE
+  }, error = function(e) FALSE)
+}
+
+#' Validate (and normalise) a harmonization config
+#'
+#' Shared by the server-default loader, JSON import and the "Save as server
+#' default" button (spec B section 4.1, F2/F8). Unknown top-level keys are
+#' dropped; missing keys are filled from HARMONIZATION_CONFIG with
+#' utils::modifyList() BEFORE the checks run.
+#'
+#' @param cfg A config list (e.g. from jsonlite::fromJSON(simplifyVector = FALSE)).
+#' @return list(ok = logical(1), errors = character(), config = <normalised list>).
+#'   `config` is HARMONIZATION_CONFIG when `cfg` is not a named list.
+validate_harmonization_config <- function(cfg) {
+  if (!is.list(cfg) || is.null(names(cfg))) {
+    return(list(ok = FALSE, errors = "config must be a JSON object (a named list)",
+                config = HARMONIZATION_CONFIG))
+  }
+  cfg <- utils::modifyList(HARMONIZATION_CONFIG, cfg[intersect(names(cfg), names(HARMONIZATION_CONFIG))])
+  errors <- character()
+
+  thr <- if (is.list(cfg$size_thresholds)) cfg$size_thresholds else list()
+  vals <- vapply(HARM_THRESHOLD_KEYS, function(k) {
+    v <- thr[[k]]
+    if (is.numeric(v) && length(v) == 1L && is.finite(v) && v > 0) as.numeric(v) else NA_real_
+  }, numeric(1))
+  if (anyNA(vals)) {
+    errors <- c(errors, sprintf("size_thresholds: %s must be a finite number > 0",
+                                paste(HARM_THRESHOLD_KEYS[is.na(vals)], collapse = ", ")))
+  } else if (any(diff(vals) <= 0)) {
+    errors <- c(errors, "size_thresholds must be strictly increasing from MS1_MS2 to MS6_MS7")
+  }
+
+  pats <- if (is.list(cfg$foraging_patterns)) cfg$foraging_patterns else list()
+  bad_pats <- names(pats)[!vapply(pats, harm_pattern_compiles, logical(1))]
+  if (length(pats) == 0L || length(bad_pats) > 0L) {
+    errors <- c(errors, sprintf("foraging_patterns: not a valid non-empty regular expression: %s",
+                                paste(bad_pats, collapse = ", ")))
+  }
+  fs0 <- pats$FS0_primary_producer
+  if (harm_pattern_compiles(fs0)) {
+    diet_hits <- HARM_FS0_DIET_NOUNS[grepl(fs0, HARM_FS0_DIET_NOUNS, ignore.case = TRUE)]
+    if (length(diet_hits) > 0L) {
+      errors <- c(errors, sprintf(paste0(
+        "foraging_patterns: FS0_primary_producer matches diet nouns (%s); FS0 is tested first, ",
+        "so consumers whose diet mentions them would be coded as producers"),
+        paste(diet_hits, collapse = ", ")))
+    }
+  }
+
+  rules <- if (is.list(cfg$taxonomic_rules)) cfg$taxonomic_rules else list()
+  is_flag <- vapply(rules, function(x) is.logical(x) && length(x) == 1L && !is.na(x), logical(1))
+  if (length(rules) == 0L || !all(is_flag)) {
+    errors <- c(errors, sprintf("taxonomic_rules: must be TRUE or FALSE: %s",
+                                paste(names(rules)[!is_flag], collapse = ", ")))
+  }
+
+  profile <- cfg$active_profile
+  if (!is.character(profile) || length(profile) != 1L || !profile %in% names(cfg$profiles)) {
+    errors <- c(errors, sprintf("active_profile '%s' is not one of: %s",
+                                paste(format(profile), collapse = ","),
+                                paste(names(cfg$profiles), collapse = ", ")))
+  }
+
+  list(ok = length(errors) == 0L, errors = errors, config = cfg)
+}
+
 save_harmonization_config <- function(config = HARMONIZATION_CONFIG,
                                       file = HARMONIZATION_CONFIG_FILE) {
   dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
-  json_data <- jsonlite::toJSON(config, pretty = TRUE, auto_unbox = TRUE)
-  writeLines(json_data, file)
+  json_data <- jsonlite::toJSON(config, pretty = TRUE, auto_unbox = TRUE, digits = NA)
+  # Write beside the target, then rename over it, so a crash or a full disk
+  # mid-write can never leave a truncated server default behind.
+  tmp <- paste0(file, ".tmp")
+  writeLines(json_data, tmp)
+  if (!file.rename(tmp, file)) {
+    unlink(tmp)
+    stop(sprintf("could not move '%s' into place", tmp), call. = FALSE)
+  }
   message("✓ Harmonization configuration saved to: ", file)
+  invisible(file)
 }
 
 load_harmonization_config <- function(file = HARMONIZATION_CONFIG_FILE) {
   if (!file.exists(file)) return(HARMONIZATION_CONFIG)
-  tryCatch({
+  raw <- tryCatch({
     jsonlite::fromJSON(file, simplifyVector = FALSE)
   }, error = function(e) {
     # Falling back to defaults is right; doing it silently is not - the user
     # would see their saved settings quietly revert with no explanation.
     warning(sprintf("[harmonization] could not parse '%s', using defaults: %s",
                     file, conditionMessage(e)), call. = FALSE)
-    HARMONIZATION_CONFIG
+    NULL
   })
+  if (is.null(raw)) return(HARMONIZATION_CONFIG)
+  checked <- validate_harmonization_config(raw)
+  if (!checked$ok) {
+    warning(sprintf("[harmonization] invalid config in '%s', using defaults: %s",
+                    file, paste(checked$errors, collapse = "; ")), call. = FALSE)
+    return(HARMONIZATION_CONFIG)
+  }
+  checked$config
+}
+
+#' Write a config to a JSON file (the "Export as JSON" download)
+#'
+#' @param file Destination path.
+#' @param config Config list; defaults to the process-wide default.
+#' @return invisible(TRUE).
+export_config_json <- function(file, config = HARMONIZATION_CONFIG) {
+  jsonlite::write_json(config, file, auto_unbox = TRUE, pretty = TRUE, digits = NA)
+  invisible(TRUE)
+}
+
+#' Read and validate a config JSON file (the "Import" upload)
+#'
+#' Never assigns a global: the caller decides where the config goes (the
+#' settings module puts it in the session only).
+#'
+#' @param file Path to a JSON file.
+#' @return The validated, normalised config list. Stops with the joined
+#'   validation errors when the file is invalid, or with the parse error.
+import_config_json <- function(file) {
+  raw <- jsonlite::fromJSON(file, simplifyVector = FALSE)
+  checked <- validate_harmonization_config(raw)
+  if (!checked$ok) {
+    stop(paste(checked$errors, collapse = "; "), call. = FALSE)
+  }
+  checked$config
 }
