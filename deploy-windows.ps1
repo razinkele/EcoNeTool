@@ -4,7 +4,14 @@
 # This PowerShell script deploys EcoNeTool from Windows to the Shiny Server
 #
 # Usage:
-#   .\deploy-windows.ps1 [-DryRun] [-NoBackup] [-Force] [-Verbose]
+#   .\deploy-windows.ps1 [-NoSudo] [-IncludeData] [-DryRun] [-NoBackup] [-Force] [-Verbose]
+#
+#   Recommended: .\deploy-windows.ps1 -NoSudo
+#     -NoSudo       upload to /home/<User>/EcoNeTool_staging (emptied first,
+#                   runtime config stripped), then cp -rT it live by hand
+#     -IncludeData  also upload the local data/ (skipped by default: it is
+#                   managed out of band on the server)
+#     -SkipData     no-op, kept so old command lines still work
 #
 # Prerequisites:
 #   - Windows 10/11 with OpenSSH client (built-in)
@@ -24,7 +31,8 @@ param(
     [switch]$RestartServer,
     [switch]$UseSCP,        # Skip tar, use SCP directly (more reliable)
     [switch]$NoSudo,        # Deploy to home dir staging area (no sudo required)
-    [switch]$SkipData,      # Skip data/ directory (faster deployment)
+    [switch]$SkipData,      # No-op: data/ is skipped by default (kept for old command lines)
+    [switch]$IncludeData,   # Also upload the local data/ directory (off by default)
     # Interpolated into remote shell commands: a plain login name only
     [ValidatePattern('^[a-z_][a-z0-9_-]*$')]
     [string]$User = "razinka",
@@ -77,7 +85,8 @@ $DEPLOY_ITEMS = @(
     "www/",
     "examples/",
     "metawebs/",
-    "data/",
+    # data/ is NOT here: it is managed out of band on the server and is
+    # uploaded only with -IncludeData (see Get-FilesToDeploy).
     "config/",
     # Tracked in git and loaded at runtime by ml_trait_prediction.R.
     "models/"
@@ -293,13 +302,10 @@ function Copy-ToRemote {
 function Get-FilesToDeploy {
     $files = @()
 
-    foreach ($item in $DEPLOY_ITEMS) {
-        # Skip data/ directory if -SkipData is specified
-        if ($SkipData -and ($item -eq "data/" -or $item -like "data/*")) {
-            Write-Log "Skipping data directory (-SkipData specified)" "INFO"
-            continue
-        }
+    $items = $DEPLOY_ITEMS
+    if ($IncludeData) { $items = $DEPLOY_ITEMS + @("data/") }
 
+    foreach ($item in $items) {
         $fullPath = Join-Path $PROJECT_ROOT $item
 
         if (Test-Path $fullPath) {
@@ -692,13 +698,10 @@ $dataDir = Join-Path $PROJECT_ROOT "data"
 if (Test-Path $dataDir) {
     $dataSize = (Get-ChildItem -Path $dataDir -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1MB
     $dataSizeMB = [math]::Round($dataSize, 2)
-    if ($SkipData) {
-        Write-Log "Data directory size: $dataSizeMB MB (will be SKIPPED)" "INFO"
+    if ($IncludeData) {
+        Write-Log "Data directory size: $dataSizeMB MB (will be deployed, -IncludeData)" "WARNING"
     } else {
-        Write-Log "Data directory size: $dataSizeMB MB (will be deployed)" "INFO"
-        if ($dataSizeMB -gt 50) {
-            Write-Host "  TIP: Use -SkipData for faster deployment if data hasn't changed" -ForegroundColor Yellow
-        }
+        Write-Log "Data directory size: $dataSizeMB MB (will be SKIPPED; use -IncludeData to upload it)" "INFO"
     }
 }
 
@@ -739,9 +742,9 @@ try {
         Write-Host "================================================================================" -ForegroundColor Green
         Write-Host ""
 
-        if ($SkipData) {
-            Write-Host " NOTE: data/ directory was skipped (-SkipData)" -ForegroundColor Yellow
-            Write-Host "       To deploy data separately, re-run without -SkipData" -ForegroundColor Yellow
+        if (-not $IncludeData) {
+            Write-Host " NOTE: data/ directory was skipped (the default)" -ForegroundColor Yellow
+            Write-Host "       To upload data/ as well, re-run with -IncludeData" -ForegroundColor Yellow
             Write-Host ""
         }
 

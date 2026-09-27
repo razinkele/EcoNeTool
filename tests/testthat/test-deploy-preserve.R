@@ -298,6 +298,67 @@ test_that("deploy-windows.ps1 never uploads a stale local tar archive", {
               info = paste(fin_body, collapse = " | "))
 })
 
+# data/ (~3-5 GB locally) used to ship unless -SkipData was given (M4). It
+# is managed out of band on the server, so shipping it is now opt-in via
+# -IncludeData; -SkipData stays accepted as a no-op for old command lines.
+test_that("deploy-windows.ps1 leaves data/ out unless -IncludeData is given", {
+  code <- code_lines(deploy_file("deploy-windows.ps1"))
+  expect_false("data/" %in% script_array(code, "DEPLOY_ITEMS"))
+  expect_true(any(grepl("^\\s*\\[switch\\]\\$IncludeData\\b", code)))
+  expect_true(any(grepl("^\\s*\\[switch\\]\\$SkipData\\b", code)), info = "-SkipData must still be accepted")
+  data_lines <- grep('"data/"', code, value = TRUE, fixed = TRUE)
+  expect_gt(length(data_lines), 0L)
+  expect_true(all(grepl("$IncludeData", data_lines, fixed = TRUE)),
+              info = paste(data_lines, collapse = " | "))
+})
+
+test_that("deploy-windows.ps1 Get-FilesToDeploy adds data/ only with -IncludeData", {
+  pwsh <- Sys.which("pwsh")
+  skip_if(!nzchar(pwsh), "pwsh (PowerShell 7) not on PATH")
+  q <- function(x) if (.Platform$OS.type == "windows") shQuote(x, type = "cmd") else shQuote(x)
+
+  # Scratch project with every default item plus data/
+  root <- tempfile("deploy_items_")
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  for (d in c("R", "www", "examples", "metawebs", "data", "config", "models")) {
+    dir.create(file.path(root, d), recursive = TRUE)
+  }
+  for (f in c("app.R", "run_app.R", "VERSION")) writeLines("x", file.path(root, f))
+
+  runner <- tempfile(fileext = ".ps1")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(c(
+    "param([string]$Script, [string]$Root, [string]$Mode)",
+    "$ast = [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref]$null, [ref]$null)",
+    "foreach ($v in '$DEPLOY_ITEMS', '$EXCLUDE_PATTERNS') {",
+    "  $a = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and",
+    "    $n.Left.Extent.Text -eq $v }, $true)",
+    "  Invoke-Expression $a.Extent.Text",
+    "}",
+    "$fn = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and",
+    "  $n.Name -eq 'Get-FilesToDeploy' }, $true)",
+    "Invoke-Expression $fn.Extent.Text",
+    "function Write-Log { param($Message, $Level) }",
+    "$PROJECT_ROOT = $Root",
+    "$IncludeData = $Mode -eq 'include'",
+    "$SkipData = $Mode -eq 'skip'",
+    "(Get-FilesToDeploy | ForEach-Object { $_.RelativePath }) -join ','"
+  ), runner)
+
+  items <- function(mode) {
+    out <- system2(pwsh, c("-NoProfile", "-NonInteractive", "-File", q(runner),
+                           "-Script", q(normalizePath(deploy_file("deploy-windows.ps1"))),
+                           "-Root", q(normalizePath(root)), "-Mode", mode),
+                   stdout = TRUE, stderr = TRUE)
+    strsplit(tail(out, 1L), ",", fixed = TRUE)[[1]]
+  }
+  default <- items("default")
+  expect_true(all(c("app.R", "R/", "config/", "models/") %in% default), info = paste(default, collapse = ","))
+  expect_false("data/" %in% default)
+  expect_false("data/" %in% items("skip"))
+  expect_true("data/" %in% items("include"))
+})
+
 test_that("deploy-windows.ps1 Test-ShouldExclude drops runtime config by relative path only", {
   pwsh <- Sys.which("pwsh")
   skip_if(!nzchar(pwsh), "pwsh (PowerShell 7) not on PATH")
