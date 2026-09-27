@@ -199,6 +199,15 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   different or missing hash as a miss. Compute the hash in the calling
   process, never inside a `future` worker (a worker has no Shiny session).
 
+- **Every `harm_*` widget needs a server consumer.** The Harmonization tab
+  once shipped rule checkboxes and FS inputs nothing read.
+  `tests/testthat/test-ui-inputs-have-handlers.R` renders the UI and fails
+  for any `harm_*` id the module does not read as `input$<id>`/`output$<id>`
+  or wire from `CONSUMED_TAXONOMIC_RULES` / `HARM_FS_PATTERN_LABELS`. Drive
+  widgets from the session config with `push_config_to_widgets(cfg)`, write
+  it only through `set_session_config(cfg)`, and return early when an
+  incoming value already equals `isolate(rv$config)` (echo safety, B0).
+
 ## Commit Messages
 
 We use [Conventional Commits](https://www.conventionalcommits.org/). This drives our automatic versioning and changelog generation.

@@ -23,3 +23,42 @@ test_that("the FS pattern inputs cover every configured foraging pattern", {
   expect_setequal(names(get0("HARM_FS_PATTERN_LABELS", ifnotfound = character())),
                   names(HARMONIZATION_CONFIG$foraging_patterns))
 })
+
+rendered_harm_ids <- function() {
+  suppressPackageStartupMessages(library(shiny)) # the UI builders are unqualified, as in app.R
+  source(file.path(app_root, "R/ui/harmonization_settings_ui.R"), local = FALSE)
+  html <- as.character(harmonization_settings_ui())
+  hits <- regmatches(html, gregexpr('\\sid="harm_[A-Za-z0-9_]+"', html))[[1]]
+  ids <- unique(sub('^\\sid="(.*)"$', "\\1", hits))
+  # fileInput() adds a "<id>_progress" bar div of its own; it is not an input.
+  ids[!grepl("_progress$", ids)]
+}
+
+server_src <- function() {
+  paste(readLines(file.path(app_root, "R/modules/harmonization_settings_server.R"), warn = FALSE),
+        collapse = "\n")
+}
+
+test_that("every harm_* element in the harmonization UI has a server consumer", {
+  skip_if_not_installed("shiny")
+  ids <- rendered_harm_ids()
+  src <- server_src()
+
+  used <- regmatches(src, gregexpr("(input|output)\\$harm_[A-Za-z0-9_]+", src))[[1]]
+  used <- unique(sub("^(input|output)\\$", "", used))
+  generated <- c(
+    paste0("harm_rule_", names(get0("CONSUMED_TAXONOMIC_RULES", ifnotfound = character()))),
+    paste0("harm_pattern_", names(get0("HARM_FS_PATTERN_LABELS", ifnotfound = character())))
+  )
+
+  expect_gt(length(ids), 20L)
+  expect_identical(setdiff(ids, c(used, generated)), character(0))
+})
+
+test_that("generated widget IDs are wired from the same vectors the UI uses", {
+  src <- server_src()
+  expect_true(grepl('paste0("harm_rule_", rule)', src, fixed = TRUE))
+  expect_true(grepl('paste0("harm_pattern_", key)', src, fixed = TRUE))
+  expect_true(grepl("names(CONSUMED_TAXONOMIC_RULES)", src, fixed = TRUE))
+  expect_true(grepl("names(HARM_FS_PATTERN_LABELS)", src, fixed = TRUE))
+})
