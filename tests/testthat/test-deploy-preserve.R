@@ -409,6 +409,21 @@ test_that("deploy.sh rsync --delete excludes server state and runtime config", {
   expect_equal(setdiff(RUNTIME_CONFIG_FILES, prot), character(0))
 })
 
+test_that("deploy.sh backups leave out data/ and retention only prunes its own archives", {
+  code <- code_lines(deploy_file("deploy.sh"))
+  expect_true(any(grepl('^\\s*APP_NAME="EcoNeTool"\\s*$', code)), info = "premise: members are EcoNeTool/...")
+  tar_lines <- grep("tar .*-czf", code, value = TRUE)
+  expect_length(tar_lines, 2L)  # local and remote branch
+  # the exclude names ${APP_NAME}/data and comes before the member argument
+  rx <- 'tar --exclude="?\\$\\{APP_NAME\\}/data"? -czf "?\\$\\{backup_path\\}"? "?\\$\\{APP_NAME\\}"?(\\s|$)'
+  expect_true(all(grepl(rx, tar_lines)), info = paste(tar_lines, collapse = " | "))
+  # retention used `ls -t | tail -n +6 | xargs rm`: any file in the dir
+  prune <- grep("tail -n \\+6", code, value = TRUE)
+  expect_length(prune, 2L)
+  expect_true(all(grepl("ls -t ${APP_NAME}_*.tar.gz | tail -n +6", prune, fixed = TRUE)),
+              info = paste(prune, collapse = " | "))
+})
+
 test_that("deploy.sh backups live outside site_dir", {
   path <- deploy_file("deploy.sh")
   expect_equal(backup_dirs(path), "/srv/shiny-server-data/EcoNeTool/backups")

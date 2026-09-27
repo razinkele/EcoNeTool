@@ -381,15 +381,15 @@ create_backup() {
 
     if [ -d "${APP_DEPLOY_PATH}" ]; then
       log_info "Backing up existing application..."
-      cd "${SHINY_SERVER_ROOT}" && tar -czf "${backup_path}" "${APP_NAME}" && chmod 600 "${backup_path}" || {
+      cd "${SHINY_SERVER_ROOT}" && tar --exclude="${APP_NAME}/data" -czf "${backup_path}" "${APP_NAME}" && chmod 600 "${backup_path}" || {
         log_error "Failed to create backup"
         return 1
       }
       log_info "Backup created: ${backup_name}"
 
-      # Clean old backups (keep last 5)
+      # Clean old backups (keep last 5; only our own archives)
       log_info "Cleaning old backups (keeping last 5)..."
-      cd "${BACKUP_DIR}" && ls -t | tail -n +6 | xargs -r rm || {
+      cd "${BACKUP_DIR}" && ls -t ${APP_NAME}_*.tar.gz | tail -n +6 | xargs -r rm -f || {
         log_warn "Failed to clean old backups"
       }
     else
@@ -404,15 +404,15 @@ create_backup() {
 
     if ssh "${SERVER_USER}@${SERVER_HOST}" "[ -d ${APP_DEPLOY_PATH} ]"; then
       log_info "Backing up existing application..."
-      ssh "${SERVER_USER}@${SERVER_HOST}" "cd ${SHINY_SERVER_ROOT} && tar -czf ${backup_path} ${APP_NAME} && chmod 600 ${backup_path}" || {
+      ssh "${SERVER_USER}@${SERVER_HOST}" "cd ${SHINY_SERVER_ROOT} && tar --exclude=${APP_NAME}/data -czf ${backup_path} ${APP_NAME} && chmod 600 ${backup_path}" || {
         log_error "Failed to create backup"
         return 1
       }
       log_info "Backup created: ${backup_name}"
 
-      # Clean old backups (keep last 5)
+      # Clean old backups (keep last 5; only our own archives)
       log_info "Cleaning old backups (keeping last 5)..."
-      ssh "${SERVER_USER}@${SERVER_HOST}" "cd ${BACKUP_DIR} && ls -t | tail -n +6 | xargs -r rm" || {
+      ssh "${SERVER_USER}@${SERVER_HOST}" "cd ${BACKUP_DIR} && ls -t ${APP_NAME}_*.tar.gz | tail -n +6 | xargs -r rm -f" || {
         log_warn "Failed to clean old backups"
       }
     else
