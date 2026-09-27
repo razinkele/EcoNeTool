@@ -347,11 +347,15 @@ deploy_shiny_server() {
     # every other app's location block. Print the EcoNeTool block from the
     # repo copy instead, for a manual, reviewed edit.
     print_warning "Shiny Server config NOT modified (shared server)."
-    echo "If the live config lacks an EcoNeTool location, add this block by hand"
-    echo "(sudo, reviewed), then reload shiny-server:"
-    echo ""
-    sed -n '/location \/EcoNeTool {/,/^  }/p' "$DEPLOY_DIR/shiny-server.conf"
-    echo ""
+    if [ -f "$DEPLOY_DIR/shiny-server.conf" ]; then
+        echo "If the live config lacks an EcoNeTool location, add this block by hand"
+        echo "(sudo, reviewed), then reload shiny-server:"
+        echo ""
+        sed -n '/location \/EcoNeTool {/,/^  }/p' "$DEPLOY_DIR/shiny-server.conf"
+        echo ""
+    else
+        print_warning "$DEPLOY_DIR/shiny-server.conf not found; cannot print the EcoNeTool location block."
+    fi
 
     # Clear Shiny Server caches
     print_status "Clearing Shiny Server caches..."

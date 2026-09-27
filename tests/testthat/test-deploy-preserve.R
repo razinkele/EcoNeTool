@@ -295,11 +295,12 @@ test_that("deploy.sh backups live outside site_dir", {
 # --- no script writes the shared Shiny Server config -------------------------
 
 # TRUE for a code line that writes under /etc/shiny-server/: a copy/move/tee/
-# install/link/rsync whose command line names it, a `>`/`>>` redirect into
-# it, or `sed -i` on it. Lines that only print or read it (echo, Write-Host,
+# install/link/rsync/truncate/remove/chmod/chown whose command line names
+# it (indented or not, with or without sudo), a `>`/`>>` redirect into it,
+# or `sed -i` on it. Lines that only print or read it (echo, Write-Host,
 # grep, sed -n) are not writes.
 writes_etc_shiny <- function(lines) {
-  cmd <- "(^|[;&|(]\\s*|\\bsudo\\s+)(cp|mv|tee|install|ln|rsync|truncate)\\b[^#]*/etc/shiny-server/"
+  cmd <- "(^\\s*|[;&|(]\\s*|\\bsudo\\s+)(cp|mv|tee|install|ln|rsync|truncate|rm|chmod|chown)\\b[^#]*/etc/shiny-server/"
   grepl(cmd, lines, perl = TRUE) |
     grepl(">>?\\s*[\"']?/etc/shiny-server/", lines, perl = TRUE) |
     grepl("\\bsed\\s+(-[a-zA-Z]*i|--in-place)[^#]*/etc/shiny-server/", lines, perl = TRUE)
@@ -318,7 +319,18 @@ test_that("writes_etc_shiny() flags writes and ignores prints and reads", {
     "cat > /etc/shiny-server/shiny-server.conf <<'EOF'",
     "echo x | sudo tee /etc/shiny-server/shiny-server.conf",
     "sudo sed -i 's/on;/off;/' /etc/shiny-server/shiny-server.conf",
-    "Invoke-RemoteCommand \"sudo cp /tmp/c /etc/shiny-server/shiny-server.conf\""
+    "Invoke-RemoteCommand \"sudo cp /tmp/c /etc/shiny-server/shiny-server.conf\"",
+    # F-A regression: indented, non-sudo lines (the original bug's exact
+    # shape) were not flagged because the cmd anchor required `cp` at
+    # column 0.
+    "    cp \"$DEPLOY_DIR/shiny-server.conf\" /etc/shiny-server/shiny-server.conf",
+    "    mv x /etc/shiny-server/shiny-server.conf",
+    "    install -m 644 x /etc/shiny-server/shiny-server.conf",
+    # F-B: rm, chmod, chown targeting /etc/shiny-server/ are also writes
+    # (deleting or changing permissions on the shared conf/dir).
+    "rm -rf /etc/shiny-server/shiny-server.conf",
+    "chmod 644 /etc/shiny-server/shiny-server.conf",
+    "chown shiny:shiny /etc/shiny-server/shiny-server.conf"
   )
   reads <- c(
     "echo \"  sudo nano /etc/shiny-server/shiny-server.conf\"",
@@ -349,4 +361,17 @@ test_that("deployment/deploy.sh prints the EcoNeTool location block for a manual
   start <- grep("location /EcoNeTool {", conf, fixed = TRUE)
   expect_length(start, 1L)
   expect_true(any(conf[start:length(conf)] == "  }"), info = "the sed range needs a closing '  }' line")
+})
+
+test_that("deployment/deploy.sh guards the location snippet print so a missing repo conf warns instead of aborting under set -e", {
+  code <- code_lines(deploy_file("deployment/deploy.sh"))
+  sed_idx <- grep("sed -n '/location \\/EcoNeTool {/,/^  }/p' \"$DEPLOY_DIR/shiny-server.conf\"",
+                  code, fixed = TRUE)
+  expect_length(sed_idx, 1L)
+  before <- code[max(1L, sed_idx - 5L):sed_idx]
+  expect_true(any(grepl('if \\[ -f "\\$DEPLOY_DIR/shiny-server\\.conf" \\]', before)),
+              info = "sed -n must run only when $DEPLOY_DIR/shiny-server.conf exists")
+  after <- code[sed_idx:min(length(code), sed_idx + 5L)]
+  expect_true(any(grepl("print_warning", after)),
+              info = "the else branch (missing repo conf) must warn, not abort")
 })
