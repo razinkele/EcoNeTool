@@ -36,39 +36,48 @@ Install [Git for Windows](https://git-scm.com/download/win) for faster tar-based
 
 ### Method 1: PowerShell Script (Recommended)
 
-Full-featured deployment with backup, verification, and logging:
+Full-featured deployment with backup, verification, and logging.
+
+**Recommended workflow** (run the pre-deploy check first, from inside
+`deployment/`):
 
 ```powershell
-# Basic deployment
-.\deploy-windows.ps1
+# 1. Upload code to /home/razinka/EcoNeTool_staging (data/ is skipped by default)
+powershell ./deploy-windows.ps1 -NoSudo
 
+# 2. Copy staging over the live tree and reload only this app
+ssh razinka@laguna.ku.lt "cp -rT /home/razinka/EcoNeTool_staging /srv/shiny-server/EcoNeTool && touch /srv/shiny-server/EcoNeTool/restart.txt"
+```
+
+The script empties the staging directory before every upload and never
+uploads runtime config (`config/api_keys.*`,
+`config/harmonization_custom.json`, `.Renviron`), so there is nothing to
+strip by hand before the `cp -rT`. `cp -rT` copies the staging *contents*
+without deleting siblings, so the live `data/`, `cache/`, `r-libs/` and
+`config/` survive. Never `rm -rf` the live tree.
+
+Other options:
+
+```powershell
 # Dry run (preview what will be deployed)
-.\deploy-windows.ps1 -DryRun
+.\deploy-windows.ps1 -NoSudo -DryRun
 
 # Skip backup
-.\deploy-windows.ps1 -NoBackup
+.\deploy-windows.ps1 -NoSudo -NoBackup
 
-# Fast deployment (skip large data directory)
-.\deploy-windows.ps1 -SkipData
-
-# Deploy to staging area (no sudo required)
-.\deploy-windows.ps1 -NoSudo
+# Also upload the local data/ directory (rarely needed; data/ is managed on the server)
+.\deploy-windows.ps1 -NoSudo -IncludeData
 
 # Use SCP instead of tar (more reliable, slower)
-.\deploy-windows.ps1 -UseSCP
-
-# Restart Shiny Server after deployment
-.\deploy-windows.ps1 -RestartServer
-
-# Combined options for quick update (skip data, use staging)
-.\deploy-windows.ps1 -NoSudo -SkipData
+.\deploy-windows.ps1 -NoSudo -UseSCP
 ```
 
 **Options:**
+- `-NoSudo`: Deploy to staging area in home dir (no sudo needed) - recommended
+- `-IncludeData`: Also upload `data/` (skipped by default)
+- `-SkipData`: No-op, kept so old command lines still work (data/ is skipped by default)
 - `-DryRun`: Preview without making changes
-- `-NoBackup`: Skip creating server backup
-- `-SkipData`: Skip `data/` directory (use for faster code-only updates)
-- `-NoSudo`: Deploy to staging area in home dir (no sudo needed)
+- `-NoBackup`: Skip creating server backup (`/home/<User>/backups` with `-NoSudo`)
 - `-UseSCP`: Use SCP instead of tar (more reliable on slow connections)
 - `-RestartServer`: Restart Shiny Server after deployment
 - `-Force`: Continue even if SSH test fails

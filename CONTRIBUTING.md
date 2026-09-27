@@ -172,9 +172,11 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   comment mentioned `.Renviron`. Every deploy path must keep dotfiles,
   `data/`, `cache/`, `r-libs/`, `models/` and `config/` on the server,
   never upload `config/api_keys.*`, `config/harmonization_custom.json` or
-  `.Renviron`, and write backups as `tar.gz` (mode 600) to
-  `/srv/shiny-server-data/EcoNeTool/backups` - never under
-  `/srv/shiny-server/`, which shiny-server serves. No deploy script
+  `.Renviron`, and write backups as `tar.gz` (mode 600, without `data/`) to
+  `/srv/shiny-server-data/EcoNeTool/backups` (or `/home/$User/backups`
+  for `deploy-windows.ps1 -NoSudo`) - never under `/srv/shiny-server/`,
+  which shiny-server serves. `deploy-windows.bat` is a retired stub; any
+  `.bat`/`.cmd` deploy script must stay one. No deploy script
   writes anything under `/etc/shiny-server/`: laguna is shared with ~30
   other apps, so conf changes are printed as a snippet and applied by
   hand after review.
