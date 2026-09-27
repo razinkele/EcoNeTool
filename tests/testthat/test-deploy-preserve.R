@@ -260,6 +260,34 @@ test_that("deploy-windows.ps1 throws when the staging wipe or the extract prints
   }
 })
 
+# The local archive was a fixed %TEMP%\econetool_deploy.tar.gz, removed only
+# after a successful upload, and the git-bash tar exit code was ignored: a
+# failed tar left the previous run's archive in place, Test-Path accepted it
+# and a stale upload went out (I3).
+test_that("deploy-windows.ps1 never uploads a stale local tar archive", {
+  code <- code_lines(deploy_file("deploy-windows.ps1"))
+  def <- grep('^\\s*\\$tarFile\\s*=\\s*Join-Path \\$env:TEMP "econetool_deploy_\\$TIMESTAMP\\.tar\\.gz"\\s*$', code)
+  expect_length(def, 1L)
+  try_line <- grep("^\\s*try\\s*\\{\\s*$", code)
+  temp_def <- grep("^\\s*\\$tempDir\\s*=\\s*Join-Path \\$env:TEMP", code)
+  expect_length(temp_def, 1L)
+  deploy_try <- min(try_line[try_line > temp_def])
+  expect_true(length(def) == 1L && def < deploy_try,
+              info = "$tarFile must be set before the try, so finally never removes $null")
+
+  tar_call <- grep("^\\s*& \\$gitBash -c \\$tarCommand", code)
+  expect_length(tar_call, 1L)
+  pre_rm <- grep("^\\s*Remove-Item \\$tarFile -Force -ErrorAction SilentlyContinue\\s*$", code)
+  expect_true(any(pre_rm < tar_call), info = "remove any old archive before building the new one")
+  expect_match(code[tar_call + 1L], "^\\s*if \\(\\$LASTEXITCODE -ne 0\\) \\{ throw \"tar failed")
+
+  fin <- grep("\\}\\s*finally\\s*\\{", code)
+  expect_length(fin, 1L)
+  fin_body <- code[fin + seq_len(3L)]
+  expect_true(any(grepl("^\\s*Remove-Item -Path \\$tarFile -Force -ErrorAction SilentlyContinue\\s*$", fin_body)),
+              info = paste(fin_body, collapse = " | "))
+})
+
 test_that("deploy-windows.ps1 Test-ShouldExclude drops runtime config by relative path only", {
   pwsh <- Sys.which("pwsh")
   skip_if(!nzchar(pwsh), "pwsh (PowerShell 7) not on PATH")

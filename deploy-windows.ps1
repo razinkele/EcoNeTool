@@ -395,6 +395,10 @@ function Deploy-Application {
     # Create a temporary directory for staging
     $tempDir = Join-Path $env:TEMP "econetool_deploy_$TIMESTAMP"
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+    # Per-run archive name, set before the try so `finally` always has a
+    # path to remove: a fixed name let a failed tar re-upload the previous
+    # run's archive.
+    $tarFile = Join-Path $env:TEMP "econetool_deploy_$TIMESTAMP.tar.gz"
 
     try {
         # Helper function to check if path should be excluded
@@ -477,8 +481,7 @@ function Deploy-Application {
         # Upload staged files
         Write-Log "Uploading files to server..."
 
-        # Create tar archive for faster transfer
-        $tarFile = Join-Path $env:TEMP "econetool_deploy.tar.gz"
+        # Create tar archive ($tarFile, see above) for faster transfer
 
         # Helper function to convert Windows path to Git Bash path
         function Convert-ToGitBashPath {
@@ -511,7 +514,10 @@ function Deploy-Application {
             $tarCommand = "cd '$bashTempDir' && tar -czf '$bashTarFile' ."
             Write-Host "  DEBUG: tar command = $tarCommand" -ForegroundColor Gray
 
+            # Never let Test-Path below see an archive this run did not build
+            Remove-Item $tarFile -Force -ErrorAction SilentlyContinue
             & $gitBash -c $tarCommand 2>&1 | ForEach-Object { Write-Host "  tar: $_" -ForegroundColor Gray }
+            if ($LASTEXITCODE -ne 0) { throw "tar failed (exit $LASTEXITCODE) building $tarFile" }
 
             if (Test-Path $tarFile) {
                 $tarSuccess = $true
@@ -578,7 +584,8 @@ function Deploy-Application {
         Write-Log "Files uploaded successfully" "SUCCESS"
 
     } finally {
-        # Cleanup staging directory
+        # Cleanup staging directory and this run's archive
+        Remove-Item -Path $tarFile -Force -ErrorAction SilentlyContinue
         Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
