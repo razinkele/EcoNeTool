@@ -588,7 +588,9 @@ test_that("species with missing trait codes raise ONE warning and leave other li
                   EP = c("EP2", "EP3", NA), PR = c("PR0", "PR0", "PR0"), stringsAsFactors = FALSE)
   w <- testthat::capture_warnings(adj <- construct_trait_foodweb(d, threshold = 0))
   expect_length(w, 1L)
-  expect_match(w, "1 species have missing trait codes and get no links: ghost", fixed = TRUE)
+  # EP is used in both roles, so the ghost can neither be eaten nor eat.
+  expect_match(w, paste0("1 species cannot be eaten (missing MS/MB/EP/PR): ghost; ",
+                         "1 species cannot eat (missing MS/FS/MB/EP): ghost"), fixed = TRUE)
   expect_true(all(adj["ghost", ] == 0))
   expect_true(all(adj[, "ghost"] == 0))
   complete <- d[d$species != "ghost", ]
@@ -599,6 +601,37 @@ test_that("species with missing trait codes raise ONE warning and leave other li
   d2$EP[3] <- "EP3"
   d2$MS[3] <- NA
   expect_length(testthat::capture_warnings(construct_trait_foodweb(d2)), 1L)
+})
+
+test_that("a consumer with only PR missing still eats but cannot be eaten (F4, role-aware)", {
+  d <- data.frame(species = c("pred", "prey", "top"), MS = c("MS4", "MS3", "MS5"),
+                  FS = c("FS1", "FS0", "FS1"), MB = c("MB5", "MB3", "MB5"),
+                  EP = c("EP2", "EP3", "EP2"), PR = c(NA, "PR0", "PR0"), stringsAsFactors = FALSE)
+  ref_d <- d
+  ref_d$PR[1] <- "PR0"
+  expect_no_warning(ref <- construct_trait_foodweb(ref_d, threshold = 0))
+  skip_if(ref["top", "pred"] == 0, "reference table has no top -> pred link; pick other traits")
+  w <- testthat::capture_warnings(adj <- construct_trait_foodweb(d, threshold = 0))
+  expect_length(w, 1L)
+  expect_match(w, "1 species cannot be eaten (missing MS/MB/EP/PR): pred", fixed = TRUE)
+  expect_false(grepl("cannot eat", w, fixed = TRUE))
+  # PR is only read for resources: pred keeps every consumer link ...
+  expect_identical(adj["pred", ], ref["pred", ])
+  expect_equal(adj["pred", "prey"], 1)
+  # ... but nothing eats it; the other links are unchanged.
+  expect_true(all(adj[, "pred"] == 0))
+  expect_identical(adj[c("prey", "top"), c("prey", "top")], ref[c("prey", "top"), c("prey", "top")])
+})
+
+test_that("a resource with only FS missing is still eaten but eats nothing (F4, role-aware)", {
+  d <- data.frame(species = c("pred", "prey"), MS = c("MS4", "MS3"), FS = c("FS1", NA),
+                  MB = c("MB5", "MB3"), EP = c("EP2", "EP3"), PR = c("PR0", "PR0"), stringsAsFactors = FALSE)
+  w <- testthat::capture_warnings(adj <- construct_trait_foodweb(d, threshold = 0))
+  expect_length(w, 1L)
+  expect_match(w, "1 species cannot eat (missing MS/FS/MB/EP): prey", fixed = TRUE)
+  expect_false(grepl("cannot be eaten", w, fixed = TRUE))
+  expect_equal(adj["pred", "prey"], 1)
+  expect_true(all(adj["prey", ] == 0))
 })
 
 test_that("a complete trait table builds without warnings (F4)", {

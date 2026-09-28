@@ -239,23 +239,32 @@ construct_trait_foodweb <- function(species_data, threshold = 0.05, return_probs
   prob_matrix <- matrix(0, nrow = n_species, ncol = n_species,
                         dimnames = list(Consumer = species_names, Resource = species_names))
 
-  # validate_trait_data() lets NA codes through. A species with any missing
-  # code the model uses gets no links; say so once instead of silently
-  # yielding 0 for every pair (it used to be swallowed by the pair loop).
-  model_traits <- c("MS", "FS", "MB", "EP", "PR")
-  incomplete <- rowSums(is.na(as.data.frame(species_data)[, model_traits, drop = FALSE])) > 0
-  if (any(incomplete)) {
-    missing_names <- species_names[incomplete]
-    warning(sprintf("[trait foodweb] %d species have missing trait codes and get no links: %s",
-                    length(missing_names), paste(head(missing_names, 10), collapse = ", ")),
-            call. = FALSE)
+  # validate_trait_data() lets NA codes through. Missing codes are
+  # role-aware: calc_interaction_probability() reads MS/FS/MB/EP of the
+  # consumer and MS/MB/EP/PR of the resource, so a species without PR still
+  # eats and one without FS is still eaten. Report the lost roles once
+  # instead of silently yielding 0 (it used to be swallowed by the pair loop).
+  sd <- as.data.frame(species_data)
+  consumer_traits_used <- c("MS", "FS", "MB", "EP")
+  resource_traits_used <- c("MS", "MB", "EP", "PR")
+  cannot_eat <- rowSums(is.na(sd[, consumer_traits_used, drop = FALSE])) > 0
+  cannot_be_eaten <- rowSums(is.na(sd[, resource_traits_used, drop = FALSE])) > 0
+  role_clause <- function(lost, what, traits) {
+    if (!any(lost)) return(NULL)
+    sprintf("%d species %s (missing %s): %s", sum(lost), what, paste(traits, collapse = "/"),
+            paste(head(species_names[lost], 10), collapse = ", "))
+  }
+  clauses <- c(role_clause(cannot_be_eaten, "cannot be eaten", resource_traits_used),
+               role_clause(cannot_eat, "cannot eat", consumer_traits_used))
+  if (length(clauses) > 0) {
+    warning(paste0("[trait foodweb] ", paste(clauses, collapse = "; ")), call. = FALSE)
   }
   n_errors <- 0L
   first_error <- NULL
 
   # Calculate all pairwise probabilities
   for (i in 1:n_species) {
-    if (incomplete[i]) next
+    if (cannot_eat[i]) next
     consumer_traits <- c(
       MS = species_data$MS[i],
       FS = species_data$FS[i],
@@ -264,8 +273,8 @@ construct_trait_foodweb <- function(species_data, threshold = 0.05, return_probs
     )
 
     for (j in 1:n_species) {
-      # Skip self-loops and species already reported as incomplete
-      if (i == j || incomplete[j]) next
+      # Skip self-loops and resources already reported as uneatable
+      if (i == j || cannot_be_eaten[j]) next
 
       resource_traits <- c(
         MS = species_data$MS[j],
