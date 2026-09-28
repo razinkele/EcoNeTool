@@ -234,3 +234,92 @@ test_that("cnidarians_sessile is retired: setting it FALSE warns", {
   cfg$taxonomic_rules$cnidarians_sessile <- FALSE
   expect_warning(validate_harmonization_config(cfg), "cnidarians_sessile is retired")
 })
+
+
+# ---------------------------------------------------------------------------
+# Task 3 - the model matrices (F71, F70)
+# ---------------------------------------------------------------------------
+
+local({
+  source(file.path(get_app_root(), "R/functions/trait_foodweb.R"), local = FALSE)
+})
+
+test_that("TRAIT_DEFINITIONS is derived from the vocabulary labels", {
+  for (trait in c("MS", "FS", "MB", "EP", "PR")) {
+    expect_identical(names(TRAIT_DEFINITIONS[[trait]]), trait_codes(trait), info = trait)
+  }
+  expect_identical(TRAIT_DEFINITIONS, trait_definitions())
+  expect_identical(TRAIT_DEFINITIONS$MB[["MB2"]], "Passive floater / drifter")
+})
+
+test_that("PR1 and PR4 rows validate (F71)", {
+  d <- data.frame(species = c("a", "b"), MS = "MS3", FS = "FS1", MB = "MB3", EP = "EP3", PR = c("PR1", "PR4"),
+                  stringsAsFactors = FALSE)
+  expect_true(validate_trait_data(d)$valid)
+})
+
+test_that("PR_MS has a PR1 row equal to PR0, and MS1 / MS6 columns copy their neighbours", {
+  expect_identical(rownames(PR_MS), trait_codes("PR"))
+  expect_identical(PR_MS["PR1", ], PR_MS["PR0", ])
+  for (m in list(EP_MS, PR_MS)) {
+    expect_identical(colnames(m), paste0("MS", 1:6))
+    expect_identical(m[, "MS1"], m[, "MS2"])
+    expect_identical(m[, "MS6"], m[, "MS5"])
+  }
+})
+
+test_that("an MS3 FS6 consumer eating MS1 prey gets the minimum of the five matrix cells (F70)", {
+  consumer <- c(MS = "MS3", FS = "FS6", MB = "MB3", EP = "EP3")
+  resource <- c(MS = "MS1", MB = "MB2", EP = "EP1", PR = "PR0")
+  expected <- min(MS_MS["MS3", "MS1"], FS_MS["FS6", "MS1"], MB_MB["MB3", "MB2"],
+                  EP_MS["EP3", "MS1"], PR_MS["PR0", "MS1"])
+  expect_equal(calc_interaction_probability(consumer, resource), expected)
+  expect_gt(expected, 0.05)
+})
+
+test_that("no hard-coded fallback probability is left in calc_interaction_probability (F70)", {
+  src <- paste(deparse(body(calc_interaction_probability)), collapse = "\n")
+  expect_false(grepl("0\\.05|0\\.5\\b", src))
+})
+
+test_that("a pair exactly at the threshold is not linked (strict >)", {
+  d <- data.frame(species = c("pred", "prey"), MS = c("MS4", "MS3"), FS = c("FS1", "FS0"),
+                  MB = c("MB5", "MB3"), EP = c("EP2", "EP3"), PR = c("PR0", "PR0"), stringsAsFactors = FALSE)
+  p <- construct_trait_foodweb(d, threshold = 0, return_probs = TRUE)["pred", "prey"]
+  expect_gt(p, 0)
+  expect_equal(construct_trait_foodweb(d, threshold = p)["pred", "prey"], 0)
+  expect_equal(construct_trait_foodweb(d, threshold = p - 0.01)["pred", "prey"], 1)
+  g <- trait_foodweb_to_igraph(d, threshold = p)
+  expect_equal(igraph::ecount(g), 0)
+})
+
+test_that("at the default threshold a sessile consumer keeps its mobile prey (MB1 row recalibrated)", {
+  expect_identical(unname(MB_MB["MB1", c("MB2", "MB3", "MB4", "MB5")]), rep(0.10, 4))
+  expect_identical(MB_MB["MB1", "MB1"], 0.95)
+  # A mussel-like filter feeder and drifting phytoplankton ("simple" example pair)
+  d <- data.frame(species = c("filter_feeder", "phyto"), MS = c("MS3", "MS1"), FS = c("FS6", "FS0"),
+                  MB = c("MB1", "MB2"), EP = c("EP2", "EP4"), PR = c("PR6", "PR0"), stringsAsFactors = FALSE)
+  expect_equal(construct_trait_foodweb(d)["filter_feeder", "phyto"], 1)
+  expect_equal(construct_trait_foodweb(d, return_probs = TRUE)["filter_feeder", "phyto"], 0.10)
+})
+
+test_that("there are no self-loops at any threshold", {
+  d <- data.frame(species = c("a", "b", "c"), MS = c("MS4", "MS4", "MS3"), FS = c("FS1", "FS3", "FS6"),
+                  MB = c("MB5", "MB4", "MB2"), EP = c("EP2", "EP2", "EP1"), PR = c("PR0", "PR1", "PR4"),
+                  stringsAsFactors = FALSE)
+  for (thr in c(0, 0.05, 0.5)) {
+    expect_true(all(diag(construct_trait_foodweb(d, threshold = thr)) == 0), info = thr)
+  }
+  expect_true(all(diag(construct_trait_foodweb(d, return_probs = TRUE)) == 0))
+})
+
+test_that("an unknown code is an error, not a silent floor value", {
+  d <- data.frame(species = c("a", "b"), MS = "MS3", FS = "FS1", MB = "MB3", EP = "EP3", PR = c("PR0", "PR9"),
+                  stringsAsFactors = FALSE)
+  expect_error(construct_trait_foodweb(d), "Invalid PR codes")
+})
+
+test_that("the template only uses vocabulary codes", {
+  set.seed(1)
+  expect_true(validate_trait_data(create_trait_template(30))$valid)
+})
