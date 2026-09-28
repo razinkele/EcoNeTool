@@ -25,6 +25,13 @@ test_that("no UUID-shaped API key literal is committed in R code or config templ
   expect_identical(offenders, character(0))
 })
 
+test_that("the key template no longer promises a bundled demo key (F-c)", {
+  tpl <- readLines(app_path("config/api_keys.R.template"), warn = FALSE)
+  expect_false(any(grepl("demo key", tpl, ignore.case = TRUE)))
+  expect_true(any(grepl("config/api_keys.json", tpl, fixed = TRUE)))
+  expect_true(any(grepl("Configure API Keys", tpl, fixed = TRUE)))
+})
+
 test_that("the freshwaterecology key defaults to empty so get_api_key() reports it unset", {
   cfg <- readLines(app_path("R/config.R"), warn = FALSE)
   line <- grep("freshwaterecology_key\\s*=", cfg, value = TRUE)

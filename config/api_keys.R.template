@@ -39,7 +39,8 @@ API_KEYS$algaebase_password <- ""  # Your AlgaeBase password
 
 # FRESHWATERECOLOGY.INFO
 # ----------------------
-# Public API available with demo key (already provided in default config)
+# An API key is REQUIRED (none is shipped with the app). Set it in the app via
+# Trait Research > Configure API Keys; it is saved to config/api_keys.json.
 # API endpoint: https://www.freshwaterecology.info/api/
 # Documentation: https://www.freshwaterecology.info/api/documentation
 #
