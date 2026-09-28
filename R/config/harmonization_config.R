@@ -724,6 +724,12 @@ validate_harmonization_config <- function(cfg) {
     errors <- c(errors, sprintf("taxonomic_rules: must be TRUE or FALSE: %s",
                                 paste(names(rules)[!is_flag], collapse = ", ")))
   }
+  # Retired in trait vocab v2 (F38): Cnidaria are classified by class
+  # (medusae MB2, polyps MB1). The key stays so older JSON files still load.
+  if (isFALSE(rules$cnidarians_sessile)) {
+    warning(paste0("[harmonization] taxonomic_rules$cnidarians_sessile is retired and has no effect: ",
+                   "Cnidaria are classified by class (medusae MB2, polyps MB1)"), call. = FALSE)
+  }
 
   profile <- cfg$active_profile
   if (!is.character(profile) || length(profile) != 1L || !profile %in% names(cfg$profiles)) {

@@ -169,3 +169,68 @@ test_that("the fuzzy ontology harmonizers use the same vocabulary", {
   expect_identical(harmonize_fuzzy_mobility(ont("life_history", "mobility", "floater"))$class, "MB2")
   expect_identical(harmonize_fuzzy_mobility(ont("life_history", "mobility", "burrower"))$class, "MB3")
 })
+
+
+# ---------------------------------------------------------------------------
+# Task 2 - taxon rules in the live cascades
+# ---------------------------------------------------------------------------
+
+test_that("Cnidaria are classified by class (F38)", {
+  expect_identical(harmonize_mobility(taxonomic_info = list(phylum = "Cnidaria", class = "Scyphozoa")), "MB2")
+  expect_identical(harmonize_mobility(taxonomic_info = list(phylum = "Cnidaria", class = "Anthozoa")), "MB1")
+  expect_identical(harmonize_mobility(taxonomic_info = list(phylum = "Cnidaria", class = "Hydrozoa")), "MB1")
+  expect_identical(harmonize_mobility(mobility_info = "pelagic",
+                                      taxonomic_info = list(phylum = "Cnidaria", class = "Hydrozoa")), "MB2")
+  expect_true(is.na(apply_taxon_rules(list(phylum = "Cnidaria", class = "Unknownia"), "mobility")))
+})
+
+test_that("echinoderm rules target PR7 / PR1 and outrank text (F38)", {
+  expect_identical(harmonize_protection(taxonomic_info = list(phylum = "Echinodermata", class = "Echinoidea")),
+                   "PR7")
+  expect_identical(harmonize_protection(taxonomic_info = list(phylum = "Echinodermata", class = "Holothuroidea")),
+                   "PR1")
+  expect_identical(harmonize_protection("calcareous plates",
+                                        list(phylum = "Echinodermata", class = "Echinoidea")), "PR7")
+  expect_identical(harmonize_protection("calcareous plates"), "PR6")
+})
+
+test_that("small arthropods get PR4, Malacostraca PR8", {
+  expect_identical(harmonize_protection(taxonomic_info = list(phylum = "Arthropoda", class = "Copepoda")), "PR4")
+  expect_identical(harmonize_protection(taxonomic_info = list(phylum = "Arthropoda", class = "Ostracoda")), "PR4")
+  expect_identical(harmonize_protection(taxonomic_info = list(phylum = "Arthropoda", class = "Malacostraca")),
+                   "PR8")
+})
+
+test_that("a copepod at 10-20 m with no habitat text is pelagic (F36)", {
+  expect_identical(harmonize_environmental_position(depth_min = 10, depth_max = 20,
+                                                    taxonomic_info = list(phylum = "Arthropoda",
+                                                                          class = "Copepoda")),
+                   "EP1")
+})
+
+test_that("the environmental default is epibenthic, as its comment says", {
+  expect_identical(harmonize_environmental_position(), "EP3")
+})
+
+test_that("a zero-length taxonomy field does not abort the harmonizers (F33)", {
+  tax <- list(phylum = "Nematoda", class = character(0))
+  expect_no_error(harmonize_protection(NULL, tax))
+  expect_no_error(harmonize_mobility(NULL, NULL, tax))
+  expect_no_error(harmonize_environmental_position(taxonomic_info = tax))
+  expect_no_error(harmonize_mobility(NULL, NULL, list(phylum = "Cnidaria", class = character(0))))
+})
+
+test_that("a disabled rule flag switches its taxon rule off", {
+  cfg <- HARMONIZATION_CONFIG
+  cfg$taxonomic_rules$echinoderms_calcium_plates <- FALSE
+  with_session_config(cfg, {
+    expect_identical(harmonize_protection("calcareous plates",
+                                          list(phylum = "Echinodermata", class = "Echinoidea")), "PR6")
+  })
+})
+
+test_that("cnidarians_sessile is retired: setting it FALSE warns", {
+  cfg <- HARMONIZATION_CONFIG
+  cfg$taxonomic_rules$cnidarians_sessile <- FALSE
+  expect_warning(validate_harmonization_config(cfg), "cnidarians_sessile is retired")
+})
