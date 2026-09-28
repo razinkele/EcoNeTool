@@ -4,21 +4,21 @@
 # Format: MAJOR.MINOR.PATCH
 # See CHANGELOG.md for detailed change history
 
-VERSION=1.5.1
-VERSION_NAME=Deploy and CI Hardening
-RELEASE_DATE=2026-09-27
+VERSION=1.5.2
+VERSION_NAME=Harmonization Safety
+RELEASE_DATE=2026-09-28
 STATUS=stable
 
 # Version components
 MAJOR=1
 MINOR=5
-PATCH=1
+PATCH=2
 
 # Git information (if available)
 # Set by deployment scripts
-GIT_COMMIT=b7d979a
+GIT_COMMIT=569c2a2
 GIT_BRANCH=master
-BUILD_DATE=2026-09-27T18:08:08
+BUILD_DATE=2026-09-28T08:44:27
 
 # Deployment information
 DEPLOYED_BY=
