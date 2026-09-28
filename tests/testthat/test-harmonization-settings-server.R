@@ -172,6 +172,69 @@ test_that("an unparseable server-default file warns exactly once and falls back 
   expect_equal(calls$n, 1L)
 })
 
+# Final fix wave (I1): production keeps no logs, so the loader's warning alone
+# left an admin looking at built-in values with no explanation. The rejection
+# must be shown on the tab at session start.
+test_that("a rejected server-default file is shown to the user, and the session uses the defaults", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("withr")
+  source_harm_module()
+  path <- tempfile("harm_stale_", fileext = ".json")
+  withr::defer(unlink(path))
+  cfg <- HARMONIZATION_CONFIG
+  cfg$size_thresholds$MS3_MS4 <- 7
+  cfg$foraging_patterns$FS0_primary_producer <-
+    "photosyn|autotrop|producer|plant|algae|phytoplankton|diatom|dinoflagellate"
+  export_config_json(path, cfg)
+  calls <- local_harm_loader(path)
+
+  seen <- character()
+  withCallingHandlers(
+    shiny::testServer(harmonization_settings_server, {
+      expect_identical(session$userData$harm_config, HARMONIZATION_CONFIG)
+      status <- output$harm_status_message$html
+      expect_match(status, "Server default file rejected (", fixed = TRUE)
+      expect_match(status, "diet nouns", fixed = TRUE)
+      expect_match(status, paste("this session uses the built-in defaults.",
+                                 "An admin can Save or Reset the server default."), fixed = TRUE)
+      expect_match(status, "alert-warning", fixed = TRUE)
+      expect_false(shiny::isolate(rv$unsaved_changes))
+    }),
+    warning = function(w) {
+      seen <<- c(seen, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_length(seen, 1L) # the loader's warning still reaches logs/tests, once
+  expect_match(seen, "invalid config")
+  expect_equal(calls$n, 1L)
+})
+
+test_that("an unparseable server-default file is shown to the user as rejected too", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("withr")
+  source_harm_module()
+  bad <- tempfile("harm_bad_", fileext = ".json")
+  writeLines("{ not valid json", bad)
+  withr::defer(unlink(bad))
+  local_harm_loader(bad)
+
+  suppressWarnings(shiny::testServer(harmonization_settings_server, {
+    expect_match(output$harm_status_message$html, "Server default file rejected (could not parse", fixed = TRUE)
+  }))
+})
+
+test_that("a valid server-default file shows no rejection status", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("withr")
+  source_harm_module()
+  local_harm_loader(write_harm_json(ms3_ms4 = 7))
+
+  shiny::testServer(harmonization_settings_server, {
+    expect_error(output$harm_status_message) # never rendered
+  })
+})
+
 test_that("browser start-up echo (UI defaults, then the file value) settles on the file value", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("withr")

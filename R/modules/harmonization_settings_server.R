@@ -18,8 +18,17 @@ harmonization_settings_server <- function(input, output, session) {
   # Pre-B0 (F1/F76) this load lived in an observe() that also read
   # rv$config, while the slider observer below wrote rv$config: the two
   # observers re-triggered each other forever and pinned the R process.
+  # A rejected file (unparseable or invalid) makes the loader warn with class
+  # "harm_config_rejected" and return the defaults. The handler only records
+  # the reasons - it does not muffle - so the warning still reaches logs and
+  # tests once; the reasons are shown on the tab below, because production
+  # keeps no logs and the admin would otherwise see built-in values unexplained.
+  load_rejection <- NULL
   initial_cfg <- if (file.exists(HARMONIZATION_CONFIG_FILE)) {
-    load_harmonization_config(HARMONIZATION_CONFIG_FILE)
+    withCallingHandlers(
+      load_harmonization_config(HARMONIZATION_CONFIG_FILE),
+      harm_config_rejected = function(w) load_rejection <<- w$errors
+    )
   } else {
     HARMONIZATION_CONFIG
   }
@@ -65,6 +74,13 @@ harmonization_settings_server <- function(input, output, session) {
     output$harm_status_message <- renderUI({
       div(class = paste("alert", alert_class), icon(icon_name), " ", text)
     })
+  }
+
+  if (!is.null(load_rejection)) {
+    show_status("alert-warning", "exclamation-triangle", sprintf(paste0(
+      "Server default file rejected (%s); this session uses the built-in defaults. ",
+      "An admin can Save or Reset the server default."
+    ), paste(load_rejection, collapse = "; ")))
   }
 
   # Strict admin gate for the two server-default buttons. Returns TRUE (and
@@ -132,6 +148,12 @@ harmonization_settings_server <- function(input, output, session) {
     # literal TRUE, sent before the start-up push lands. Applying it would
     # re-enable a rule the loaded config disabled. A first report of FALSE
     # cannot be the literal, so it applies; later reports always apply.
+    # This guard DEPENDS on the checkboxes being bound at session init, i.e.
+    # rendered by the static harmonization_settings_ui() (checked = TRUE), so
+    # the first report always precedes the push. If they ever move into a
+    # renderUI()/insertUI(), the first report can arrive AFTER the push and
+    # be a real value; this "skip the first TRUE" rule would then drop a real
+    # click, so it must be replaced (e.g. compare with the pushed value).
     seen <- new.env(parent = emptyenv())
     seen$first <- TRUE
     observeEvent(input[[input_id]], {
