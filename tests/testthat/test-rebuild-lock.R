@@ -274,3 +274,107 @@ test_that("refusal messages are built from B1's ADMIN_STRICT_MSG_* constants", {
   )
   expect_true(grepl(ADMIN_STRICT_MSG_LOCKED, locked_res$message, fixed = TRUE))
 })
+
+# ---------------------------------------------------------------------------
+# The build script itself, run as a child Rscript in a scratch project root
+# ---------------------------------------------------------------------------
+
+# Scratch project root holding exactly what build_offline_trait_db.R sources,
+# a cache/ with a sentinel "live DB", and a data/ with only the given
+# ontology CSV (every other source is skipped because its file is absent).
+local_build_root <- function(ontology_lines, env = parent.frame()) {
+  root <- tempfile("offline_build_")
+  withr::defer(unlink(root, recursive = TRUE), envir = env)
+  for (rel in c("R/config/harmonization_config.R",
+                "R/functions/validation_utils.R",
+                "R/functions/trait_lookup/harmonization.R",
+                "R/functions/offline_db_rebuild.R",
+                "scripts/initialization/build_offline_trait_db.R")) {
+    dir.create(file.path(root, dirname(rel)), recursive = TRUE, showWarnings = FALSE)
+    file.copy(file.path(app_root, rel), file.path(root, rel))
+  }
+  dir.create(file.path(root, "cache"))
+  dir.create(file.path(root, "data"))
+  writeLines(ontology_lines, file.path(root, "data", "ontology_traits.csv"))
+  writeLines("SENTINEL LIVE DB - must survive a failed build", file.path(root, "cache", "offline_traits.db"))
+  root
+}
+
+run_build <- function(root, token = "") {
+  processx::run(
+    file.path(R.home("bin"), "Rscript"),
+    args = "scripts/initialization/build_offline_trait_db.R",
+    wd = root, error_on_status = FALSE, timeout = 120,
+    env = c("current", ECONETOOL_REBUILD_LOCK_TOKEN = token)
+  )
+}
+
+good_ontology <- c(
+  "taxon_name,aphia_id,trait_category,trait_name,trait_modality,trait_score",
+  "Gadus morhua,126436,feeding,feeding_mode,predator,3",
+  "Gadus morhua,126436,mobility,mobility,swimmer,3"
+)
+
+test_that("a build that stop()s on ontology drift leaves the live DB byte-identical", {
+  skip_if_not_installed("processx")
+  skip_if_not_installed("RSQLite")
+  root <- local_build_root(c("wrong,columns", "a,b"))
+  db_path <- file.path(root, "cache", "offline_traits.db")
+  before <- readBin(db_path, "raw", file.size(db_path))
+
+  res <- run_build(root)
+
+  expect_false(res$status == 0)
+  expect_match(res$stderr, "Ontology CSV missing required columns")
+  expect_true(file.exists(db_path))
+  expect_identical(readBin(db_path, "raw", file.size(db_path)), before)
+  expect_length(list.files(file.path(root, "cache"), pattern = "\\.tmp\\."), 0)
+  expect_false(dir.exists(file.path(root, "cache", "offline_traits.db.lock")))
+})
+
+test_that("a successful build installs a readable DB and releases the lock", {
+  skip_if_not_installed("processx")
+  skip_if_not_installed("RSQLite")
+  root <- local_build_root(good_ontology)
+  db_path <- file.path(root, "cache", "offline_traits.db")
+
+  res <- run_build(root)
+
+  expect_equal(res$status, 0, info = res$stderr)
+  con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+  withr::defer(DBI::dbDisconnect(con))
+  expect_true("species_traits" %in% DBI::dbListTables(con))
+  expect_identical(DBI::dbGetQuery(con, "SELECT species FROM species_traits")$species, "Gadus morhua")
+  expect_length(list.files(file.path(root, "cache"), pattern = "\\.tmp\\."), 0)
+  expect_false(dir.exists(file.path(root, "cache", "offline_traits.db.lock")))
+})
+
+test_that("a console build refuses to run while another build holds the lock", {
+  skip_if_not_installed("processx")
+  skip_if_not_installed("RSQLite")
+  root <- local_build_root(good_ontology)
+  db_path <- file.path(root, "cache", "offline_traits.db")
+  before <- readBin(db_path, "raw", file.size(db_path))
+  lock_dir <- file.path(root, "cache", "offline_traits.db.lock")
+  held <- acquire_rebuild_lock(lock_dir)
+
+  res <- run_build(root)
+
+  expect_false(res$status == 0)
+  expect_match(res$stderr, "Rebuild already running")
+  expect_identical(readBin(db_path, "raw", file.size(db_path)), before)
+  expect_identical(.read_rebuild_lock_token(lock_dir), held$token)
+})
+
+test_that("a Shiny-launched build adopts the parent's lock and releases it when done", {
+  skip_if_not_installed("processx")
+  skip_if_not_installed("RSQLite")
+  root <- local_build_root(good_ontology)
+  lock_dir <- file.path(root, "cache", "offline_traits.db.lock")
+  held <- acquire_rebuild_lock(lock_dir)
+
+  res <- run_build(root, token = held$token)
+
+  expect_equal(res$status, 0, info = res$stderr)
+  expect_false(dir.exists(lock_dir))
+})
