@@ -249,10 +249,17 @@ construct_trait_foodweb <- function(species_data, threshold = 0.05, return_probs
   resource_traits_used <- c("MS", "MB", "EP", "PR")
   cannot_eat <- rowSums(is.na(sd[, consumer_traits_used, drop = FALSE])) > 0
   cannot_be_eaten <- rowSums(is.na(sd[, resource_traits_used, drop = FALSE])) > 0
+  # One clause per lost role; each species is listed with only the traits it
+  # actually lacks for that role, e.g. "pred (missing PR)".
   role_clause <- function(lost, what, traits) {
     if (!any(lost)) return(NULL)
-    sprintf("%d species %s (missing %s): %s", sum(lost), what, paste(traits, collapse = "/"),
-            paste(head(species_names[lost], 10), collapse = ", "))
+    idx <- which(lost)
+    entries <- vapply(head(idx, 10), function(k) {
+      miss <- traits[is.na(unlist(sd[k, traits, drop = TRUE]))]
+      sprintf("%s (missing %s)", species_names[k], paste(miss, collapse = ", "))
+    }, character(1))
+    more <- if (length(idx) > 10) sprintf(", ... and %d more", length(idx) - 10) else ""
+    sprintf("%d species %s: %s%s", length(idx), what, paste(entries, collapse = ", "), more)
   }
   clauses <- c(role_clause(cannot_be_eaten, "cannot be eaten", resource_traits_used),
                role_clause(cannot_eat, "cannot eat", consumer_traits_used))

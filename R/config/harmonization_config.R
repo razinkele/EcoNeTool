@@ -112,7 +112,10 @@ TRAIT_VOCAB <- local({
         EP1_pelagic = paste0("(epi|meso|bathy|abysso)?pelagic|water.?column|(holo|mero|zoo|phyto|ichthyo)?plankton|",
                              "open.?water|midwater|neust"),
         EP2_benthopelagic = "bentho.?pelagic|benthic.pelagic|(bathy)?demersal|near.?bottom|hyperbenth",
-        EP3_epibenthic = paste0("epibenth|epifaun|epilith|epiflor|epiphyt|epizo|benthic|benthos|bottom|seabed|",
+        # No bare "benthic" / "benthos": WoRMS functional group "benthos" is
+        # appended to the habitat text (and turned into habitat "benthic"),
+        # which would force infaunal taxa to EP3 before the taxon rules.
+        EP3_epibenthic = paste0("epibenth|epifaun|epilith|epiflor|epiphyt|epizo|benthic.?surface|bottom|seabed|",
                                 "^surface$|surface.?dwell|on.?substrate|attached|sessile|tube|free.?living|crevice"),
         EP4_endobenthic = "endobenth|infaun|burrow|interstitial|within.?sediment|buried|lithotom"
       ),

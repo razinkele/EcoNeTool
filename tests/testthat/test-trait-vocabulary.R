@@ -62,8 +62,27 @@ test_that("environmental text: leading boundary and precedence (F35, F77, F36)",
   expect_identical(classify_by_patterns("benthic surface", "environmental"), "EP3")
   expect_true(is.na(classify_by_patterns("subsurface deposit", "environmental")))
   expect_identical(classify_by_patterns("burrowing", "environmental"), "EP4")
-  expect_identical(classify_by_patterns("benthic", "environmental"), "EP3")
   expect_identical(classify_by_patterns("mesopelagic", "environmental"), "EP1")
+})
+
+test_that("bare 'benthic' / 'benthos' say nothing about EP; taxonomy decides (PR #15, master parity)", {
+  # WoRMS functional group "benthos" is appended to the habitat text, and
+  # database_lookups derives habitat "benthic" from it. Neither word tells
+  # epibenthic from endobenthic, so neither may short-circuit to EP3.
+  expect_true(is.na(classify_by_patterns("benthos", "environmental")))
+  expect_true(is.na(classify_by_patterns("benthic", "environmental")))
+  expect_true(is.na(classify_by_patterns("Benthic", "environmental")))
+  expect_identical(classify_by_patterns("benthic surface", "environmental"), "EP3")
+  expect_identical(classify_by_patterns("bottom", "environmental"), "EP3")
+  expect_identical(classify_by_patterns("seabed", "environmental"), "EP3")
+  # Master (6db5082) matched neither word in its EP text rules, had no depth,
+  # and fell to the Mollusca/Bivalvia infaunal_bivalves rule: EP4.
+  bivalve <- list(phylum = "Mollusca", class = "Bivalvia", order = "Cardiida")
+  expect_identical(harmonize_environmental_position(habitat_info = c("benthos", "benthic"),
+                                                    taxonomic_info = bivalve), "EP4")
+  # Legacy (v1) patterns are historical and untouched.
+  expect_identical(get_trait_vocab()$legacy_patterns$environmental$EP3_epibenthic,
+                   "epibenthic|epifauna|surface dwelling|on substrate|^surface$")
 })
 
 test_that("BIOTIC living-habit labels map to EP4 / EP3", {
@@ -461,6 +480,26 @@ test_that("both orchestrator cache writers stamp trait_vocab_version", {
   expect_equal(sum(grepl("trait_vocab_version = current_trait_vocab_version()", orch, fixed = TRUE)), 2L)
 })
 
+# Fake randomForest-like models: predict() gives "<trait>2" with probability 0.9.
+local_fake_ml_models <- function(env = parent.frame()) {
+  registerS3method("predict", "fake_ml_model", function(object, newdata, type = "response", ...) {
+    if (identical(type, "prob")) {
+      matrix(0.9, nrow = 1, dimnames = list(NULL, object$value))
+    } else {
+      factor(object$value)
+    }
+  }, envir = asNamespace("stats"))
+  invisible(TRUE)
+}
+
+fake_ml_package <- function(vocab_version) {
+  models <- lapply(c(MS = "MS", FS = "FS", MB = "MB", EP = "EP", PR = "PR"), function(t) {
+    structure(list(value = paste0(t, "2"), forest = list(xlevels = list())), class = "fake_ml_model")
+  })
+  list(models = models, feature_cols = c("phylum", "class", "order"), performance = list(),
+       trait_vocab_version = vocab_version)
+}
+
 test_that("an ML model trained before vocab v2 does not predict MB", {
   root <- get_app_root()
   source(file.path(root, "R/functions/ml_trait_prediction.R"), local = FALSE)
@@ -472,17 +511,39 @@ test_that("an ML model trained before vocab v2 does not predict MB", {
     .ml_cache$vocab_warned <- FALSE
   })
   .ml_cache$vocab_warned <- FALSE
-  assign("predict_trait_ml", function(trait, taxonomic_info, models_package) {
-    list(value = paste0(trait, "1"), probability = 0.9)
-  }, envir = globalenv())
+  # The real predict_trait_ml() runs against fake models (so the gate inside it
+  # is exercised); load_ml_models() is mocked to return them.
+  local_fake_ml_models()
+  tax <- list(phylum = "Arthropoda", class = "Malacostraca", order = "Decapoda")
 
-  assign("load_ml_models", function() list(models = list(), trait_vocab_version = NULL), envir = globalenv())
-  expect_warning(p <- predict_missing_traits(list(MS = NA, MB = NA, EP = NA), list()), "MB predictions disabled")
+  assign("load_ml_models", function() fake_ml_package(NULL), envir = globalenv())
+  expect_warning(p <- predict_missing_traits(list(MS = NA, MB = NA, EP = NA), tax), "MB predictions disabled")
   expect_setequal(names(p), c("MS", "EP", "FS", "PR"))
 
-  assign("load_ml_models", function() list(models = list(), trait_vocab_version = 2L), envir = globalenv())
-  expect_no_warning(p2 <- predict_missing_traits(list(MB = NA), list()))
-  expect_true("MB" %in% names(p2))
+  assign("load_ml_models", function() fake_ml_package(2L), envir = globalenv())
+  expect_no_warning(p2 <- predict_missing_traits(list(MB = NA), tax))
+  expect_identical(p2$MB$value, "MB2")
+})
+
+test_that("predict_trait_ml() itself refuses MB from a pre-v2 model, warning once (PR #15)", {
+  root <- get_app_root()
+  source(file.path(root, "R/functions/ml_trait_prediction.R"), local = FALSE)
+  withr::defer(.ml_cache$vocab_warned <- FALSE)
+  .ml_cache$vocab_warned <- FALSE
+  local_fake_ml_models()
+  tax <- list(phylum = "Arthropoda", class = "Malacostraca", order = "Decapoda")
+
+  old <- fake_ml_package(NULL)
+  w <- testthat::capture_warnings(res <- predict_trait_ml("MB", tax, old))
+  expect_null(res)
+  expect_length(w, 1L)
+  expect_match(w, "MB predictions disabled", fixed = TRUE)
+  # Once per process, through the shared flag.
+  expect_no_warning(expect_null(predict_trait_ml("MB", tax, old)))
+  # Other traits still predict from the same package.
+  expect_identical(expect_no_warning(predict_trait_ml("EP", tax, old))$value, "EP2")
+  # A v2 model predicts MB.
+  expect_identical(expect_no_warning(predict_trait_ml("MB", tax, fake_ml_package(2L)))$value, "MB2")
 })
 
 # The build script, run as a child Rscript in a scratch project root holding
@@ -589,8 +650,8 @@ test_that("species with missing trait codes raise ONE warning and leave other li
   w <- testthat::capture_warnings(adj <- construct_trait_foodweb(d, threshold = 0))
   expect_length(w, 1L)
   # EP is used in both roles, so the ghost can neither be eaten nor eat.
-  expect_match(w, paste0("1 species cannot be eaten (missing MS/MB/EP/PR): ghost; ",
-                         "1 species cannot eat (missing MS/FS/MB/EP): ghost"), fixed = TRUE)
+  expect_match(w, paste0("1 species cannot be eaten: ghost (missing EP); ",
+                         "1 species cannot eat: ghost (missing EP)"), fixed = TRUE)
   expect_true(all(adj["ghost", ] == 0))
   expect_true(all(adj[, "ghost"] == 0))
   complete <- d[d$species != "ghost", ]
@@ -613,7 +674,9 @@ test_that("a consumer with only PR missing still eats but cannot be eaten (F4, r
   skip_if(ref["top", "pred"] == 0, "reference table has no top -> pred link; pick other traits")
   w <- testthat::capture_warnings(adj <- construct_trait_foodweb(d, threshold = 0))
   expect_length(w, 1L)
-  expect_match(w, "1 species cannot be eaten (missing MS/MB/EP/PR): pred", fixed = TRUE)
+  # Only the traits actually missing are listed (PR #15), not the role's full set.
+  expect_match(w, "1 species cannot be eaten: pred (missing PR)", fixed = TRUE)
+  expect_false(grepl("MS/MB/EP/PR", w, fixed = TRUE))
   expect_false(grepl("cannot eat", w, fixed = TRUE))
   # PR is only read for resources: pred keeps every consumer link ...
   expect_identical(adj["pred", ], ref["pred", ])
@@ -628,7 +691,7 @@ test_that("a resource with only FS missing is still eaten but eats nothing (F4, 
                   MB = c("MB5", "MB3"), EP = c("EP2", "EP3"), PR = c("PR0", "PR0"), stringsAsFactors = FALSE)
   w <- testthat::capture_warnings(adj <- construct_trait_foodweb(d, threshold = 0))
   expect_length(w, 1L)
-  expect_match(w, "1 species cannot eat (missing MS/FS/MB/EP): prey", fixed = TRUE)
+  expect_match(w, "1 species cannot eat: prey (missing FS)", fixed = TRUE)
   expect_false(grepl("cannot be eaten", w, fixed = TRUE))
   expect_equal(adj["pred", "prey"], 1)
   expect_true(all(adj["prey", ] == 0))
