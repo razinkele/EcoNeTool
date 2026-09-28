@@ -4,21 +4,21 @@
 # Format: MAJOR.MINOR.PATCH
 # See CHANGELOG.md for detailed change history
 
-VERSION=1.5.2
-VERSION_NAME=Harmonization Safety
+VERSION=1.5.3
+VERSION_NAME=Security and Admin Gating
 RELEASE_DATE=2026-09-28
 STATUS=stable
 
 # Version components
 MAJOR=1
 MINOR=5
-PATCH=2
+PATCH=3
 
 # Git information (if available)
 # Set by deployment scripts
-GIT_COMMIT=569c2a2
+GIT_COMMIT=f28ee75
 GIT_BRANCH=master
-BUILD_DATE=2026-09-28T08:44:27
+BUILD_DATE=2026-09-28T13:08:09
 
 # Deployment information
 DEPLOYED_BY=
