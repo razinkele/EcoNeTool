@@ -75,6 +75,31 @@ offline_db_lock_path <- function() {
   invisible(TRUE)
 }
 
+#' Delete orphaned `<db>.tmp.<pid>` builds left next to the DB
+#'
+#' A build killed hard (SIGKILL, OOM, reboot) never reaches its finalizer, so
+#' its tmp file stays behind. Called only by a caller that has just acquired
+#' the lock (fresh or reclaimed) - so no build is running - and even then
+#' only files older than the stale window go; a fresh tmp is never touched.
+#'
+#' @param lock_dir Lock directory path; the DB is `sub(".lock$", "", lock_dir)`.
+#' @param stale_after_mins Age threshold, as for the lock.
+#' @return The removed paths, invisibly.
+.sweep_stale_tmp_builds <- function(lock_dir, stale_after_mins = REBUILD_LOCK_STALE_MINS) {
+  db_base <- sub("\\.lock$", "", basename(lock_dir))
+  pattern <- paste0("^", gsub(".", "\\.", db_base, fixed = TRUE), "\\.tmp\\.")
+  tmps <- list.files(dirname(lock_dir), pattern = pattern, full.names = TRUE)
+  if (length(tmps) == 0L) return(invisible(character(0)))
+  age_mins <- as.numeric(difftime(Sys.time(), file.mtime(tmps), units = "mins"))
+  stale <- tmps[!is.na(age_mins) & age_mins > stale_after_mins]
+  if (length(stale) == 0L) return(invisible(character(0)))
+  unlink(stale)
+  warning(sprintf("[rebuild lock] removed orphaned tmp build(s) older than %d min: %s",
+                  as.integer(stale_after_mins), paste(basename(stale), collapse = ", ")),
+          call. = FALSE)
+  invisible(stale)
+}
+
 #' Acquire the process-wide offline-DB rebuild lock
 #'
 #' @param lock_dir Lock directory path.
@@ -122,6 +147,8 @@ acquire_rebuild_lock <- function(lock_dir = offline_db_lock_path(),
                         if (is.na(started)) "unknown" else format(started, "%H:%M"))
     ))
   }
+
+  .sweep_stale_tmp_builds(lock_dir, stale_after_mins)
 
   # tempfile() draws from the C-level RNG, so this never disturbs a user's
   # set.seed() stream in the Shiny process.

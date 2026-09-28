@@ -155,6 +155,28 @@ test_that("closing the tab while the build runs leaves the lock to the build", {
   expect_true(dir.exists(lock_dir))
 })
 
+test_that("the build is not supervised, so the worker exiting does not kill it (I1)", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("withr")
+  skip_if_not_installed("bs4Dash")
+  skip_if_not_installed("processx")
+  source_rebuild_module()
+  root <- local_fake_app_root()
+  withr::local_envvar(ECONETOOL_ADMIN_PASSWORD_HASH = gate_hash, FAKE_BUILD_SLEEP = "20")
+  proc <- NULL
+
+  shiny::testServer(rebuild_test_module(), {
+    session$userData$admin_unlocked <- TRUE
+    session$setInputs(rebuild_offline_db = 1)
+    proc <<- offline_rebuild_process()
+  })
+  withr::defer(if (proc$is_alive()) proc$kill())
+
+  # shiny-server's idle timeout ends the R worker ~5 s after the last tab
+  # closes; a supervised child would be killed with it, mid-build.
+  expect_false(proc$is_supervised())
+})
+
 test_that("closing the tab after the build died (before the poller ran) releases the lock", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("withr")
@@ -175,6 +197,54 @@ test_that("closing the tab after the build died (before the poller ran) releases
   })
 
   expect_false(dir.exists(lock_dir))
+})
+
+test_that("a click before the previous completion was handled starts nothing (F-a)", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("withr")
+  skip_if_not_installed("bs4Dash")
+  skip_if_not_installed("processx")
+  source_rebuild_module()
+  root <- local_fake_app_root()
+  withr::local_envvar(ECONETOOL_ADMIN_PASSWORD_HASH = gate_hash, FAKE_BUILD_SLEEP = "2")
+  lock_dir <- file.path(root, "cache", "offline_traits.db.lock")
+
+  shiny::testServer(rebuild_test_module(), {
+    session$userData$admin_unlocked <- TRUE
+    session$setInputs(rebuild_offline_db = 1)
+    proc <- offline_rebuild_process()
+    skip_if(is.null(proc), "fake build finished inside the first flush; cannot reach the window")
+    first_token <- rebuild_state$token
+    proc$wait(30000)
+    # The child exited and released its lock (the real script does this in
+    # its finalizer), but the 2 s poller has not handled the completion yet.
+    release_rebuild_lock(lock_dir, first_token)
+    expect_false(dir.exists(lock_dir))
+
+    session$setInputs(rebuild_offline_db = 2)
+    expect_identical(offline_rebuild_process(), proc)
+    expect_identical(rebuild_state$token, first_token)
+    expect_false(dir.exists(lock_dir))  # no second build took the lock
+
+    session$elapse(2100)
+    expect_null(offline_rebuild_process())
+  })
+})
+
+test_that("an unreadable rebuild log warns instead of failing silently (F-e)", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("withr")
+  skip_if_not_installed("bs4Dash")
+  source_rebuild_module()
+  local_fake_app_root()
+  not_a_file <- withr::local_tempdir()  # exists, but readLines() on it errors
+
+  shiny::testServer(rebuild_test_module(), {
+    w <- testthat::capture_warnings(res <- read_rebuild_log(not_a_file))
+    expect_identical(res, character(0))
+    expect_true(any(grepl("[rebuild] could not read build log", w, fixed = TRUE)),
+                info = paste(w, collapse = " | "))
+  })
 })
 
 test_that("app.R sources offline_db_rebuild.R before the trait research module", {

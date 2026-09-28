@@ -46,6 +46,38 @@ test_that("a stale lock (mtime 2 h back) is reclaimed with a warning", {
   expect_false(identical(fresh$token, old$token))
 })
 
+test_that("acquiring the lock sweeps stale orphaned tmp builds and keeps fresh ones (I1)", {
+  lock_dir <- local_lock_dir()
+  cache <- dirname(lock_dir)
+  dir.create(cache, recursive = TRUE)
+  stale_tmp <- file.path(cache, "offline_traits.db.tmp.123")
+  fresh_tmp <- file.path(cache, "offline_traits.db.tmp.456")
+  live_db <- file.path(cache, "offline_traits.db")
+  writeLines("orphaned build", stale_tmp)
+  writeLines("a build in progress", fresh_tmp)
+  writeLines("LIVE DB", live_db)
+  Sys.setFileTime(stale_tmp, Sys.time() - 2 * 3600)
+  Sys.setFileTime(live_db, Sys.time() - 2 * 3600)
+
+  expect_warning(lock <- acquire_rebuild_lock(lock_dir), "offline_traits\\.db\\.tmp\\.123")
+  expect_true(lock$acquired)
+  expect_false(file.exists(stale_tmp))
+  expect_true(file.exists(fresh_tmp))
+  expect_true(file.exists(live_db))
+})
+
+test_that("an adopting child never sweeps tmp builds", {
+  lock_dir <- local_lock_dir()
+  parent <- acquire_rebuild_lock(lock_dir)
+  stale_tmp <- file.path(dirname(lock_dir), "offline_traits.db.tmp.123")
+  writeLines("orphaned build", stale_tmp)
+  Sys.setFileTime(stale_tmp, Sys.time() - 2 * 3600)
+
+  expect_silent(child <- acquire_rebuild_lock(lock_dir, inherit_token = parent$token))
+  expect_true(child$acquired)
+  expect_true(file.exists(stale_tmp))
+})
+
 test_that("release removes the lock only for the owning token", {
   lock_dir <- local_lock_dir()
   lock <- acquire_rebuild_lock(lock_dir)

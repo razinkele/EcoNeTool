@@ -1125,12 +1125,17 @@ trait_research_server <- function(input, output, session, shared_data) {
 
   read_rebuild_log <- function(path) {
     if (is.null(path) || !file.exists(path)) return(character(0))
-    tryCatch(readLines(path, warn = FALSE), error = function(e) character(0))
+    tryCatch(readLines(path, warn = FALSE), error = function(e) {
+      warning(sprintf("[rebuild] could not read build log '%s': %s",
+                      path, conditionMessage(e)), call. = FALSE)
+      character(0)
+    })
   }
 
   # A closed tab must not leave the lock behind. Release only when the build
-  # is no longer running: a live child keeps building (cleanup = FALSE) and
-  # releases the lock itself when it exits.
+  # is no longer running: a live child keeps building (cleanup = FALSE,
+  # supervise = FALSE, so it also outlives this R worker) and releases the
+  # lock itself when it exits.
   session$onSessionEnded(function() {
     proc <- isolate(offline_rebuild_process())
     if (is.null(proc) || !proc$is_alive()) release_session_rebuild_lock()
@@ -1198,6 +1203,14 @@ trait_research_server <- function(input, output, session, shared_data) {
   # lives in request_offline_rebuild() (R/functions/offline_db_rebuild.R) so
   # it is unit-tested without a session.
   observeEvent(input$rebuild_offline_db, {
+    # F-a: the previous build's completion has not been handled yet (the
+    # child may already have exited and released the lock before the 2 s
+    # poller ran). A second launch would overwrite its handle and log paths.
+    if (!is.null(offline_rebuild_process())) {
+      showNotification("Rebuild already running (previous build not yet finished)",
+                       type = "warning", duration = 8)
+      return()
+    }
     out_file <- tempfile("offline_rebuild_", fileext = ".out")
     err_file <- tempfile("offline_rebuild_", fileext = ".err")
 
@@ -1211,16 +1224,22 @@ trait_research_server <- function(input, output, session, shared_data) {
         }
         # Logs go to files, not pipes: nothing reads a pipe until the build
         # ends, and a full pipe buffer (or a closed tab) would stall or kill
-        # the child while it holds the lock. cleanup = FALSE lets the build
-        # finish if the tab is closed; supervise = TRUE still reaps it if the
-        # whole R process dies.
+        # the child while it holds the lock. cleanup = FALSE stops GC of the
+        # handle from killing the child. supervise = FALSE (final review I1):
+        # shiny-server ends this R worker ~5 s after the last tab closes (no
+        # app_idle_timeout on laguna), and processx's supervisor would kill
+        # the child with it, mid-build. Unsupervised, the child outlives the
+        # worker; its reg.finalizer(onexit = TRUE) removes its tmp file and
+        # releases the lock however it exits. A hard kill (SIGKILL, reboot)
+        # skips the finalizer: the next acquire reclaims the lock after
+        # REBUILD_LOCK_STALE_MINS and sweeps the orphaned tmp file.
         processx::process$new(
           file.path(R.home("bin"), "Rscript"),
           args = build_script,
           wd = app_path(),
           env = c("current", stats::setNames(token, REBUILD_LOCK_TOKEN_ENV)),
           stdout = out_file, stderr = err_file,
-          supervise = TRUE, cleanup = FALSE
+          supervise = FALSE, cleanup = FALSE
         )
       }
     )
