@@ -3,6 +3,291 @@
 # Version: 1.2.0
 # Created: 2025-12-25
 
+# =============================================================================
+# TRAIT VOCABULARY - the single source of truth (NOT user-overridable)
+# =============================================================================
+# The food-web model (MB_MB / EP_MS / PR_MS in R/functions/trait_foodweb.R)
+# prices these codes. Before vocab v2 (deep analysis 2026-09, F17) one MB code
+# meant different things in six places: the live harmonizer, the fuzzy
+# ontology harmonizer, the offline-DB writer, the local BVOL/SpeciesEnriched
+# mappers and the UI legend each had their own table. Everything that assigns,
+# labels or validates an MS/FS/MB/EP/PR code now reads this constant through
+# get_trait_vocab() / trait_codes(). A session config or saved JSON may tune
+# the default *_patterns (merged in trait_patterns(), harmonization.R), never
+# the codes, labels, precedence or taxon rules.
+#
+# Bump trait_vocab_version whenever a code changes meaning. Offline DBs
+# (metadata.trait_vocab_version) and cache envelopes stamped with another
+# version are then ignored until rebuilt / refreshed, so stale codes are never
+# priced by the new matrices.
+TRAIT_VOCAB <- local({
+  lab <- function(label, description, examples) {
+    list(label = label, description = description, examples = examples)
+  }
+  list(
+    trait_vocab_version = 2L,
+
+    labels = list(
+      MS = list(
+        MS1 = lab("XS (Extra Small)", "< 0.1 cm", "Bacteria, picoplankton, small diatoms"),
+        MS2 = lab("S (Small)", "0.1 - 1 cm", "Copepods, copepod nauplii, large diatoms"),
+        MS3 = lab("SM (Small-Medium)", "1 - 5 cm", "Amphipods, krill, larval fish"),
+        MS4 = lab("M (Medium)", "5 - 20 cm", "Shrimp, gobies, small crabs"),
+        MS5 = lab("ML (Medium-Large)", "20 - 50 cm", "Herring, mackerel, plaice"),
+        MS6 = lab("L (Large)", "50 - 150 cm", "Cod, tuna, large fish"),
+        MS7 = lab("XL (Extra Large - rarely prey)", "> 150 cm", "Sharks, marine mammals")
+      ),
+      FS = list(
+        FS0 = lab("Primary producer / none", "Photosynthesis or chemosynthesis; never a consumer",
+                  "Phytoplankton, diatoms, macroalgae"),
+        FS1 = lab("Predator / Carnivore", "Active pursuit of live prey",
+                  "Active hunters: piscivorous fish, cephalopods"),
+        FS2 = lab("Scavenger / Detritivore", "Dead or moribund organisms, detritus",
+                  "Carrion feeders, detritus feeders"),
+        FS3 = lab("Omnivore", "Mixed diet (plants and animals)", "Mixed-diet generalists"),
+        FS4 = lab("Grazer / Herbivore", "Algae or plant consumption",
+                  "Algae scrapers, browsers, herbivorous fish"),
+        FS5 = lab("Deposit feeder", "Sediment organic matter", "Sediment-ingesting infauna, lugworms"),
+        FS6 = lab("Filter / Suspension feeder", "Suspended particles",
+                  "Bivalves, planktivorous fish, sponges"),
+        FS7 = lab("Xylophagous", "Wood boring", "Wood-borers: shipworms (Teredinidae), gribbles")
+      ),
+      MB = list(
+        MB1 = lab("Sessile", "Permanently attached, no locomotion",
+                  "Barnacles, mussels, sponges, sea anemones, hydroid colonies"),
+        MB2 = lab("Passive floater / drifter", "Moves with the water (plankton, medusae)",
+                  "Phytoplankton, jellyfish, salps, ctenophores"),
+        MB3 = lab("Crawler-burrower", "Benthic locomotion, including infaunal burrowers",
+                  "Crabs, sea stars, snails, lugworms, burrowing clams"),
+        MB4 = lab("Facultative / limited swimmer", "Swims occasionally, rests on or near the bottom",
+                  "Flatfish, shrimp, mysids"),
+        MB5 = lab("Obligate swimmer", "Continuous active swimming", "Most fish, squid, marine mammals")
+      ),
+      EP = list(
+        EP1 = lab("Pelagic", "Water column, no substrate contact", "Plankton, herring, jellyfish"),
+        EP2 = lab("Benthopelagic", "Near the bottom, swims in the water column", "Cod, whiting, demersal fish"),
+        EP3 = lab("Epibenthic", "On the sediment or rock surface (incl. attached and tube-dwelling taxa)",
+                  "Sea stars, crabs, mussels, tube worms"),
+        EP4 = lab("Endobenthic / Infaunal", "Within the sediment (burrowing)",
+                  "Burrowing bivalves, lugworms, burrowing shrimp")
+      ),
+      PR = list(
+        PR0 = lab("None / Soft body", "No protective structure", "Jellyfish, naked sea slugs, most fish"),
+        PR1 = lab("Mucus / Cuticle", "Mucus coat, cuticle or leathery body wall",
+                  "Hagfish, sea cucumbers, some larvae"),
+        PR2 = lab("Tube", "Protective tube or case", "Tube worms (Polychaeta), serpulids"),
+        PR3 = lab("Burrow refuge", "Permanent burrow used as a refuge", "Burrowing shrimp, permanent-burrow dwellers"),
+        PR4 = lab("Thin exoskeleton", "Thin chitinous exoskeleton", "Copepods, amphipods, small arthropods"),
+        PR5 = lab("Soft shell", "Thin calcium carbonate shell", "Moulting crabs, juvenile bivalves"),
+        PR6 = lab("Hard shell", "Thick calcium carbonate shell or test", "Mussels, snails, barnacles"),
+        PR7 = lab("Spines / ossicle plates", "Spines, spicules or calcareous ossicle plates",
+                  "Sea urchins, sea stars, brittle stars, sponges"),
+        PR8 = lab("Armoured", "Heavy carapace or armour", "Crabs, lobsters, sturgeon")
+      )
+    ),
+
+    # Default text patterns (case-insensitive, perl). classify_by_patterns()
+    # wraps each pattern as (?<![a-z])(?:<pattern>): every alternative gets a
+    # LEADING word boundary only, so stems still match ("burrow" matches
+    # "burrowing", "float" matches "floater") while "tidal" no longer matches
+    # inside "subtidal" or "pelagic" inside "benthopelagic". Multi-word
+    # alternatives use ".?" because the data use underscores
+    # ("limited_swimmer", "tube_dweller", "free_living").
+    # Zonation words (subtidal, sublittoral, intertidal, littoral) appear in
+    # NO environmental pattern on purpose: they describe a depth zone, not the
+    # position relative to the substrate, so taxonomy or depth decides.
+    patterns = list(
+      mobility = list(
+        MB1_sessile = "sessile|attach|cemented|fixed|anchored|immobile|colonial hydroid",
+        MB2_drifter = "drift|(holo|mero|zoo|phyto|ichthyo)?plankton|float|passive|medusa",
+        MB3_crawler_burrower = paste0("crawl|creep|walk|burrow|infaun|endobenth|tube.?dwell|",
+                                      "limited.?movement|slow.?moving|sluggish"),
+        MB4_facultative_swimmer = "limited.?swim|facultative.?swim|weak.?swim|slow.?swim|swim\\w*.{0,20}occasional",
+        MB5_obligate_swimmer = "swim|nekton|active.?swim"
+      ),
+      environmental = list(
+        EP1_pelagic = paste0("(epi|meso|bathy|abysso)?pelagic|water.?column|(holo|mero|zoo|phyto)?plankton|",
+                             "nekton|open.?water|midwater|neust"),
+        EP2_benthopelagic = "bentho.?pelagic|benthic.pelagic|demersal|near.?bottom|hyperbenth",
+        EP3_epibenthic = paste0("epibenth|epifaun|epilith|epiflor|epiphyt|epizo|benthic|benthos|bottom|seabed|",
+                                "^surface$|surface.?dwell|on.?substrate|attached|sessile|tube|free.?living|crevice"),
+        EP4_endobenthic = "endobenth|infaun|burrow|interstitial|within.?sediment|buried|lithotom"
+      ),
+      protection = list(
+        PR0_none = "^soft$|soft.?bod(y|ied)|naked|none|unprotected|jellyfish|cephalopod|crustose|cushion|stalked",
+        PR1_mucus = "mucus|slime|cuticle|cuticular|hagfish|tunic|leathery",
+        PR2_tube = "tube|tubicol|parchment",
+        PR3_burrow = "burrow",
+        PR4_exoskeleton = "exoskeleton|chitin|thin.?carapace|small.?arthropod",
+        PR5_soft_shell = "soft.?shell|thin.?shell|weak.?shell|partial.?shell|flexible.?shell|cartilage",
+        PR6_hard_shell = "shell|calcif|calcareous|calcium|bivalve|test|barnacle",
+        PR7_spines = "spine|spiny|spicule|prickle|thorn|ossicle|urchin",
+        PR8_armoured = paste0("armou?r|heavy.?carapace|thick.?carapace|hard.?carapace|crab.?carapace|",
+                              "^carapace$|heavy.?exoskeleton|calci\\w*.exoskeleton|lobster")
+      )
+    ),
+
+    # Codes are tested in this order; the first match wins. Specific before
+    # generic where one phrase legitimately holds two terms: "benthic
+    # surface" -> EP3 before EP1, "soft shell" -> PR5 before PR6's "shell",
+    # "limited_swimmer" -> MB4 before MB5's "swim", "calcareous tube" -> PR2
+    # before PR6's "calcareous".
+    pattern_precedence = list(
+      environmental = c("EP4", "EP2", "EP3", "EP1"),
+      protection = c("PR8", "PR7", "PR5", "PR2", "PR6", "PR4", "PR3", "PR1", "PR0"),
+      mobility = c("MB1", "MB4", "MB5", "MB3", "MB2"),
+      foraging = c("FS0", "FS1", "FS2", "FS3", "FS4", "FS5", "FS6", "FS7")
+    ),
+
+    # Ordered taxonomic rules for apply_taxon_rules(). A rule fires when every
+    # `match` entry (taxonomy field -> regex, case-insensitive) matches, its
+    # optional `text` regex matches the trait text, and at least one of its
+    # `flag`s (taxonomic_rules switches in the harmonization settings) is on.
+    # `override_text = TRUE` rules win over text patterns (protection only).
+    # environmental_pelagic runs BEFORE the depth rule, environmental after it.
+    taxon_rules = list(
+      mobility = list(
+        list(match = list(class = "Actinopteri|Elasmobranchii|Teleostei"), code = "MB5",
+             flag = "fish_obligate_swimmers"),
+        list(match = list(phylum = "^Mollusca$", class = "^Bivalvia$"), code = "MB1", flag = "bivalves_sessile"),
+        list(match = list(phylum = "^Mollusca$", class = "^Cephalopoda$"), code = "MB5",
+             flag = "cephalopods_swimmers"),
+        list(match = list(phylum = "^Mollusca$", class = "^Gastropoda$"), code = "MB3"),
+        list(match = list(phylum = "^Arthropoda$", class = "Copepoda"), code = "MB5"),
+        list(match = list(phylum = "^Arthropoda$", class = "Malacostraca"), code = "MB4"),
+        # Cnidaria by class (F38): medusae drift, polyps are sessile. Other or
+        # unknown Cnidaria get no taxon code.
+        list(match = list(phylum = "^Cnidaria$", class = "^(Scyphozoa|Cubozoa)$"), code = "MB2"),
+        list(match = list(phylum = "^Ctenophora$"), code = "MB2"),
+        list(match = list(phylum = "^Cnidaria$", class = "^Hydrozoa$"), text = "medusa|pelagic", code = "MB2"),
+        list(match = list(phylum = "^Cnidaria$", class = "^(Anthozoa|Staurozoa|Hydrozoa)$"), code = "MB1"),
+        list(match = list(phylum = "^Porifera$"), code = "MB1")
+      ),
+      environmental_pelagic = list(
+        list(match = list(feeding_mode = "photosyn"), code = "EP1", flag = "phytoplankton_pelagic"),
+        list(match = list(class = "Bacillariophyceae|Dinophyceae|Prymnesiophyceae"), code = "EP1",
+             flag = "phytoplankton_pelagic"),
+        list(match = list(class = "Copepoda|Cladocera|Branchiopoda|Appendicularia|Thaliacea"), code = "EP1",
+             flag = "zooplankton_pelagic"),
+        list(match = list(phylum = "^(Chaetognatha|Ctenophora)$"), code = "EP1", flag = "zooplankton_pelagic"),
+        list(match = list(phylum = "^Cnidaria$", class = "^(Scyphozoa|Cubozoa)$"), code = "EP1",
+             flag = "zooplankton_pelagic"),
+        list(match = list(phylum = "^Cnidaria$", class = "^Hydrozoa$"), text = "medusa|pelagic", code = "EP1",
+             flag = "zooplankton_pelagic")
+      ),
+      environmental = list(
+        list(match = list(phylum = "^Mollusca$", class = "^Bivalvia$"), code = "EP4", flag = "infaunal_bivalves"),
+        # Fish by order: defaulting all fish to EP1 mislabelled every flatfish,
+        # goby, eel and sandeel; unknown orders fall back to EP2.
+        list(match = list(class = "Actinopteri|Teleostei",
+                          order = paste0("Pleuronectiformes|Gobiiformes|Anguilliformes|Scorpaeniformes|",
+                                         "Lophiiformes|Ophidiiformes")),
+             code = "EP3"),
+        list(match = list(class = "Actinopteri|Teleostei",
+                          order = "Clupeiformes|Scombriformes|Beloniformes|Carangiformes|Atheriniformes"),
+             code = "EP1"),
+        list(match = list(class = "Actinopteri|Teleostei",
+                          order = "Gadiformes|Perciformes|Aulopiformes|Stomiiformes|Myctophiformes"),
+             code = "EP2"),
+        list(match = list(class = "Actinopteri|Teleostei"), code = "EP2")
+      ),
+      protection = list(
+        # Echinoderm ossicles beat any text: an urchin described as having
+        # "calcareous plates" is PR7, not PR6 (F38).
+        list(match = list(phylum = "^Echinodermata$", class = "^(Echinoidea|Asteroidea|Ophiuroidea|Crinoidea)$"),
+             code = "PR7", flag = "echinoderms_calcium_plates", override_text = TRUE),
+        list(match = list(phylum = "^Echinodermata$", class = "^Holothuroidea$"),
+             code = "PR1", flag = "echinoderms_calcium_plates", override_text = TRUE),
+        list(match = list(phylum = "^Mollusca$", class = "^Bivalvia$"), code = "PR6", flag = "bivalves_hard_shell"),
+        list(match = list(phylum = "^Mollusca$", class = "^Gastropoda$"), code = "PR6",
+             flag = "gastropods_hard_shell"),
+        list(match = list(phylum = "^Mollusca$", class = "^Cephalopoda$"), code = "PR0"),
+        list(match = list(phylum = "^Mollusca$"), code = "PR6",
+             flag = c("bivalves_hard_shell", "gastropods_hard_shell")),
+        list(match = list(phylum = "^Arthropoda$", class = "Malacostraca"), code = "PR8",
+             flag = "crustaceans_exoskeleton"),
+        # Copepods, cladocerans, ostracods and other small arthropods.
+        list(match = list(phylum = "^Arthropoda$"), code = "PR4"),
+        list(match = list(phylum = "^Cnidaria$"), code = "PR0"),
+        list(match = list(phylum = "^Annelida$", living_habit = "tube"), code = "PR2"),
+        list(match = list(phylum = "^Annelida$"), code = "PR0"),
+        list(match = list(class = "Actinopteri|Teleostei"), code = "PR0"),
+        list(match = list(phylum = "^Porifera$"), code = "PR7")
+      )
+    ),
+
+    # The pre-v2 default patterns of the keys v2 kept. A server default or
+    # imported JSON saved before v2 carries these verbatim (the export writes
+    # the whole config); trait_patterns() treats such a value as "not
+    # customised" so the v2 default applies instead of silently restoring the
+    # v1 behaviour. Historical values: never edit.
+    legacy_patterns = list(
+      mobility = list(
+        MB1_sessile = "sessile|attached|fixed|cemented|anchored|immobile"
+      ),
+      environmental = list(
+        EP1_pelagic = "pelagic|water column|planktonic|nektonic|open water",
+        EP2_benthopelagic = "benthopelagic|demersal|near bottom|benthic-pelagic",
+        EP3_epibenthic = "epibenthic|epifauna|surface dwelling|on substrate|^surface$",
+        EP4_endobenthic = "endobenthic|infauna|burrowing|within sediment|interstitial"
+      ),
+      protection = list(
+        PR0_none = "soft.?bod|naked|unprotected|no shell|no armor|jellyfish|cephalopod|^soft$|crustose|cushion|stalked",
+        PR1_mucus = "mucus|slime|cuticle|cuticular|hagfish|tunic",
+        PR2_tube = "tube|tube.?dwell|calcareous tube|parchment tube",
+        PR3_burrow = "deep burrow|permanent burrow|burrow refuge",
+        PR4_exoskeleton = "exoskeleton|chitinous|thin carapace|small arthropod",
+        PR5_soft_shell = "soft.?shell|partial shell|flexible shell|cartilage|thin shell",
+        PR6_hard_shell = "shell|calcified|calcareous|bivalve shell|gastropod shell|hard carapace|test|barnacle",
+        PR7_spines = "spine|spiny|spicule|prickle|thorn|ossicle|urchin",
+        PR8_armoured = "armoured|armored|heavy carapace|thick carapace|lobster|crab carapace"
+      )
+    )
+  )
+})
+
+#' The trait vocabulary (codes, labels, default patterns, precedence, taxon rules)
+#'
+#' Never a session value: the vocabulary is what the food-web model prices.
+#' @return The TRAIT_VOCAB list.
+get_trait_vocab <- function() {
+  TRAIT_VOCAB
+}
+
+#' Vocabulary version stamped into offline DBs and cache envelopes
+#' @return integer(1)
+current_trait_vocab_version <- function() {
+  get_trait_vocab()$trait_vocab_version
+}
+
+#' Valid codes for one trait, in order
+#'
+#' @param trait One of "MS", "FS", "MB", "EP", "PR".
+#' @return Character vector, e.g. c("MB1", ..., "MB5").
+trait_codes <- function(trait) {
+  labels <- get_trait_vocab()$labels
+  if (!is.character(trait) || length(trait) != 1L || !trait %in% names(labels)) {
+    stop(sprintf("trait must be one of: %s", paste(names(labels), collapse = ", ")), call. = FALSE)
+  }
+  names(labels[[trait]])
+}
+
+#' Named character vectors of code labels per trait (TRAIT_DEFINITIONS)
+#' @return list(MS = c(MS1 = "..."), FS = ..., MB = ..., EP = ..., PR = ...)
+trait_definitions <- function() {
+  lapply(get_trait_vocab()$labels, function(codes) vapply(codes, function(x) x$label, character(1)))
+}
+
+#' Human-readable label of one code, e.g. "MB2" -> "Passive floater / drifter"
+#' @param code A trait code.
+#' @return character(1); NA for NA or an unknown code.
+trait_code_label <- function(code) {
+  if (length(code) != 1L || is.na(code)) return(NA_character_)
+  trait <- sub("[0-9]+$", "", as.character(code))
+  info <- get_trait_vocab()$labels[[trait]][[as.character(code)]]
+  if (is.null(info)) NA_character_ else info$label
+}
+
 # Default Harmonization Configuration
 HARMONIZATION_CONFIG <- list(
 
@@ -35,84 +320,20 @@ HARMONIZATION_CONFIG <- list(
     FS7_xylophagous = "xylophag|wood.bor|wood.eat|lignivor"
   ),
 
-  # Human-readable FS labels. Single source of truth — same data-driven
-  # UI pattern as protection_labels (PR1b) and reproductive/temperature/salinity
-  # labels (PR8b Phase B). Pre-P4 the UI hard-coded a table with the wrong
-  # ordering (FS1=Herbivore, FS2=Omnivore, FS3=Predator, FS4=Scavenger),
-  # mismatching foraging_patterns (FS1=predator, FS2=scavenger, FS3=omnivore,
-  # FS4=grazer/herbivore) and silently producing wrong harmonized codes.
-  foraging_labels = list(
-    FS0 = list(label = "Primary producer",
-               examples = "Phytoplankton, diatoms, macroalgae"),
-    FS1 = list(label = "Predator / Carnivore",
-               examples = "Active hunters: piscivorous fish, cephalopods"),
-    FS2 = list(label = "Scavenger / Detritivore",
-               examples = "Carrion feeders, detritus feeders"),
-    FS3 = list(label = "Omnivore",
-               examples = "Mixed-diet generalists"),
-    FS4 = list(label = "Grazer / Herbivore",
-               examples = "Algae scrapers, browsers, herbivorous fish"),
-    FS5 = list(label = "Deposit feeder",
-               examples = "Sediment-ingesting infauna, lugworms"),
-    FS6 = list(label = "Filter / Suspension feeder",
-               examples = "Bivalves, planktivorous fish, sponges"),
-    FS7 = list(label = "Xylophagous",
-               examples = "Wood-borers: shipworms (Teredinidae), gribbles")
-  ),
+  # Code labels: copies of TRAIT_VOCAB$labels, kept here so an exported
+  # config documents them. Readers (UI legends, TRAIT_DEFINITIONS) use
+  # get_trait_vocab(), never these copies: labels are not user-overridable.
+  size_labels = TRAIT_VOCAB$labels$MS,
+  foraging_labels = TRAIT_VOCAB$labels$FS,
+  mobility_labels = TRAIT_VOCAB$labels$MB,
+  environmental_labels = TRAIT_VOCAB$labels$EP,
+  protection_labels = TRAIT_VOCAB$labels$PR,
 
-  # MOBILITY PATTERNS
-  mobility_patterns = list(
-    MB1_sessile = "sessile|attached|fixed|cemented|anchored|immobile",
-    MB2_burrower = "burrow|infauna|endobenthic|burrowing|sediment dweller",
-    MB3_crawler = "crawl|creep|benthic|epibenthic|slow moving|sluggish|limited.?movement",
-    MB4_swimmer_limited = "slow swim|limited swim|weak swim|drift|plankton|limited.?swim|float",
-    MB5_swimmer = "swim|pelagic|nektonic|fast|active|mobile|free-swimming"
-  ),
-
-  # ENVIRONMENTAL POSITION PATTERNS
-  environmental_patterns = list(
-    EP1_pelagic = "pelagic|water column|planktonic|nektonic|open water",
-    EP2_benthopelagic = "benthopelagic|demersal|near bottom|benthic-pelagic",
-    # Btrait sediment-position label "Surface" -> epibenthic. Anchored ^surface$
-    # (the bare label) so it cannot match "Subsurface_deposit", which is a
-    # FEEDING label and must reach FS5, not EP3.
-    EP3_epibenthic = "epibenthic|epifauna|surface dwelling|on substrate|^surface$",
-    EP4_endobenthic = "endobenthic|infauna|burrowing|within sediment|interstitial"
-  ),
-
-  # PROTECTION MECHANISM PATTERNS (9-level PR0-PR8, matching harmonize_protection)
-  # PR1 (mucus/cuticle) was missing pre-PR1b — UI listed it but config and
-  # harmonize_protection had no branch, so any "mucus"-flagged species got
-  # NA. Added between PR0_none and PR2_tube to fill the gap.
-  protection_patterns = list(
-    PR0_none = "soft.?bod|naked|unprotected|no shell|no armor|jellyfish|cephalopod|^soft$|crustose|cushion|stalked",
-    # Btrait morphology label "Tunic" (the leathery ascidian covering) -> PR1.
-    PR1_mucus = "mucus|slime|cuticle|cuticular|hagfish|tunic",
-    PR2_tube = "tube|tube.?dwell|calcareous tube|parchment tube",
-    PR3_burrow = "deep burrow|permanent burrow|burrow refuge",
-    PR4_exoskeleton = "exoskeleton|chitinous|thin carapace|small arthropod",
-    PR5_soft_shell = "soft.?shell|partial shell|flexible shell|cartilage|thin shell",
-    PR6_hard_shell = "shell|calcified|calcareous|bivalve shell|gastropod shell|hard carapace|test|barnacle",
-    PR7_spines = "spine|spiny|spicule|prickle|thorn|ossicle|urchin",
-    PR8_armoured = "armoured|armored|heavy carapace|thick carapace|lobster|crab carapace"
-  ),
-
-  # Human-readable PR labels. Single source of truth — the UI renders this
-  # via R/ui/trait_research_ui.R, so the on-screen legend can no longer
-  # drift from the harmonization rules. Pre-PR1b the UI hard-coded a table
-  # that disagreed with config for PR2/3/4/7 (e.g., UI PR2 = "Soft tissue"
-  # vs config PR2 = "Tube"; UI PR7 = "Scales" vs config PR7 = "Spines").
-  protection_labels = list(
-    PR0 = list(label = "None / Soft body",  examples = "Jellyfish, naked sea slugs, cephalopods"),
-    PR1 = list(label = "Mucus / Cuticle",   examples = "Hagfish, some larvae"),
-    PR2 = list(label = "Tube",              examples = "Tube worms (Polychaeta), serpulids"),
-    PR3 = list(label = "Burrow refuge",     examples = "Permanent-burrow dwellers"),
-    PR4 = list(label = "Thin exoskeleton",  examples = "Copepods, small arthropods"),
-    PR5 = list(label = "Soft shell",        examples = "Molting crabs, juvenile bivalves"),
-    PR6 = list(label = "Hard shell",        examples = "Mussels, snails, barnacles"),
-    PR7 = list(label = "Spines",            examples = "Sea urchins, spiny fish"),
-    PR8 = list(label = "Armoured",          examples = "Lobsters, sturgeon, heavy carapace")
-  ),
+  # MB / EP / PR PATTERNS: the tunable defaults. trait_patterns() merges a
+  # session or JSON value over TRAIT_VOCAB$patterns key by key.
+  mobility_patterns = TRAIT_VOCAB$patterns$mobility,
+  environmental_patterns = TRAIT_VOCAB$patterns$environmental,
+  protection_patterns = TRAIT_VOCAB$patterns$protection,
 
   # REPRODUCTIVE STRATEGY PATTERNS
   reproductive_patterns = list(

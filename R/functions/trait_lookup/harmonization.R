@@ -84,12 +84,20 @@ get_harm_config <- function() {
 #' (they do not change any code). The JSON text is hashed rather than the R
 #' object, so 150L after a JSON round trip hashes like 150.
 #'
+#' The trait vocabulary (TRAIT_VOCAB: version, default patterns, precedence,
+#' taxon rules) is hashed in too. It is not part of any config, so a JSON file
+#' cannot pin it, but it changes the codes just as much: bumping
+#' trait_vocab_version (or editing a default pattern) turns every envelope
+#' written under the old vocabulary into a miss for every reader and for
+#' phylogenetic imputation, instead of serving old MB codes for 30 days.
+#'
 #' @param cfg Config list; defaults to this session's config.
 #' @return Character(1) xxhash64 digest, or NULL when no config is loaded.
 harm_config_hash <- function(cfg = get_harm_config()) {
   if (is.null(cfg)) return(NULL)
   cfg$last_modified <- NULL
   cfg$version <- NULL
+  cfg$.trait_vocab <- get_trait_vocab()
   json <- jsonlite::toJSON(cfg, auto_unbox = TRUE, digits = NA)
   digest::digest(as.character(json), algo = "xxhash64", serialize = FALSE)
 }
@@ -327,31 +335,9 @@ harmonize_fuzzy_mobility <- function(ontology_traits) {
   max_score <- max(mobility$trait_score, na.rm = TRUE)
   primary <- mobility[mobility$trait_score == max_score, ][1, ]
 
-  # Map ontology modality to MB class
-  modality <- tolower(primary$trait_modality)
-
-  mb_class <- NA_character_
-
-  # MB1: Sessile
-  if (grepl("sessile|attached|fixed", modality)) {
-    mb_class <- "MB1"
-
-  # MB2: Burrower
-  } else if (grepl("burrow|infauna|tube.dwell", modality)) {
-    mb_class <- "MB2"
-
-  # MB3: Crawler/Floater
-  } else if (grepl("crawl|creep|walk|benthic.mobile|floater|drift", modality)) {
-    mb_class <- "MB3"
-
-  # MB4: Limited swimmer
-  } else if (grepl("limited.swim|facultative.swim|weak.swim", modality)) {
-    mb_class <- "MB4"
-
-  # MB5: Swimmer
-  } else if (grepl("swimmer|pelagic|nekt", modality)) {
-    mb_class <- "MB5"
-  }
+  # Map ontology modality to MB class through the shared vocabulary
+  # (TRAIT_VOCAB), so the fuzzy path cannot drift from the live cascade.
+  mb_class <- classify_by_patterns(primary$trait_modality, "mobility")
 
   if (!is.na(mb_class)) {
     result$class <- mb_class
@@ -408,28 +394,10 @@ harmonize_fuzzy_habitat <- function(ontology_traits) {
   max_score <- max(habitat$trait_score, na.rm = TRUE)
   primary <- habitat[habitat$trait_score == max_score, ][1, ]
 
-  # Map ontology modality to EP class
-  modality <- tolower(primary$trait_modality)
-
-  ep_class <- NA_character_
-
-  # EP1: Pelagic
-  if (grepl("pelagic|water.column|planktonic", modality)) {
-    ep_class <- "EP1"
-
-  # EP2: Benthopelagic
-  } else if (grepl("benthopel|demersal|near.bottom", modality)) {
-    ep_class <- "EP2"
-
-  # EP3: Epibenthic (on seabed surface)
-  } else if (grepl("benthic|subtidal|offshore|deep|epibenthic|epifauna", modality) &&
-             !grepl("intertidal|tidal|littoral|infauna|endobenthic", modality)) {
-    ep_class <- "EP3"
-
-  # EP4: Endobenthic/Infaunal (within sediment)
-  } else if (grepl("intertidal|tidal|littoral|eulittoral|infauna|endobenthic|burrowing", modality)) {
-    ep_class <- "EP4"
-  }
+  # Map ontology modality to EP class through the shared vocabulary. Zonation
+  # modalities (intertidal, subtidal) give NA on purpose: they are depth
+  # zones, not a position relative to the substrate (F35, F77).
+  ep_class <- classify_by_patterns(primary$trait_modality, "environmental")
 
   if (!is.na(ep_class)) {
     result$class <- ep_class
@@ -490,23 +458,87 @@ apply_size_adjustment <- function(size_cm) {
 }
 
 
+#' Effective text patterns for one trait (vocabulary defaults + session tuning)
+#'
+#' For mobility / environmental / protection the defaults are
+#' TRAIT_VOCAB$patterns; the session config (get_harm_config()) may override
+#' them key by key. Only keys the vocabulary defines are honoured, so a stale
+#' key from a pre-v2 JSON (e.g. MB2_burrower) can never resurrect the old
+#' meaning, and a value identical to the pre-v2 default of a kept key is
+#' treated as "not customised". Foraging patterns are entirely config-owned.
+#'
+#' @param trait "mobility", "environmental", "protection" or "foraging".
+#' @return Named list key -> regex (keys like "MB1_sessile"), or NULL.
+trait_patterns <- function(trait) {
+  section <- paste0(trait, "_patterns")
+  cfg <- get_harm_config() %||% list()
+  vocab <- get_trait_vocab()
+  defaults <- vocab$patterns[[trait]]
+  if (is.null(defaults)) return(cfg[[section]])
+  user <- cfg[[section]]
+  if (!is.list(user) || length(user) == 0L) return(defaults)
+  legacy <- vocab$legacy_patterns[[trait]] %||% list()
+  keep <- Filter(function(k) {
+    v <- user[[k]]
+    is.character(v) && length(v) == 1L && !is.na(v) && nzchar(v) && !identical(v, legacy[[k]])
+  }, intersect(names(user), names(defaults)))
+  utils::modifyList(defaults, user[keep])
+}
+
+
 #' Get Pattern from Configuration
+#'
+#' Thin wrapper kept for callers of the pre-v2 API.
 #'
 #' @param pattern_name String name (e.g., "MB1_sessile", "FS1_predator")
 #' @param pattern_type Type: "mobility", "foraging", "environmental", "protection"
 #' @return Regular expression pattern string, or NULL if not found
 get_config_pattern <- function(pattern_name, pattern_type = "mobility") {
-  cfg <- get_harm_config()
-  if (is.null(cfg)) return(NULL)
+  if (!pattern_type %in% c("mobility", "foraging", "environmental", "protection")) return(NULL)
+  trait_patterns(pattern_type)[[pattern_name]]
+}
 
-  pattern_list <- switch(pattern_type,
-    "mobility" = cfg$mobility_patterns,
-    "foraging" = cfg$foraging_patterns,
-    "environmental" = cfg$environmental_patterns,
-    "protection" = cfg$protection_patterns,
-    NULL
-  )
-  pattern_list[[pattern_name]]
+
+#' Classify free text into a trait code using the vocabulary patterns
+#'
+#' Lower-cases the text and tests the codes in
+#' get_trait_vocab()$pattern_precedence[[trait]] order; the first match wins.
+#' Each pattern is wrapped as (?<![a-z])(?:<pattern>) (perl): a LEADING
+#' boundary only, so stems keep working ("burrow" matches "burrowing") but
+#' "tidal" no longer matches inside "subtidal" (F77), "pelagic" inside
+#' "benthopelagic" (F35) or "surface" inside "subsurface".
+#'
+#' @param text Character vector (collapsed with spaces); NULL / NA / "" allowed.
+#' @param trait "mobility", "environmental", "protection" or "foraging".
+#' @return The code (e.g. "EP2"), or NA_character_ when nothing matches. An
+#'   invalid pattern warns ("[harmonization] invalid <trait> pattern for
+#'   <code>: ...") and is skipped.
+classify_by_patterns <- function(text, trait) {
+  if (length(text) == 0L) return(NA_character_)
+  text <- as.character(unlist(text))
+  text <- text[!is.na(text)]
+  if (length(text) == 0L) return(NA_character_)
+  txt <- tolower(paste(text, collapse = " "))
+  if (!nzchar(trimws(txt))) return(NA_character_)
+
+  pats <- trait_patterns(trait)
+  if (length(pats) == 0L) return(NA_character_)
+  codes <- sub("_.*$", "", names(pats))
+  precedence <- get_trait_vocab()$pattern_precedence[[trait]] %||% unique(codes)
+  for (code in precedence) {
+    for (key in names(pats)[codes == code]) {
+      hit <- tryCatch(
+        suppressWarnings(grepl(paste0("(?<![a-z])(?:", pats[[key]], ")"), txt, perl = TRUE)),
+        error = function(e) {
+          warning(sprintf("[harmonization] invalid %s pattern for %s: %s",
+                          trait, code, conditionMessage(e)), call. = FALSE)
+          FALSE
+        }
+      )
+      if (isTRUE(hit)) return(code)
+    }
+  }
+  NA_character_
 }
 
 
