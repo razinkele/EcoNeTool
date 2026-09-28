@@ -595,3 +595,110 @@ app_path <- function(...) {
 
   file.path(root, ...)
 }
+
+# =============================================================================
+# SAFE RENDERING OF THIRD-PARTY TEXT (F3 / F54)
+# =============================================================================
+# EcoBase metadata and uploaded .ewemdb metadata are attacker-controllable.
+# Render them only through htmltools tag builders (tags$td(x) escapes x) and
+# never paste them into HTML(). These helpers return plain character or tag
+# objects, never pre-escaped strings, so nothing is escaped twice.
+
+#' Return `url` only if it is a single http(s) URL, else NULL
+#'
+#' Blocks javascript:, data:, vbscript: and relative hrefs. The caller still
+#' passes the result to tags$a(href = ...), which escapes quotes.
+#' @param url Candidate URL.
+#' @return `url` or NULL.
+safe_href <- function(url) {
+  if (is.character(url) && length(url) == 1 && !is.na(url) &&
+        grepl("^https?://", url, ignore.case = TRUE)) url else NULL
+}
+
+#' Build a https://doi.org/ link target from a DOI, or NULL
+#'
+#' Accepts a bare DOI or one prefixed with doi: / https://doi.org/, then
+#' requires the Crossref shape `10.<4-9 digits>/<no whitespace>`.
+#' @param doi Candidate DOI.
+#' @return Character href or NULL.
+safe_doi_href <- function(doi) {
+  if (!is.character(doi) || length(doi) != 1 || is.na(doi)) return(NULL)
+  bare <- sub("^(https?://(dx\\.)?doi\\.org/|doi:\\s*)", "", trimws(doi), ignore.case = TRUE)
+  if (!grepl("^10\\.\\d{4,9}/\\S+$", bare, perl = TRUE)) return(NULL)
+  paste0("https://doi.org/", utils::URLencode(bare, reserved = FALSE))
+}
+
+#' Metadata value as escaped-by-construction content
+#'
+#' @param val Metadata value (any type).
+#' @param missing Values that mean "not specified" (compared as character).
+#' @return The value as character (tags$ builders escape it), or a grey
+#'   "Not specified" span.
+meta_text <- function(val, missing = c("", "-9999")) {
+  if (is.null(val) || length(val) == 0 || all(is.na(val)) ||
+        as.character(val[1]) %in% missing) {
+    return(htmltools::tags$span(style = "color: #999;", "Not specified"))
+  }
+  as.character(val[1])
+}
+
+#' One label/value row of a metadata preview table
+#' @param label Static label text.
+#' @param value Character or tag; escaped by the builder.
+#' @param label_style,value_style Inline CSS.
+meta_row <- function(label, value, label_style = "padding: 2px 0;", value_style = NULL) {
+  htmltools::tags$tr(
+    htmltools::tags$td(style = label_style, label),
+    htmltools::tags$td(style = value_style, value)
+  )
+}
+
+#' Section header row (GEOGRAPHIC, TEMPORAL, ...) of a metadata preview table
+meta_section_row <- function(title) {
+  htmltools::tags$tr(
+    style = "background: #f0f9ff;",
+    htmltools::tags$td(colspan = "2", style = "padding: 4px 0; font-weight: bold;", title)
+  )
+}
+
+#' Publication row: DOI link, else safe URL link, else escaped text, else NULL
+#'
+#' @param doi,uri,ref Candidate DOI, URL and free-text reference.
+#' @param ref_label Label for the free-text row.
+#' @return A tags$tr or NULL.
+meta_publication_row <- function(doi = NULL, uri = NULL, ref = NULL, ref_label = "Reference:") {
+  has <- function(v) !is.null(v) && length(v) > 0 && !all(is.na(v)) && nzchar(as.character(v[1]))
+  link <- function(href, text) {
+    htmltools::tags$a(href = href, target = "_blank", rel = "noopener noreferrer",
+                      style = "color: #337ab7;", text)
+  }
+  if (has(doi)) {
+    href <- safe_doi_href(as.character(doi[1]))
+    value <- if (is.null(href)) as.character(doi[1]) else link(href, as.character(doi[1]))
+    return(meta_row(htmltools::tags$strong("DOI:"), value))
+  }
+  if (has(uri)) {
+    href <- safe_href(as.character(uri[1]))
+    value <- if (is.null(href)) as.character(uri[1]) else link(href, "Link")
+    return(meta_row(htmltools::tags$strong("Publication:"), value))
+  }
+  if (has(ref)) {
+    return(meta_row(htmltools::tags$strong(ref_label), as.character(ref[1]),
+                    value_style = "font-size: 11px;"))
+  }
+  NULL
+}
+
+#' Italic, truncated description paragraph, or NULL
+#'
+#' NULL, NA, "" and the EwE -9999 sentinel (numeric or text) count as
+#' missing, as the old has_value() did.
+meta_description <- function(desc, max_chars = 150) {
+  if (is.null(desc) || length(desc) == 0 || all(is.na(desc)) ||
+        as.character(desc[1]) %in% c("", "-9999")) {
+    return(NULL)
+  }
+  text <- as.character(desc[1])
+  if (nchar(text) > max_chars) text <- paste0(substr(text, 1, max_chars - 3), "...")
+  htmltools::tags$p(style = "font-size: 11px; color: #555; font-style: italic; margin: 8px 0;", text)
+}

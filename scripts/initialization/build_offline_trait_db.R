@@ -34,6 +34,9 @@ source(file.path(project_root, "R", "functions", "validation_utils.R"))
 # they aggregate the multiple fuzzy modalities WoRMS Traits Portal supplies
 # per species per trait, which the per-row helpers below can't do.
 source(file.path(project_root, "R", "functions", "trait_lookup", "harmonization.R"))
+# Rebuild lock + atomic install, shared with the in-app "Rebuild Database"
+# button (F19), so console and in-app builds exclude each other.
+source(file.path(project_root, "R", "functions", "offline_db_rebuild.R"))
 
 # Verify %||% is available
 stopifnot("operator %||% not available" = exists("%||%", mode = "function"))
@@ -135,11 +138,9 @@ dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
 db_path <- file.path(cache_dir, "offline_traits.db")
 cat("Database path:", db_path, "\n")
 
-# Remove old database if it exists (fresh build)
-if (file.exists(db_path)) {
-  file.remove(db_path)
-  cat("Removed existing database for fresh build.\n")
-}
+# F19: the live DB is NOT removed here any more. The build goes into a
+# per-process tmp file (below) and replaces the live DB only once it has
+# finished, so a stop() mid-build leaves the live DB intact.
 
 # Shared-writer invariant: this script runs as the developer (e.g. `razinka`),
 # but the Shiny app runs as a DIFFERENT OS user (`shiny`) and MIGRATES this DB
@@ -150,8 +151,37 @@ if (file.exists(db_path)) {
 # umask 002 creates the DB group-writable (664). POSIX no-op on Windows.
 Sys.umask("0002")
 
-con <- dbConnect(RSQLite::SQLite(), db_path)
-on.exit(dbDisconnect(con), add = TRUE)
+# F19: take the process-wide rebuild lock (after the umask above, so the lock
+# directory is group-writable and the other OS user can reclaim it). An
+# in-app build hands its token down through ECONETOOL_REBUILD_LOCK_TOKEN and
+# this process adopts that lock; a console build acquires its own and stops
+# if another build holds it.
+lock_dir <- file.path(cache_dir, "offline_traits.db.lock")
+build_lock <- acquire_rebuild_lock(lock_dir,
+                                   inherit_token = Sys.getenv(REBUILD_LOCK_TOKEN_ENV))
+if (!isTRUE(build_lock$acquired)) {
+  stop(build_lock$message, call. = FALSE)
+}
+
+# F19: build into a per-process tmp file; finalize_offline_db_build() renames
+# it over the live DB at the very end.
+tmp_path <- paste0(db_path, ".tmp.", Sys.getpid())
+if (file.exists(tmp_path)) unlink(tmp_path)
+
+# Cleanup at process exit, success or failure: disconnect, drop an unfinished
+# tmp build, release the lock. A top-level on.exit() is a no-op in an Rscript
+# (it never runs), so the old on.exit(dbDisconnect(con)) here did nothing; a
+# finalizer with onexit = TRUE runs even after a stop().
+.build_state <- new.env()
+.build_state$con <- NULL
+reg.finalizer(.build_state, function(st) {
+  if (!is.null(st$con) && DBI::dbIsValid(st$con)) try(DBI::dbDisconnect(st$con), silent = TRUE)
+  if (file.exists(tmp_path)) unlink(tmp_path)
+  release_rebuild_lock(lock_dir, build_lock$token)
+}, onexit = TRUE)
+
+con <- dbConnect(RSQLite::SQLite(), tmp_path)
+.build_state$con <- con
 
 # ---------------------------------------------------------------------------
 # 5. Create schema
@@ -858,9 +888,11 @@ if (coverage$total > 0) {
   }
 }
 
-# Belt-and-suspenders: widen to group-writable even if umask was overridden,
-# so the app user (`shiny`) can migrate the schema at runtime. POSIX-only.
-try(Sys.chmod(db_path, mode = "0664"), silent = TRUE)
+# F19: install the finished build over the live DB. Disconnects first
+# (Windows cannot rename an open SQLite file), widens the mode to 0664 so the
+# app user (`shiny`) can migrate the schema at runtime, then renames. A failed
+# rename stop()s with the live DB untouched (no copy fallback).
+finalize_offline_db_build(con, tmp_path, db_path)
 
 cat("\nDatabase saved to:", db_path, "\n")
 cat("Finished:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")

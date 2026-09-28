@@ -66,6 +66,15 @@ test_that("the real tree parses, trait_lookup included", {
   expect_true("app.R" %in% res$files)
 })
 
+test_that("processx is a required package (in-app rebuild, F-d)", {
+  code <- readLines(file.path(get_app_root(), "deployment", "pre-deploy-check.R"), warn = FALSE)
+  start <- grep("^required_packages <- c\\(", code)
+  expect_length(start, 1L)
+  end <- start + which(grepl("^\\)", code[-seq_len(start)]))[1]
+  block <- paste(code[start:end], collapse = "\n")
+  expect_match(block, "\"processx\"", fixed = TRUE)
+})
+
 test_that("the script turns every parse error into an ERROR check", {
   code <- readLines(file.path(get_app_root(), "deployment", "pre-deploy-check.R"), warn = FALSE)
   code <- code[!grepl("^\\s*#", code)]

@@ -82,6 +82,10 @@ EXCLUDE_PATTERNS=(
   ".DS_Store"
   ".claude/*"
   "*backup*"
+  # Editor and OneDrive conflict copies can hold secrets (M8). rsync globs
+  # are case-sensitive, so "*backup*" alone misses "*-safeBackup-*".
+  "*.bak"
+  "*safeBackup*"
   "*test*.R"
   "deploy*.sh"
   "deploy*.ps1"

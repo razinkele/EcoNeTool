@@ -1,3 +1,106 @@
+# =============================================================================
+# SAFE RENDERING HELPERS (F54)
+# =============================================================================
+# At file scope so they are unit-testable without a session. An uploaded
+# .ewemdb is user-controlled: its metadata, its file name and parser errors
+# only reach the page through htmltools tag builders, which escape them.
+
+#' Body of the "Error Reading Database" box
+#' @param error Parser error text (escaped by the tag builder).
+ewe_preview_error_panel <- function(error) {
+  tagList(
+    tags$p(style = "color: #d9534f;", tags$strong("Could not read database file")),
+    tags$pre(style = "background: #f8f9fa; padding: 10px; font-size: 11px; color: #d9534f;",
+             as.character(error)),
+    tags$p(style = "font-size: 12px;", "Please ensure:"),
+    tags$ul(
+      style = "font-size: 12px;",
+      tags$li("File is a valid ECOPATH database (.ewemdb, .eweaccdb, .mdb, .eiidb, .accdb)"),
+      tags$li("Required packages are installed (RODBC on Windows, Hmisc on Linux/Mac)"),
+      tags$li("Microsoft Access Database Engine is installed (Windows only)")
+    )
+  )
+}
+
+#' Body of the "Model Preview" box for an uploaded EwE database
+#' @param preview_data list(metadata, n_groups, n_links, filename, filesize).
+#' @return A tagList; all metadata is escaped by construction.
+ewe_preview_panel <- function(preview_data) {
+  meta <- preview_data$metadata
+  has_value <- function(field) {
+    !is.null(field) && length(field) > 0 && !all(is.na(field)) && field[1] != "" && field[1] != -9999
+  }
+  fmt <- function(val) meta_text(val, missing = c("", "-9999"))
+  num <- function(field) if (has_value(field)) suppressWarnings(as.numeric(field[1])) else NA_real_
+
+  location_parts <- character(0)
+  if (has_value(meta$area_name)) {
+    location_parts <- c(location_parts, as.character(meta$area_name[1]))
+  } else if (has_value(meta$name)) {
+    location_parts <- c(location_parts, as.character(meta$name[1]))
+  }
+  if (has_value(meta$country)) {
+    location_parts <- c(location_parts, as.character(meta$country[1]))
+  }
+  location_text <- if (length(location_parts) > 0) paste(location_parts, collapse = ", ") else fmt(NA)
+
+  time_period_text <- fmt(NA)
+  first_year <- num(meta$first_year)
+  if (!is.na(first_year)) {
+    num_years <- num(meta$num_years)
+    time_period_text <- if (!is.na(num_years) && num_years > 1) {
+      paste0(first_year, "-", first_year + num_years - 1)
+    } else {
+      as.character(first_year)
+    }
+  }
+
+  coords_text <- fmt(NA)
+  bbox <- c(num(meta$min_lat), num(meta$max_lat), num(meta$min_lon), num(meta$max_lon))
+  if (!anyNA(bbox)) {
+    coords_text <- sprintf("%.2f°-%.2f°N, %.2f°-%.2f°E", bbox[1], bbox[2], bbox[3], bbox[4])
+  }
+
+  area_text <- fmt(meta$area)
+  area_num <- num(meta$area)
+  if (!is.na(area_num) && area_num > 0) {
+    area_text <- paste0(meta$area[1], " km²")
+  }
+
+  filesize_kb <- suppressWarnings(round(as.numeric(preview_data$filesize) / 1024, 1))
+
+  tagList(
+    tags$h5(style = "margin-top: 0;", as.character(preview_data$filename %||% "")),
+    tags$p(style = "font-size: 11px; color: #888;", paste0(filesize_kb, " KB")),
+    meta_description(meta$description),
+    tags$hr(style = "margin: 10px 0;"),
+    tags$table(
+      style = "width: 100%; font-size: 12px;",
+      meta_section_row("GEOGRAPHIC"),
+      meta_row("Location:", location_text, label_style = "padding: 2px 0; width: 30%;"),
+      meta_row("Ecosystem Type:", fmt(meta$ecosystem_type)),
+      meta_row("Area:", area_text),
+      meta_row("Coordinates:", coords_text),
+      meta_section_row("TEMPORAL"),
+      meta_row("Time Period:", time_period_text),
+      meta_section_row("ATTRIBUTION"),
+      meta_row("Author:", fmt(meta$author)),
+      meta_row("Contact:", fmt(meta$contact)),
+      meta_publication_row(
+        doi = if (has_value(meta$publication_doi)) meta$publication_doi,
+        uri = if (has_value(meta$publication_uri)) meta$publication_uri,
+        ref = if (has_value(meta$publication_ref)) meta$publication_ref
+      ),
+      meta_section_row("MODEL DATA"),
+      meta_row(tags$strong("Species/Groups:"), tags$strong(as.character(preview_data$n_groups))),
+      meta_row(tags$strong("Diet Links:"), tags$strong(as.character(preview_data$n_links)))
+    ),
+    tags$hr(style = "margin: 10px 0;"),
+    tags$p(style = "font-size: 12px; color: #5cb85c;",
+           tags$i(class = "fa fa-check-circle"), " Ready to import")
+  )
+}
+
 #' ECOPATH Import Server Logic
 #'
 #' Handles ECOPATH file parsing (native .ewemdb/.mdb and CSV),
@@ -981,125 +1084,24 @@ install.packages('Hmisc')</pre>
         ")
       )
     } else if (!is.null(preview_data$error)) {
-      # Show error if extraction failed
+      # Show error if extraction failed. F54: the parser error can quote file
+      # content, so it goes in as escaped text.
       box(
         title = "Error Reading Database",
         status = "danger",
         solidHeader = TRUE,
         width = 12,
-        HTML(paste0("
-          <p style='color: #d9534f;'><strong>Could not read database file</strong></p>
-          <pre style='background: #f8f9fa; padding: 10px; font-size: 11px; color: #d9534f;'>", preview_data$error, "</pre>
-          <p style='font-size: 12px;'>Please ensure:</p>
-          <ul style='font-size: 12px;'>
-            <li>File is a valid ECOPATH database (.ewemdb, .eweaccdb, .mdb, .eiidb, .accdb)</li>
-            <li>Required packages are installed (RODBC on Windows, Hmisc on Linux/Mac)</li>
-            <li>Microsoft Access Database Engine is installed (Windows only)</li>
-          </ul>
-        "))
+        ewe_preview_error_panel(preview_data$error)
       )
     } else {
-      # Show model preview
-      meta <- preview_data$metadata
-
-      # Helper function to format metadata value
-      fmt <- function(val) {
-        if (is.null(val) || length(val) == 0 || (length(val) == 1 && is.na(val)) || val == "" || val == -9999) {
-          "<span style='color: #999;'>Not specified</span>"
-        } else {
-          as.character(val)
-        }
-      }
-
-      # Helper function to safely check if metadata field has valid value
-      has_value <- function(field) {
-        !is.null(field) && length(field) > 0 && !all(is.na(field)) && field[1] != "" && field[1] != -9999
-      }
-
-      # Build location string
-      location_parts <- c()
-      if (!is.null(meta) && has_value(meta$area_name)) {
-        location_parts <- c(location_parts, meta$area_name)
-      } else if (!is.null(meta) && has_value(meta$name)) {
-        location_parts <- c(location_parts, meta$name)
-      }
-      if (!is.null(meta) && has_value(meta$country)) {
-        location_parts <- c(location_parts, meta$country)
-      }
-      location_text <- if (length(location_parts) > 0) paste(location_parts, collapse = ", ") else fmt(NA)
-
-      # Build time period string
-      time_period_text <- fmt(NA)
-      if (!is.null(meta) && has_value(meta$first_year)) {
-        if (has_value(meta$num_years) && meta$num_years > 1) {
-          end_year <- meta$first_year + meta$num_years - 1
-          time_period_text <- paste0(meta$first_year, "-", end_year)
-        } else {
-          time_period_text <- as.character(meta$first_year)
-        }
-      }
-
-      # Build geographic coordinates
-      coords_text <- fmt(NA)
-      if (!is.null(meta) && has_value(meta$min_lat) && has_value(meta$max_lat) && has_value(meta$min_lon) && has_value(meta$max_lon)) {
-        coords_text <- sprintf("%.2f°-%.2f°N, %.2f°-%.2f°E", meta$min_lat, meta$max_lat, meta$min_lon, meta$max_lon)
-      }
-
-      # Build area text
-      area_text <- fmt(meta$area)
-      if (!is.null(meta) && has_value(meta$area) && meta$area > 0) {
-        area_text <- paste0(meta$area, " km²")
-      }
-
-      # Build publication link
-      pub_html <- ""
-      if (!is.null(meta) && has_value(meta$publication_doi)) {
-        pub_html <- paste0("<tr><td style='padding: 2px 0;'><strong>DOI:</strong></td><td><a href='https://doi.org/", meta$publication_doi, "' target='_blank' style='color: #337ab7;'>", meta$publication_doi, "</a></td></tr>")
-      } else if (!is.null(meta) && has_value(meta$publication_uri)) {
-        pub_html <- paste0("<tr><td style='padding: 2px 0;'><strong>Publication:</strong></td><td><a href='", meta$publication_uri, "' target='_blank' style='color: #337ab7;'>Link</a></td></tr>")
-      } else if (!is.null(meta) && has_value(meta$publication_ref)) {
-        pub_html <- paste0("<tr><td style='padding: 2px 0;'><strong>Reference:</strong></td><td style='font-size: 11px;'>", meta$publication_ref, "</td></tr>")
-      }
-
-      # Build description HTML (truncated if too long)
-      desc_html <- ""
-      if (!is.null(meta) && has_value(meta$description)) {
-        desc_text <- meta$description
-        if (nchar(desc_text) > 150) {
-          desc_text <- paste0(substr(desc_text, 1, 147), "...")
-        }
-        desc_html <- paste0("<p style='font-size: 11px; color: #555; font-style: italic; margin: 8px 0;'>", desc_text, "</p>")
-      }
-
+      # Show model preview. F54: every .ewemdb field and the upload's file
+      # name are rendered as escaped text via tag builders.
       box(
         title = "Model Preview",
         status = "success",
         solidHeader = TRUE,
         width = 12,
-        HTML(paste0("
-          <h5 style='margin-top: 0;'>", preview_data$filename, "</h5>
-          <p style='font-size: 11px; color: #888;'>", round(preview_data$filesize / 1024, 1), " KB</p>
-          ", desc_html, "
-          <hr style='margin: 10px 0;'>
-          <table style='width: 100%; font-size: 12px;'>
-            <tr style='background: #f0f9ff;'><td colspan='2' style='padding: 4px 0; font-weight: bold;'>GEOGRAPHIC</td></tr>
-            <tr><td style='padding: 2px 0; width: 30%;'>Location:</td><td>", location_text, "</td></tr>
-            <tr><td style='padding: 2px 0;'>Ecosystem Type:</td><td>", fmt(meta$ecosystem_type), "</td></tr>
-            <tr><td style='padding: 2px 0;'>Area:</td><td>", area_text, "</td></tr>
-            <tr><td style='padding: 2px 0;'>Coordinates:</td><td>", coords_text, "</td></tr>
-            <tr style='background: #f0f9ff;'><td colspan='2' style='padding: 4px 0; font-weight: bold;'>TEMPORAL</td></tr>
-            <tr><td style='padding: 2px 0;'>Time Period:</td><td>", time_period_text, "</td></tr>
-            <tr style='background: #f0f9ff;'><td colspan='2' style='padding: 4px 0; font-weight: bold;'>ATTRIBUTION</td></tr>
-            <tr><td style='padding: 2px 0;'>Author:</td><td>", fmt(meta$author), "</td></tr>
-            <tr><td style='padding: 2px 0;'>Contact:</td><td>", fmt(meta$contact), "</td></tr>
-            ", pub_html, "
-            <tr style='background: #f0f9ff;'><td colspan='2' style='padding: 4px 0; font-weight: bold;'>MODEL DATA</td></tr>
-            <tr><td style='padding: 2px 0;'><strong>Species/Groups:</strong></td><td><strong>", preview_data$n_groups, "</strong></td></tr>
-            <tr><td style='padding: 2px 0;'><strong>Diet Links:</strong></td><td><strong>", preview_data$n_links, "</strong></td></tr>
-          </table>
-          <hr style='margin: 10px 0;'>
-          <p style='font-size: 12px; color: #5cb85c;'><i class='fa fa-check-circle'></i> Ready to import</p>
-        "))
+        ewe_preview_panel(preview_data)
       )
     }
   })

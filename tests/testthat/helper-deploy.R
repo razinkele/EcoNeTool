@@ -58,6 +58,11 @@ DEPLOY_PROTECTED <- c(".*", "data", "cache", "r-libs", "models", "config")
 RUNTIME_CONFIG_FILES <- c("config/api_keys.R", "config/api_keys.json",
                           "config/harmonization_custom.json", ".Renviron")
 
+# Local editor / OneDrive conflict copies that can hold secrets (a
+# "*-laguna-safeBackup-*.R.bak" copy of an R config file held the
+# freshwaterecology.info key). The upload filters must drop them (M8).
+SECRET_BACKUP_PATTERNS <- c("*.bak", "*safeBackup*")
+
 # deployment/deploy.sh: names kept by the find-based wipe. PRESERVE_ITEMS
 # only counts when it reaches the delete: the loop must turn it into
 # FIND_KEEP and the find line must pass "${FIND_KEEP[@]}". Otherwise a

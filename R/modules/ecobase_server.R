@@ -1,3 +1,95 @@
+# =============================================================================
+# SAFE RENDERING HELPERS (F3)
+# =============================================================================
+# At file scope so they are unit-testable without a session. EcoBase fields
+# are third-party text: they only ever reach the page through htmltools tag
+# builders, which escape them. Never paste them into HTML().
+
+#' Connection-failure message for the EcoBase status panel
+#' @param msg Error text (escaped by the tag builder).
+ecobase_connection_error_ui <- function(msg) {
+  tagList(
+    tags$p(style = "color: red;", tags$i(class = "fa fa-times"), " Connection failed: ", msg),
+    tags$p(tags$small("Required packages: RCurl, XML, plyr, dplyr"))
+  )
+}
+
+#' EcoBase model metadata preview
+#' @param meta List from extract_ecobase_metadata().
+#' @param model_id,model_name Values from the model list table.
+#' @return A tagList; all metadata is escaped by construction.
+ecobase_metadata_panel <- function(meta, model_id, model_name) {
+  has_value <- function(field) {
+    !is.null(field) && length(field) > 0 && !all(is.na(field)) && field[1] != "" && field[1] != -9999
+  }
+  fmt <- function(val) meta_text(val, missing = c("", "Not affiliated"))
+
+  location_parts <- character(0)
+  if (has_value(meta$ecosystem_name)) {
+    location_parts <- c(location_parts, as.character(meta$ecosystem_name[1]))
+  } else if (has_value(meta$model_name)) {
+    location_parts <- c(location_parts, as.character(meta$model_name[1]))
+  }
+  if (has_value(meta$region)) {
+    location_parts <- c(location_parts, as.character(meta$region[1]))
+  }
+  if (has_value(meta$country) && meta$country[1] != "Not affiliated") {
+    location_parts <- c(location_parts, as.character(meta$country[1]))
+  }
+  location_text <- if (length(location_parts) > 0) paste(location_parts, collapse = ", ") else fmt(NA)
+
+  time_period_text <- fmt(NA)
+  if (has_value(meta$model_year)) {
+    time_period_text <- as.character(meta$model_year[1])
+  } else if (has_value(meta$model_period)) {
+    time_period_text <- as.character(meta$model_period[1])
+  }
+
+  coords_text <- fmt(NA)
+  lat <- if (has_value(meta$latitude)) suppressWarnings(as.numeric(meta$latitude[1])) else NA_real_
+  lon <- if (has_value(meta$longitude)) suppressWarnings(as.numeric(meta$longitude[1])) else NA_real_
+  if (!is.na(lat) && !is.na(lon)) {
+    coords_text <- sprintf("%.2f deg N, %.2f deg E", lat, lon)
+  }
+
+  area_text <- fmt(meta$area)
+  area_num <- if (has_value(meta$area)) suppressWarnings(as.numeric(meta$area[1])) else NA_real_
+  if (!is.na(area_num) && area_num > 0) {
+    area_text <- paste0(meta$area[1], " km2")
+  }
+
+  tagList(
+    tags$h5(style = "margin-top: 0;", paste0("EcoBase Model #", model_id)),
+    tags$p(style = "font-size: 11px; color: #888;", as.character(model_name)),
+    meta_description(meta$description),
+    tags$hr(style = "margin: 10px 0;"),
+    tags$table(
+      style = "width: 100%; font-size: 12px;",
+      meta_section_row("GEOGRAPHIC"),
+      meta_row("Location:", location_text, label_style = "padding: 2px 0; width: 35%;"),
+      meta_row("Ecosystem Type:", fmt(meta$ecosystem_type)),
+      meta_row("Area:", area_text),
+      meta_row("Coordinates:", coords_text),
+      meta_section_row("TEMPORAL"),
+      meta_row("Time Period:", time_period_text),
+      meta_section_row("ATTRIBUTION"),
+      meta_row("Author:", fmt(meta$author)),
+      meta_row("Contact:", fmt(meta$contact)),
+      if (has_value(meta$institution)) {
+        meta_row("Institution:", as.character(meta$institution[1]), value_style = "font-size: 11px;")
+      },
+      meta_publication_row(
+        doi = if (has_value(meta$doi)) meta$doi,
+        ref = if (has_value(meta$publication)) meta$publication,
+        ref_label = "Publication:"
+      )
+    ),
+    tags$hr(style = "margin: 10px 0;"),
+    tags$p(style = "font-size: 12px;",
+           "Select parameter type and click 'Import Model' to load into EcoNeTool.")
+  )
+}
+
 #' EcoBase Connection Server Module
 #'
 #' Handles connecting to EcoBase, browsing models, viewing model details
@@ -67,10 +159,12 @@ ecobase_server <- function(input, output, session, net_reactive, info_reactive,
       })
 
     }, error = function(e) {
+      warning(sprintf("[ecobase] loading the model list failed: %s", conditionMessage(e)),
+              call. = FALSE)
+      # F3: the error text can carry server-supplied content; render it as text.
+      err_msg <- conditionMessage(e)
       output$ecobase_connection_status <- renderUI({
-        HTML(paste0("<p style='color: red;'><i class='fa fa-times'></i> ",
-                   "Connection failed: ", e$message, "</p>",
-                   "<p><small>Required packages: RCurl, XML, plyr, dplyr</small></p>"))
+        ecobase_connection_error_ui(err_msg)
       })
     })
   })
@@ -105,98 +199,14 @@ ecobase_server <- function(input, output, session, net_reactive, info_reactive,
       meta <- tryCatch({
         extract_ecobase_metadata(model_id)
       }, error = function(e) {
+        warning(sprintf("[ecobase] metadata for model %s unavailable: %s",
+                        model_id, conditionMessage(e)), call. = FALSE)
         NULL
       })
 
-      fmt <- function(val) {
-        if (is.null(val) || length(val) == 0 || (length(val) == 1 && is.na(val)) || val == "" || val == "Not affiliated") {
-          "<span style='color: #999;'>Not specified</span>"
-        } else {
-          as.character(val)
-        }
-      }
-
-      has_value <- function(field) {
-        !is.null(field) && length(field) > 0 && !all(is.na(field)) && field[1] != "" && field[1] != -9999
-      }
-
       if (!is.null(meta)) {
-        location_parts <- c()
-        if (has_value(meta$ecosystem_name)) {
-          location_parts <- c(location_parts, meta$ecosystem_name)
-        } else if (has_value(meta$model_name)) {
-          location_parts <- c(location_parts, meta$model_name)
-        }
-        if (has_value(meta$region)) {
-          location_parts <- c(location_parts, meta$region)
-        }
-        if (has_value(meta$country) && meta$country != "Not affiliated") {
-          location_parts <- c(location_parts, meta$country)
-        }
-        location_text <- if (length(location_parts) > 0) paste(location_parts, collapse = ", ") else fmt(NA)
-
-        time_period_text <- fmt(NA)
-        if (has_value(meta$model_year)) {
-          time_period_text <- meta$model_year
-        } else if (has_value(meta$model_period)) {
-          time_period_text <- meta$model_period
-        }
-
-        coords_text <- fmt(NA)
-        if (has_value(meta$latitude) && has_value(meta$longitude)) {
-          coords_text <- sprintf("%.2f deg N, %.2f deg E", meta$latitude, meta$longitude)
-        }
-
-        area_text <- fmt(meta$area)
-        if (has_value(meta$area) && meta$area > 0) {
-          area_text <- paste0(meta$area, " km2")
-        }
-
-        pub_html <- ""
-        if (has_value(meta$doi)) {
-          pub_html <- paste0("<tr><td style='padding: 2px 0;'><strong>DOI:</strong></td><td><a href='https://doi.org/", meta$doi, "' target='_blank' style='color: #337ab7;'>", meta$doi, "</a></td></tr>")
-        } else if (has_value(meta$publication)) {
-          pub_html <- paste0("<tr><td style='padding: 2px 0;'><strong>Publication:</strong></td><td style='font-size: 11px;'>", meta$publication, "</td></tr>")
-        }
-
-        desc_html <- ""
-        if (has_value(meta$description)) {
-          desc_text <- meta$description
-          if (nchar(desc_text) > 150) {
-            desc_text <- paste0(substr(desc_text, 1, 147), "...")
-          }
-          desc_html <- paste0("<p style='font-size: 11px; color: #555; font-style: italic; margin: 8px 0;'>", desc_text, "</p>")
-        }
-
-        inst_html <- ""
-        if (has_value(meta$institution)) {
-          inst_html <- paste0("<tr><td style='padding: 2px 0;'>Institution:</td><td style='font-size: 11px;'>", meta$institution, "</td></tr>")
-        }
-
-        tagList(
-          HTML(paste0("
-            <h5 style='margin-top: 0;'>EcoBase Model #", model_id, "</h5>
-            <p style='font-size: 11px; color: #888;'>", model_name, "</p>
-            ", desc_html, "
-            <hr style='margin: 10px 0;'>
-            <table style='width: 100%; font-size: 12px;'>
-              <tr style='background: #f0f9ff;'><td colspan='2' style='padding: 4px 0; font-weight: bold;'>GEOGRAPHIC</td></tr>
-              <tr><td style='padding: 2px 0; width: 35%;'>Location:</td><td>", location_text, "</td></tr>
-              <tr><td style='padding: 2px 0;'>Ecosystem Type:</td><td>", fmt(meta$ecosystem_type), "</td></tr>
-              <tr><td style='padding: 2px 0;'>Area:</td><td>", area_text, "</td></tr>
-              <tr><td style='padding: 2px 0;'>Coordinates:</td><td>", coords_text, "</td></tr>
-              <tr style='background: #f0f9ff;'><td colspan='2' style='padding: 4px 0; font-weight: bold;'>TEMPORAL</td></tr>
-              <tr><td style='padding: 2px 0;'>Time Period:</td><td>", time_period_text, "</td></tr>
-              <tr style='background: #f0f9ff;'><td colspan='2' style='padding: 4px 0; font-weight: bold;'>ATTRIBUTION</td></tr>
-              <tr><td style='padding: 2px 0;'>Author:</td><td>", fmt(meta$author), "</td></tr>
-              <tr><td style='padding: 2px 0;'>Contact:</td><td>", fmt(meta$contact), "</td></tr>
-              ", inst_html, "
-              ", pub_html, "
-            </table>
-            <hr style='margin: 10px 0;'>
-            <p style='font-size: 12px;'>Select parameter type and click 'Import Model' to load into EcoNeTool.</p>
-          "))
-        )
+        # F3: every EcoBase field is rendered as escaped text via tag builders.
+        ecobase_metadata_panel(meta, model_id, model_name)
       } else {
         tagList(
           h4(model_name),

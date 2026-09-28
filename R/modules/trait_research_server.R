@@ -1105,6 +1105,42 @@ trait_research_server <- function(input, output, session, shared_data) {
   # Background process handle for async rebuild
   offline_rebuild_process <- reactiveVal(NULL)
 
+  # F19: what THIS session's rebuild holds - the lock token and the child's
+  # log files. A plain environment, not a reactive: only the exit poller and
+  # onSessionEnded read it. The child adopts the lock through the token and
+  # releases it itself when it exits; the releases below are token-checked
+  # no-ops then, and only matter if the child died before it could release.
+  rebuild_lock_dir <- offline_db_lock_path()
+  rebuild_state <- new.env()
+  rebuild_state$token <- NULL
+  rebuild_state$out <- NULL
+  rebuild_state$err <- NULL
+
+  release_session_rebuild_lock <- function() {
+    if (!is.null(rebuild_state$token)) {
+      release_rebuild_lock(rebuild_lock_dir, rebuild_state$token)
+      rebuild_state$token <- NULL
+    }
+  }
+
+  read_rebuild_log <- function(path) {
+    if (is.null(path) || !file.exists(path)) return(character(0))
+    tryCatch(readLines(path, warn = FALSE), error = function(e) {
+      warning(sprintf("[rebuild] could not read build log '%s': %s",
+                      path, conditionMessage(e)), call. = FALSE)
+      character(0)
+    })
+  }
+
+  # A closed tab must not leave the lock behind. Release only when the build
+  # is no longer running: a live child keeps building (cleanup = FALSE,
+  # supervise = FALSE, so it also outlives this R worker) and releases the
+  # lock itself when it exits.
+  session$onSessionEnded(function() {
+    proc <- isolate(offline_rebuild_process())
+    if (is.null(proc) || !proc$is_alive()) release_session_rebuild_lock()
+  })
+
   # Single session-level poller for rebuild completion. req() suspends
   # the observer when no process is in flight, so it costs nothing while
   # idle. Created ONCE at module init; previous design created a fresh
@@ -1120,17 +1156,14 @@ trait_research_server <- function(input, output, session, shared_data) {
 
     # Process finished - handle completion. Wrap the body in tryCatch so a
     # rendering / notification failure doesn't leave the process reactive
-    # in a "finished but unhandled" state forever.
+    # in a "finished but unhandled" state forever. `finally` releases this
+    # session's lock on success, failure and handler error alike.
     tryCatch(isolate({
       exit_status <- proc$get_exit_status()
       removeNotification("rebuild_progress")
 
-      if (exit_status == 0) {
-        output_text <- tryCatch(
-          proc$read_all_output_lines(),
-          error = function(e) character(0)
-        )
-        output_text <- paste(output_text, collapse = "\n")
+      if (isTRUE(exit_status == 0)) {
+        output_text <- paste(read_rebuild_log(rebuild_state$out), collapse = "\n")
         total_match <- regmatches(output_text,
           regexpr("Total species in database: [0-9]+", output_text))
         summary <- if (length(total_match) > 0) total_match else "Build complete"
@@ -1140,11 +1173,7 @@ trait_research_server <- function(input, output, session, shared_data) {
           type = "message", duration = 8
         )
       } else {
-        stderr_text <- tryCatch(
-          paste(proc$read_all_error_lines(), collapse = "\n"),
-          error = function(e) ""
-        )
-        err_lines <- strsplit(stderr_text, "\n")[[1]]
+        err_lines <- read_rebuild_log(rebuild_state$err)
         err_lines <- err_lines[nchar(trimws(err_lines)) > 0]
         last_err <- if (length(err_lines) > 0) {
           tail(err_lines, 1)
@@ -1163,51 +1192,74 @@ trait_research_server <- function(input, output, session, shared_data) {
     }), error = function(e) {
       warning(sprintf("[rebuild observer] handler error: %s", conditionMessage(e)), call. = FALSE)
       isolate(offline_rebuild_process(NULL))
+    }, finally = {
+      release_session_rebuild_lock()
+      unlink(c(rebuild_state$out, rebuild_state$err))
     })
   })
 
+  # F19: admin gate first (fail closed when ECONETOOL_ADMIN_PASSWORD_HASH is
+  # unset), then the process-wide lock, then the child Rscript. The decision
+  # lives in request_offline_rebuild() (R/functions/offline_db_rebuild.R) so
+  # it is unit-tested without a session.
   observeEvent(input$rebuild_offline_db, {
-    # Prevent double-click while rebuilding
-    proc <- offline_rebuild_process()
-    if (!is.null(proc) && proc$is_alive()) {
-      showNotification("Rebuild already in progress...", type = "warning")
+    # F-a: the previous build's completion has not been handled yet (the
+    # child may already have exited and released the lock before the 2 s
+    # poller ran). A second launch would overwrite its handle and log paths.
+    if (!is.null(offline_rebuild_process())) {
+      showNotification("Rebuild already running (previous build not yet finished)",
+                       type = "warning", duration = 8)
+      return()
+    }
+    out_file <- tempfile("offline_rebuild_", fileext = ".out")
+    err_file <- tempfile("offline_rebuild_", fileext = ".err")
+
+    res <- request_offline_rebuild(
+      unlocked = session$userData$admin_unlocked,
+      lock_dir = rebuild_lock_dir,
+      launch = function(token) {
+        build_script <- app_path("scripts/initialization/build_offline_trait_db.R")
+        if (!file.exists(build_script)) {
+          stop("build script not found: ", build_script, call. = FALSE)
+        }
+        # Logs go to files, not pipes: nothing reads a pipe until the build
+        # ends, and a full pipe buffer (or a closed tab) would stall or kill
+        # the child while it holds the lock. cleanup = FALSE stops GC of the
+        # handle from killing the child. supervise = FALSE (final review I1):
+        # shiny-server ends this R worker ~5 s after the last tab closes (no
+        # app_idle_timeout on laguna), and processx's supervisor would kill
+        # the child with it, mid-build. Unsupervised, the child outlives the
+        # worker; its reg.finalizer(onexit = TRUE) removes its tmp file and
+        # releases the lock however it exits. A hard kill (SIGKILL, reboot)
+        # skips the finalizer: the next acquire reclaims the lock after
+        # REBUILD_LOCK_STALE_MINS and sweeps the orphaned tmp file.
+        processx::process$new(
+          file.path(R.home("bin"), "Rscript"),
+          args = build_script,
+          wd = app_path(),
+          env = c("current", stats::setNames(token, REBUILD_LOCK_TOKEN_ENV)),
+          stdout = out_file, stderr = err_file,
+          supervise = FALSE, cleanup = FALSE
+        )
+      }
+    )
+
+    if (!identical(res$status, "started")) {
+      unlink(c(out_file, err_file))
+      showNotification(res$message,
+                       type = if (identical(res$status, "busy")) "warning" else "error",
+                       duration = 8)
       return()
     }
 
-    build_script <- "scripts/initialization/build_offline_trait_db.R"
-    if (!file.exists(build_script)) {
-      showNotification(
-        paste("Build script not found:", build_script),
-        type = "error"
-      )
-      return()
-    }
-
+    rebuild_state$token <- res$token
+    rebuild_state$out <- out_file
+    rebuild_state$err <- err_file
+    offline_rebuild_process(res$proc)
     showNotification(
       HTML("<b>Rebuilding offline trait database...</b><br>This may take a minute."),
       type = "message", duration = NULL, id = "rebuild_progress"
     )
-
-    tryCatch({
-      # Run the build script as a background Rscript process. The
-      # session-level observer above takes over once we set the process
-      # reactive — no nested observe() needed here.
-      rscript_path <- file.path(R.home("bin"), "Rscript")
-      proc <- processx::process$new(
-        rscript_path,
-        args = normalizePath(build_script),
-        wd = normalizePath("."),
-        stdout = "|", stderr = "|",
-        supervise = TRUE
-      )
-      offline_rebuild_process(proc)
-    }, error = function(e) {
-      removeNotification("rebuild_progress")
-      showNotification(
-        paste("Failed to start rebuild:", e$message),
-        type = "error"
-      )
-    })
   })
 
   output$offline_db_contents <- DT::renderDataTable({
