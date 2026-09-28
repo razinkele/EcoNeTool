@@ -401,3 +401,138 @@ test_that("no vocabulary regex is left in the MB/EP/PR cascades (C1.5)", {
   leaks <- grep(VOCAB_WORDS, grepl_literals(build), value = TRUE, ignore.case = TRUE)
   expect_identical(leaks, character(0), info = "build_offline_trait_db.R")
 })
+
+# ---------------------------------------------------------------------------
+# Task 5 - stale codes are never served (offline DB, cache, ML)
+# ---------------------------------------------------------------------------
+
+offline_row <- function(species = "Testus maximus") {
+  data.frame(species = species, MS = "MS3", FS = "FS1", MB = "MB2", EP = "EP1", PR = "PR0",
+             primary_source = "ontology", stringsAsFactors = FALSE)
+}
+
+test_that("an offline DB from another vocabulary is skipped with one warning (C3.5)", {
+  reset_offline_vocab_gate()
+  withr::defer(reset_offline_vocab_gate())
+  db <- make_offline_db_fixture(offline_row(), vocab_version = 1L)
+  expect_warning(res <- lookup_offline_traits("Testus maximus", db_path = db),
+                 "DB vocab v1 != config v2; rebuild required, offline DB skipped", fixed = TRUE)
+  expect_null(res)
+  # Once per process: the next lookup is skipped silently.
+  expect_no_warning(expect_null(lookup_offline_traits("Testus maximus", db_path = db)))
+})
+
+test_that("an offline DB without a vocab stamp (pre-v2 build) is skipped", {
+  reset_offline_vocab_gate()
+  withr::defer(reset_offline_vocab_gate())
+  db <- make_offline_db_fixture(offline_row(), vocab_version = NULL)
+  expect_warning(res <- lookup_offline_traits("Testus maximus", db_path = db), "DB vocab vnone")
+  expect_null(res)
+})
+
+test_that("an offline DB in the current vocabulary is served", {
+  reset_offline_vocab_gate()
+  db <- make_offline_db_fixture(offline_row(), vocab_version = current_trait_vocab_version())
+  res <- expect_no_warning(lookup_offline_traits("Testus maximus", db_path = db))
+  expect_identical(res$MB, "MB2")
+})
+
+test_that("read_cache_field treats another or a missing vocab version as stale (C3.7)", {
+  f <- tempfile(fileext = ".rds")
+  withr::defer(unlink(f))
+  env <- list(traits = data.frame(MB = "MB2"), timestamp = Sys.time(), config_hash = "h")
+  saveRDS(env, f)
+  expect_null(read_cache_field(f, "traits", config_hash = "h", vocab_version = 2L))
+  env$trait_vocab_version <- 1L
+  saveRDS(env, f)
+  expect_null(read_cache_field(f, "traits", config_hash = "h", vocab_version = 2L))
+  env$trait_vocab_version <- 2L
+  saveRDS(env, f)
+  expect_equal(read_cache_field(f, "traits", config_hash = "h", vocab_version = 2L)$MB, "MB2")
+  # No vocab asked (e.g. classify_species_api envelopes): unchanged behaviour.
+  env$trait_vocab_version <- NULL
+  saveRDS(env, f)
+  expect_equal(read_cache_field(f, "traits")$MB, "MB2")
+})
+
+test_that("both orchestrator cache writers stamp trait_vocab_version", {
+  orch <- readLines(file.path(get_app_root(), "R/functions/trait_lookup/orchestrator.R"), warn = FALSE)
+  orch <- orch[!startsWith(trimws(orch), "#")]
+  expect_equal(sum(grepl("trait_vocab_version = current_trait_vocab_version()", orch, fixed = TRUE)), 2L)
+})
+
+test_that("an ML model trained before vocab v2 does not predict MB", {
+  root <- get_app_root()
+  source(file.path(root, "R/functions/ml_trait_prediction.R"), local = FALSE)
+  old_load <- load_ml_models
+  old_pred <- predict_trait_ml
+  withr::defer({
+    assign("load_ml_models", old_load, envir = globalenv())
+    assign("predict_trait_ml", old_pred, envir = globalenv())
+    .ml_cache$vocab_warned <- FALSE
+  })
+  .ml_cache$vocab_warned <- FALSE
+  assign("predict_trait_ml", function(trait, taxonomic_info, models_package) {
+    list(value = paste0(trait, "1"), probability = 0.9)
+  }, envir = globalenv())
+
+  assign("load_ml_models", function() list(models = list(), trait_vocab_version = NULL), envir = globalenv())
+  expect_warning(p <- predict_missing_traits(list(MS = NA, MB = NA, EP = NA), list()), "MB predictions disabled")
+  expect_setequal(names(p), c("MS", "EP", "FS", "PR"))
+
+  assign("load_ml_models", function() list(models = list(), trait_vocab_version = 2L), envir = globalenv())
+  expect_no_warning(p2 <- predict_missing_traits(list(MB = NA), list()))
+  expect_true("MB" %in% names(p2))
+})
+
+# The build script, run as a child Rscript in a scratch project root holding
+# exactly what it sources (same technique as test-rebuild-lock.R).
+local_vocab_build_root <- function(env = parent.frame()) {
+  root <- tempfile("vocab_build_")
+  withr::defer(unlink(root, recursive = TRUE), envir = env)
+  app_root <- get_app_root()
+  for (rel in c("R/config/harmonization_config.R",
+                "R/functions/validation_utils.R",
+                "R/functions/trait_lookup/harmonization.R",
+                "R/functions/offline_db_rebuild.R",
+                "scripts/initialization/build_offline_trait_db.R")) {
+    dir.create(file.path(root, dirname(rel)), recursive = TRUE, showWarnings = FALSE)
+    file.copy(file.path(app_root, rel), file.path(root, rel))
+  }
+  dir.create(file.path(root, "cache"))
+  dir.create(file.path(root, "data"))
+  writeLines(c(
+    "taxon_name,aphia_id,trait_category,trait_name,trait_modality,trait_score",
+    "Aurelia aurita,135306,life_history,mobility,floater,3",
+    "Aurelia aurita,135306,habitat,zone,pelagic,3"
+  ), file.path(root, "data", "ontology_traits.csv"))
+  writeLines(c(
+    "Species,Max_Length_mm,Longevity_years,Feeding_mode,Living_habit,Mobility,Substratum,Skeleton",
+    "Arenicola marina,200,6,deposit_feeder,burrower,burrower,soft_sediment,none",
+    "Lanice conchilega,300,2,suspension_feeder,tube_dweller,sessile,soft_sediment,none",
+    "Mytilus edulis,100,10,filter_feeder,attached,sessile,hard_substrata,calcium_shell"
+  ), file.path(root, "data", "biotic_traits.csv"))
+  root
+}
+
+test_that("the build writes trait_vocab_version and v2 codes into the DB it installs", {
+  skip_if_not_installed("processx")
+  skip_if_not_installed("RSQLite")
+  root <- local_vocab_build_root()
+  res <- processx::run(file.path(R.home("bin"), "Rscript"),
+                       args = "scripts/initialization/build_offline_trait_db.R",
+                       wd = root, error_on_status = FALSE, timeout = 120,
+                       env = c("current", ECONETOOL_REBUILD_LOCK_TOKEN = ""))
+  expect_equal(res$status, 0, info = res$stderr)
+  con <- DBI::dbConnect(RSQLite::SQLite(), file.path(root, "cache", "offline_traits.db"))
+  withr::defer(DBI::dbDisconnect(con))
+  meta <- DBI::dbGetQuery(con, "SELECT value FROM metadata WHERE key = 'trait_vocab_version'")$value
+  expect_identical(meta, as.character(current_trait_vocab_version()))
+  rows <- DBI::dbGetQuery(con, "SELECT species, MB, EP, PR FROM species_traits ORDER BY species")
+  expect_identical(rows$EP[rows$species == "Arenicola marina"], "EP4")
+  expect_identical(rows$EP[rows$species == "Lanice conchilega"], "EP3")
+  expect_identical(rows$EP[rows$species == "Mytilus edulis"], "EP3")
+  expect_identical(rows$MB[rows$species == "Arenicola marina"], "MB3")
+  expect_identical(rows$MB[rows$species == "Aurelia aurita"], "MB2")
+  expect_identical(rows$EP[rows$species == "Aurelia aurita"], "EP1")
+})

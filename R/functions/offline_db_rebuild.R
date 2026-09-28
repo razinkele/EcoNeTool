@@ -260,3 +260,54 @@ finalize_offline_db_build <- function(con, tmp_path, db_path, rename = file.rena
   try(Sys.chmod(db_path, mode = "0664", use_umask = FALSE), silent = TRUE)
   invisible(db_path)
 }
+
+#' The offline trait DB schema (CREATE statements)
+#'
+#' Shared by scripts/initialization/build_offline_trait_db.R (the writer) and
+#' the test fixture make_offline_db_fixture() (tests/testthat/helper-fixtures.R)
+#' so the two cannot drift. It lives here, not in the build script, because
+#' sourcing the script runs a whole build.
+#'
+#' @return Character vector of SQL statements, run in order with DBI::dbExecute().
+offline_db_schema_sql <- function() {
+  c(
+    "
+  CREATE TABLE IF NOT EXISTS species_traits (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    species         TEXT UNIQUE NOT NULL,
+    aphia_id        INTEGER,
+    functional_group TEXT,
+    MS              TEXT,
+    FS              TEXT,
+    MB              TEXT,
+    EP              TEXT,
+    PR              TEXT,
+    -- PR8b: extended modalities. Reproductive Strategy / Temperature
+    -- Tolerance / Salinity Tolerance. Default NULL so the source-block
+    -- INSERTs that only list the core columns keep working.
+    RS              TEXT,
+    TT              TEXT,
+    ST              TEXT,
+    MS_confidence   REAL DEFAULT 0.0,
+    FS_confidence   REAL DEFAULT 0.0,
+    MB_confidence   REAL DEFAULT 0.0,
+    EP_confidence   REAL DEFAULT 0.0,
+    PR_confidence   REAL DEFAULT 0.0,
+    RS_confidence   REAL DEFAULT 0.0,
+    TT_confidence   REAL DEFAULT 0.0,
+    ST_confidence   REAL DEFAULT 0.0,
+    primary_source  TEXT,
+    region          TEXT,
+    notes           TEXT
+  )
+",
+    "
+  CREATE TABLE IF NOT EXISTS metadata (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+  )
+",
+    "CREATE INDEX IF NOT EXISTS idx_species ON species_traits(species)",
+    "CREATE INDEX IF NOT EXISTS idx_aphia   ON species_traits(aphia_id)"
+  )
+}

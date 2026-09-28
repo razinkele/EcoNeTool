@@ -8,7 +8,10 @@ source_app_dependencies()
 
 write_envelope <- function(path, hash) {
   envelope <- list(traits = data.frame(species = "Gadus morhua", MS = "MS6", stringsAsFactors = FALSE),
-                   timestamp = Sys.time())
+                   timestamp = Sys.time(),
+                   # Trait vocab v2 (C-5): the orchestrator's reader also requires the
+                   # envelope's vocabulary to be the current one.
+                   trait_vocab_version = current_trait_vocab_version())
   if (!is.null(hash)) envelope$config_hash <- hash
   saveRDS(envelope, path)
 }
@@ -98,7 +101,8 @@ test_that("two sessions with different MS3_MS4 do not share cached harmonized co
 test_that("every trait-cache writer stamps the hash and every reader passes one", {
   orch <- readLines(app_path("R/functions/trait_lookup/orchestrator.R"), warn = FALSE)
   orch <- paste(orch[!startsWith(trimws(orch), "#")], collapse = "\n")
-  expect_true(grepl('read_cache_field(cache_file, "traits", config_hash = harm_config_hash())', orch, fixed = TRUE))
+  expect_true(grepl('read_cache_field(cache_file, "traits", config_hash = harm_config_hash(),', orch, fixed = TRUE))
+  expect_true(grepl("vocab_version = current_trait_vocab_version())", orch, fixed = TRUE))
   expect_true(grepl("config_hash = harm_default_config_hash()", orch, fixed = TRUE))
   # One reader plus the full-pipeline writer (cache_data <- list(...)).
   n_session_hash <- lengths(regmatches(orch, gregexpr("config_hash = harm_config_hash()", orch, fixed = TRUE)))
@@ -113,10 +117,12 @@ test_that("every trait-cache writer stamps the hash and every reader passes one"
   srv <- readLines(app_path("R/modules/trait_research_server.R"), warn = FALSE)
   srv <- srv[!startsWith(trimws(srv), "#")]
   expect_false(any(grepl("readRDS(cache_file)", srv, fixed = TRUE)))
-  expect_true(any(grepl('read_cache_field(cache_file, "traits", config_hash = cfg_hash)', srv, fixed = TRUE)))
+  expect_true(any(grepl('read_cache_field(cache_file, "traits", config_hash = cfg_hash,', srv, fixed = TRUE)))
+  expect_true(any(grepl("vocab_version = vocab_ver)", srv, fixed = TRUE)))
 
   par <- readLines(app_path("R/functions/parallel_lookup.R"), warn = FALSE)
-  expect_true(any(grepl('read_cache_field(cache_file, "traits", config_hash = cfg_hash)', par, fixed = TRUE)))
+  expect_true(any(grepl('read_cache_field(cache_file, "traits", config_hash = cfg_hash, vocab_version = vocab_ver)',
+                        par, fixed = TRUE)))
 
   phylo <- readLines(app_path("R/functions/phylogenetic_imputation.R"), warn = FALSE)
   phylo <- paste(phylo[!startsWith(trimws(phylo), "#")], collapse = "\n")

@@ -361,8 +361,10 @@ trait_research_server <- function(input, output, session, shared_data) {
     tryCatch({
       results_list <- list()
       raw_list <- list()
-      # This session's harmonization settings key the shared trait cache (F72).
+      # This session's harmonization settings key the shared trait cache (F72),
+      # and envelopes from another trait vocabulary are misses (C-5).
       cfg_hash <- harm_config_hash()
+      vocab_ver <- current_trait_vocab_version()
 
       for (i in seq_along(species_list)) {
         species <- species_list[i]
@@ -379,7 +381,8 @@ trait_research_server <- function(input, output, session, shared_data) {
         # guard (a classify_species_api {data,...} envelope collides on the
         # same filename - deep-analysis #4) and the config-hash match (F72).
         cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species), ".rds"))
-        cached_traits <- read_cache_field(cache_file, "traits", config_hash = cfg_hash)
+        cached_traits <- read_cache_field(cache_file, "traits", config_hash = cfg_hash,
+                                          vocab_version = vocab_ver)
         if (!is.null(cached_traits)) {
           cat("  -> Using cached data\n")
           results_list[[i]] <- cached_traits

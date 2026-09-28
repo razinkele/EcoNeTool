@@ -181,56 +181,19 @@ con <- dbConnect(RSQLite::SQLite(), tmp_path)
 # ---------------------------------------------------------------------------
 # 5. Create schema
 # ---------------------------------------------------------------------------
-dbExecute(con, "
-  CREATE TABLE IF NOT EXISTS species_traits (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    species         TEXT UNIQUE NOT NULL,
-    aphia_id        INTEGER,
-    functional_group TEXT,
-    MS              TEXT,
-    FS              TEXT,
-    MB              TEXT,
-    EP              TEXT,
-    PR              TEXT,
-    -- PR8b: extended modalities. Reproductive Strategy / Temperature
-    -- Tolerance / Salinity Tolerance — orchestrator already populates
-    -- them from BlackSea/ArcticTraits/Cefas/CoralTraits/WoRMS_Traits/
-    -- PolyTraits during a live lookup, but until this PR they had no
-    -- column to land in. Default NULL so existing source-block INSERTs
-    -- (ontology/biotic/maredat/ptdb/bvol/species_enriched) work unchanged
-    -- while a future stakeholder-driven follow-up wires writers per source.
-    RS              TEXT,
-    TT              TEXT,
-    ST              TEXT,
-    MS_confidence   REAL DEFAULT 0.0,
-    FS_confidence   REAL DEFAULT 0.0,
-    MB_confidence   REAL DEFAULT 0.0,
-    EP_confidence   REAL DEFAULT 0.0,
-    PR_confidence   REAL DEFAULT 0.0,
-    RS_confidence   REAL DEFAULT 0.0,
-    TT_confidence   REAL DEFAULT 0.0,
-    ST_confidence   REAL DEFAULT 0.0,
-    primary_source  TEXT,
-    region          TEXT,
-    notes           TEXT
-  )
-")
-
-dbExecute(con, "
-  CREATE TABLE IF NOT EXISTS metadata (
-    key   TEXT PRIMARY KEY,
-    value TEXT
-  )
-")
-
-dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_species ON species_traits(species)")
-dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_aphia   ON species_traits(aphia_id)")
+# The schema is shared with the test fixture (offline_db_schema_sql() in
+# R/functions/offline_db_rebuild.R), so writer and fixture cannot drift.
+for (stmt in offline_db_schema_sql()) dbExecute(con, stmt)
 
 # Write metadata
 dbExecute(con, "INSERT INTO metadata (key, value) VALUES ('build_timestamp', ?)",
           params = list(format(Sys.time(), "%Y-%m-%dT%H:%M:%S")))
 dbExecute(con, "INSERT INTO metadata (key, value) VALUES ('version', ?)",
           params = list(HARMONIZATION_CONFIG$version %||% "1.0.0"))
+# The vocabulary the codes below were written in. lookup_offline_traits()
+# skips a DB whose version differs from the running app's (vocab gate).
+dbExecute(con, "INSERT INTO metadata (key, value) VALUES ('trait_vocab_version', ?)",
+          params = list(as.character(current_trait_vocab_version())))
 
 cat("Schema created.\n\n")
 

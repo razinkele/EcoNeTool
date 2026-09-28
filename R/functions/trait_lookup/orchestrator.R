@@ -39,7 +39,22 @@ if (!exists("HARMONIZATION_CONFIG")) {
 # HIERARCHICAL WORKFLOW ORCHESTRATOR
 # ============================================================================
 
+# Vocab gate state: warn once per process, not once per species.
+.offline_vocab_gate <- new.env(parent = emptyenv())
+.offline_vocab_gate$warned <- FALSE
+
+#' Reset the once-per-process offline vocab warning (tests)
+reset_offline_vocab_gate <- function() {
+  .offline_vocab_gate$warned <- FALSE
+  invisible(TRUE)
+}
+
 #' Quick lookup from offline pre-computed trait database
+#'
+#' A DB whose metadata.trait_vocab_version is missing or differs from
+#' current_trait_vocab_version() holds codes in another vocabulary (e.g. a
+#' pre-v2 build: MB2 = burrower) and is skipped - with one warning per
+#' process - until it is rebuilt; lookups then fall back to the live APIs.
 #'
 #' @param species_name Scientific name
 #' @param db_path Path to offline SQLite database
@@ -59,6 +74,18 @@ lookup_offline_traits <- function(species_name, db_path = "cache/offline_traits.
     # Migrate schema if needed (adds new columns without losing data)
     if (exists("migrate_offline_schema", mode = "function")) {
       migrate_offline_schema(con)
+    }
+
+    # Vocab gate: never serve codes written in another trait vocabulary.
+    vocab_row <- DBI::dbGetQuery(con, "SELECT value FROM metadata WHERE key = 'trait_vocab_version'")
+    db_vocab <- if (nrow(vocab_row) > 0) vocab_row$value[1] else "none"
+    if (!identical(db_vocab, as.character(current_trait_vocab_version()))) {
+      if (!isTRUE(.offline_vocab_gate$warned)) {
+        .offline_vocab_gate$warned <- TRUE
+        warning(sprintf("[offline] DB vocab v%s != config v%s; rebuild required, offline DB skipped",
+                        db_vocab, current_trait_vocab_version()), call. = FALSE)
+      }
+      return(NULL)
     }
 
     # Check staleness
@@ -243,7 +270,8 @@ lookup_species_traits <- function(species_name,
   # hash makes a row harmonized under another session's settings a miss (F72).
   if (!is.null(cache_dir) && dir.exists(cache_dir)) {
     cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species_name), ".rds"))
-    cached_traits <- read_cache_field(cache_file, "traits", config_hash = harm_config_hash())
+    cached_traits <- read_cache_field(cache_file, "traits", config_hash = harm_config_hash(),
+                                      vocab_version = current_trait_vocab_version())
     if (!is.null(cached_traits)) {
       message("Using cached traits for ", species_name)
       return(cached_traits)
@@ -425,7 +453,8 @@ lookup_species_traits <- function(species_name,
         cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species_name), ".rds"))
         # Offline-DB codes were harmonized at build time with the defaults.
         saveRDS(list(traits = result, timestamp = Sys.time(),
-                     config_hash = harm_default_config_hash()), cache_file)
+                     config_hash = harm_default_config_hash(),
+                     trait_vocab_version = current_trait_vocab_version()), cache_file)
       }
 
       total_time <- round(as.numeric(difftime(Sys.time(), total_start, units = "secs")), 2)
@@ -1724,7 +1753,8 @@ lookup_species_traits <- function(species_name,
       harmonized = harmonized_data,
       species = species_name,
       timestamp = Sys.time(),
-      config_hash = harm_config_hash()
+      config_hash = harm_config_hash(),
+      trait_vocab_version = current_trait_vocab_version()
     )
 
     # Include raw traits for reference

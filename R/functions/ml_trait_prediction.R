@@ -311,6 +311,22 @@ predict_missing_traits <- function(current_traits, taxonomic_info,
     return(list())
   }
 
+  # Trait vocab v2 (C-5) re-keyed MB (MB2 was "burrower", is now "passive
+  # floater / drifter"). A model trained on pre-v2 labels predicts MB in the
+  # old meaning, so its MB model is not used until it is retrained on v2
+  # labels and stamped with trait_vocab_version. MS / FS / EP / PR kept their
+  # meaning.
+  model_vocab <- models_package$trait_vocab_version
+  if (!identical(as.integer(model_vocab), as.integer(current_trait_vocab_version()))) {
+    if ("MB" %in% traits_to_predict && !isTRUE(.ml_cache$vocab_warned)) {
+      .ml_cache$vocab_warned <- TRUE
+      warning(sprintf("[ml] models were trained on trait vocab v%s, the app uses v%s; MB predictions disabled",
+                      if (is.null(model_vocab)) "1" else model_vocab, current_trait_vocab_version()),
+              call. = FALSE)
+    }
+    traits_to_predict <- setdiff(traits_to_predict, "MB")
+  }
+
   predictions <- list()
 
   # Predict each missing trait
