@@ -87,6 +87,14 @@ test_that("meta_text returns plain text for values and a span for missing ones",
   expect_identical(html_of(htmltools::tags$td(meta_text("a & b"))), "<td>a &amp; b</td>")
 })
 
+test_that("meta_description treats the EwE -9999 sentinel as missing (F-b)", {
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = FALSE)
+  for (missing in list(NULL, NA, "", -9999, "-9999", character(0))) {
+    expect_null(meta_description(missing))
+  }
+  expect_match(html_of(meta_description("A <b>model</b>")), "A &lt;b&gt;model&lt;/b&gt;", fixed = TRUE)
+})
+
 # ---------------------------------------------------------------------------
 # EcoBase metadata panel (R/modules/ecobase_server.R)
 # ---------------------------------------------------------------------------

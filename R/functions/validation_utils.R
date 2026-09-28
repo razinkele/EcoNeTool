@@ -690,8 +690,12 @@ meta_publication_row <- function(doi = NULL, uri = NULL, ref = NULL, ref_label =
 }
 
 #' Italic, truncated description paragraph, or NULL
+#'
+#' NULL, NA, "" and the EwE -9999 sentinel (numeric or text) count as
+#' missing, as the old has_value() did.
 meta_description <- function(desc, max_chars = 150) {
-  if (is.null(desc) || length(desc) == 0 || all(is.na(desc)) || !nzchar(as.character(desc[1]))) {
+  if (is.null(desc) || length(desc) == 0 || all(is.na(desc)) ||
+        as.character(desc[1]) %in% c("", "-9999")) {
     return(NULL)
   }
   text <- as.character(desc[1])
