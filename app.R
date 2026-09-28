@@ -31,6 +31,7 @@ library(leaflet)  # Interactive mapping for spatial analysis
 # only this order gives the app wd-independent config paths.
 source("R/functions/validation_utils.R")  # %||%, with_timeout, app_path, validators
 source("R/functions/admin_auth.R")        # Optional password gate for the API key modal
+source("R/functions/offline_db_rebuild.R")  # Offline trait DB rebuild: admin gate, lock, atomic install (F19)
 
 # Configuration constants (COLOR_SCHEME, METAWEB_PATHS, etc.)
 # MUST be loaded before any constants are used
