@@ -1,3 +1,75 @@
+# =============================================================================
+# API KEY FORM HELPERS (F6)
+# =============================================================================
+# At file scope so they are unit-testable without a session.
+
+#' The "API Key Configuration" modal
+#'
+#' Secrets are never sent to the browser: both secret fields are password
+#' inputs that start empty, and leaving one blank keeps the stored value
+#' (see merge_api_key_submission()). Only the username is pre-filled.
+#'
+#' @param stored API_KEYS environment (or a list) holding the current keys.
+api_key_modal_dialog <- function(stored) {
+  keep <- "(unchanged - leave blank to keep)"
+  modalDialog(
+    title = "API Key Configuration", size = "m",
+    textInput("api_key_algaebase_user", "AlgaeBase Username:",
+              value = stored$algaebase_username %||% ""),
+    passwordInput("api_key_algaebase_pass", "AlgaeBase Password:", value = "",
+                  placeholder = keep),
+    hr(),
+    passwordInput("api_key_freshwater", "freshwaterecology.info API Key:", value = "",
+                  placeholder = keep),
+    tags$p(class = "text-muted",
+           "Keys saved to config/api_keys.json (gitignored). AlgaeBase: register at algaebase.org."),
+    footer = tagList(
+      modalButton("Cancel"),
+      actionButton("save_api_keys", "Save Keys", class = "btn-primary", icon = icon("save"))
+    )
+  )
+}
+
+#' Merge an API-key form submission into the stored keys
+#'
+#' @param stored API_KEYS environment (or a list).
+#' @param username Submitted username; written as given (blank clears it).
+#' @param password,freshwater_key Submitted secrets; NULL, NA, empty or
+#'   whitespace-only keeps the stored value.
+#' @return list(algaebase_username, algaebase_password, freshwaterecology_key).
+merge_api_key_submission <- function(stored, username, password, freshwater_key) {
+  keep_if_blank <- function(new, old) {
+    if (is.null(new) || length(new) != 1 || is.na(new) || !nzchar(trimws(new))) old %||% "" else new
+  }
+  list(
+    algaebase_username = username %||% "",
+    algaebase_password = keep_if_blank(password, stored$algaebase_password),
+    freshwaterecology_key = keep_if_blank(freshwater_key, stored$freshwaterecology_key)
+  )
+}
+
+#' Write the API keys JSON atomically with owner-only permissions
+#'
+#' Writes a sibling tmp file, chmods it 0600, then renames it over `path`
+#' (copy + remove if the rename fails), so a crash never leaves a truncated
+#' key file and the secrets are never world-readable. chmod is a no-op on
+#' Windows.
+#' @param keys_list Named list of keys.
+#' @param path Destination (API_KEYS_JSON).
+write_api_keys_json <- function(keys_list, path) {
+  dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)
+  tmp <- paste0(path, ".tmp.", Sys.getpid())
+  jsonlite::write_json(keys_list, tmp, auto_unbox = TRUE, pretty = TRUE)
+  Sys.chmod(tmp, mode = "0600")
+  if (!isTRUE(suppressWarnings(file.rename(tmp, path)))) {
+    ok <- file.copy(tmp, path, overwrite = TRUE)
+    unlink(tmp)
+    if (!isTRUE(ok)) stop("could not write ", path, call. = FALSE)
+  }
+  Sys.chmod(path, mode = "0600")
+  invisible(path)
+}
+
 #' Plugin Management Server Module
 #'
 #' Handles plugin settings UI rendering, saving, and resetting.
@@ -162,21 +234,7 @@ plugin_server <- function(input, output, session, plugin_states) {
   max_unlock_attempts <- 5L
 
   show_api_key_modal <- function() {
-    showModal(modalDialog(
-      title = "API Key Configuration", size = "m",
-      textInput("api_key_algaebase_user", "AlgaeBase Username:",
-                value = if (exists("API_KEYS")) API_KEYS$algaebase_username %||% "" else ""),
-      passwordInput("api_key_algaebase_pass", "AlgaeBase Password:", value = ""),
-      hr(),
-      textInput("api_key_freshwater", "freshwaterecology.info API Key:",
-                value = if (exists("API_KEYS")) API_KEYS$freshwaterecology_key %||% "" else ""),
-      tags$p(class = "text-muted",
-             "Keys saved to config/api_keys.json (gitignored). AlgaeBase: register at algaebase.org."),
-      footer = tagList(
-        modalButton("Cancel"),
-        actionButton("save_api_keys", "Save Keys", class = "btn-primary", icon = icon("save"))
-      )
-    ))
+    showModal(api_key_modal_dialog(if (exists("API_KEYS")) API_KEYS else list()))
   }
 
   show_admin_unlock_modal <- function(error_message = NULL) {
@@ -256,18 +314,21 @@ plugin_server <- function(input, output, session, plugin_states) {
 
     # Write through the same constants config.R reads, so the two cannot
     # resolve the same relative path against different working directories.
-    dir.create(dirname(API_KEYS_JSON), showWarnings = FALSE, recursive = TRUE)
     if (!requireNamespace("jsonlite", quietly = TRUE)) {
       showNotification("jsonlite package required. Install with: install.packages('jsonlite')", type = "error")
       return()
     }
-    # Use JSON format to avoid R code injection via source()
-    keys_list <- list(
-      algaebase_username = input$api_key_algaebase_user,
-      algaebase_password = input$api_key_algaebase_pass,
-      freshwaterecology_key = input$api_key_freshwater
+    # Use JSON format to avoid R code injection via source(). F6: a blank
+    # secret field means "keep the stored value" - the modal never pre-fills
+    # secrets, so an untouched field must not erase them.
+    stored <- if (exists("API_KEYS", envir = .GlobalEnv) && is.environment(API_KEYS)) API_KEYS else list()
+    keys_list <- merge_api_key_submission(
+      stored,
+      username = input$api_key_algaebase_user,
+      password = input$api_key_algaebase_pass,
+      freshwater_key = input$api_key_freshwater
     )
-    jsonlite::write_json(keys_list, API_KEYS_JSON, auto_unbox = TRUE, pretty = TRUE)
+    write_api_keys_json(keys_list, API_KEYS_JSON)
 
     # Remove old vulnerable .R format if it exists
     old_file <- API_KEYS_FILE
@@ -276,13 +337,13 @@ plugin_server <- function(input, output, session, plugin_states) {
       message("Removed legacy config/api_keys.R (replaced by config/api_keys.json)")
     }
 
-    # Update in-memory API_KEYS. The env is a process-wide reference type,
-    # so direct $<- mutates in place; <<- was unsafe because it could touch
-    # whichever frame happened to bind the symbol first.
-    if (exists("API_KEYS", envir = .GlobalEnv) && is.environment(API_KEYS)) {
-      API_KEYS$algaebase_username    <- input$api_key_algaebase_user
-      API_KEYS$algaebase_password    <- input$api_key_algaebase_pass
-      API_KEYS$freshwaterecology_key <- input$api_key_freshwater
+    # Update in-memory API_KEYS, only the fields that changed. The env is a
+    # process-wide reference type, so direct [[<- mutates in place; <<- was
+    # unsafe because it could touch whichever frame bound the symbol first.
+    if (is.environment(stored)) {
+      for (field in names(keys_list)) {
+        if (!identical(stored[[field]], keys_list[[field]])) stored[[field]] <- keys_list[[field]]
+      }
     }
 
     removeModal()
