@@ -323,3 +323,81 @@ test_that("the template only uses vocabulary codes", {
   set.seed(1)
   expect_true(validate_trait_data(create_trait_template(30))$valid)
 })
+
+# ---------------------------------------------------------------------------
+# Task 4 - every other consumer reads the vocabulary
+# ---------------------------------------------------------------------------
+
+test_that("BVOL phytoplankton drift (MB2)", {
+  h <- harmonize_bvol_traits(list(size_cm = 0.002, trophy = "AU"))
+  expect_identical(h$MB, "MB2")
+})
+
+test_that("SpeciesEnriched mobility / position / growth form use the vocabulary", {
+  h <- harmonize_species_enriched_traits(list(
+    size_cm = 3, feeding_method = "filter feeder", mobility = "Crawler or Walker",
+    environmental_position = "Epibenthic", body_flexibility = "None (less than 10 degrees)",
+    growth_form = "Bivalved"
+  ))
+  expect_identical(h$MB, "MB3")
+  expect_identical(h$EP, "EP3")
+  expect_identical(h$PR, "PR6")
+  h2 <- harmonize_species_enriched_traits(list(
+    size_cm = NA, feeding_method = "", mobility = "Burrower", environmental_position = "Infaunal",
+    body_flexibility = "High (greater than 45 degrees)", growth_form = NA
+  ))
+  expect_identical(h2$MB, "MB3")
+  expect_identical(h2$EP, "EP4")
+  expect_null(h2[["PR"]])  # [[ ]]: `$PR` would partial-match PR_source
+})
+
+test_that("the Trait Research legends are built from the vocabulary", {
+  suppressPackageStartupMessages(library(shiny))
+  source(file.path(get_app_root(), "R/ui/trait_research_ui.R"), local = FALSE)
+  mb <- as.character(trait_vocab_legend_rows("MB"))
+  expect_match(mb, "Passive floater / drifter", fixed = TRUE)
+  expect_false(grepl("Limited movement", mb, fixed = TRUE))
+  ui_src <- readLines(file.path(get_app_root(), "R/ui/trait_research_ui.R"), warn = FALSE)
+  expect_false(any(grepl('tags\\$td\\("(MB|EP|PR|FS)[0-9]"\\)', ui_src)))
+})
+
+test_that("the help tables are built from the vocabulary and list FS7 and PR1", {
+  source(file.path(get_app_root(), "R/functions/trait_help_content.R"), local = FALSE)
+  html <- as.character(generate_trait_help_dimensions())
+  expect_match(html, "<strong>FS7</strong>", fixed = TRUE)
+  expect_match(html, "<strong>PR1</strong>", fixed = TRUE)
+  expect_match(html, "Crawler-burrower", fixed = TRUE)
+  expect_false(grepl("<td>Limited</td>", html, fixed = TRUE))
+})
+
+test_that("the orchestrator's console labels come from the vocabulary", {
+  orch <- readLines(file.path(get_app_root(), "R/functions/trait_lookup/orchestrator.R"), warn = FALSE)
+  expect_false(any(grepl("(mb|ep|pr)_labels <- c\\(", orch)))
+  expect_true(any(grepl("trait_code_label(result$MB)", orch, fixed = TRUE)))
+})
+
+# C1.5 static guard: no habitat / mobility / protection vocabulary inside a
+# grepl("...") literal in the MB/EP/PR classification code. Returning a code
+# ("MB2") stays legal; matching text against a private regex does not.
+VOCAB_WORDS <- paste0("burrow|pelagic|benth|tidal|littoral|surface|shell|soft|exoskeleton|spine|",
+                      "sessile|drift|swim|crawl|tube|attached")
+
+grepl_literals <- function(code) {
+  code <- paste(code, collapse = "\n")
+  hits <- regmatches(code, gregexpr('grepl\\(\\s*"[^"]*"', code))[[1]]
+  sub('"$', "", sub('^grepl\\(\\s*"', "", hits))
+}
+
+test_that("no vocabulary regex is left in the MB/EP/PR cascades (C1.5)", {
+  fns <- c("harmonize_mobility", "harmonize_environmental_position", "harmonize_protection",
+           "harmonize_fuzzy_mobility", "harmonize_fuzzy_habitat", "classify_by_patterns", "apply_taxon_rules",
+           "harmonize_bvol_traits", "harmonize_species_enriched_traits")
+  for (fn in fns) {
+    leaks <- grep(VOCAB_WORDS, grepl_literals(deparse(body(get(fn)))), value = TRUE, ignore.case = TRUE)
+    expect_identical(leaks, character(0), info = fn)
+  }
+  build <- readLines(file.path(get_app_root(), "scripts/initialization/build_offline_trait_db.R"), warn = FALSE)
+  build <- build[!startsWith(trimws(build), "#")]
+  leaks <- grep(VOCAB_WORDS, grepl_literals(build), value = TRUE, ignore.case = TRUE)
+  expect_identical(leaks, character(0), info = "build_offline_trait_db.R")
+})

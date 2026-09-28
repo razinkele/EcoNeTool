@@ -107,26 +107,21 @@ feeding_to_fs <- function(mode) {
   NA_character_
 }
 
+# MB / PR through the shared vocabulary (classify_by_patterns(), precedence
+# and leading-boundary matching), so the offline DB and the live harmonizer
+# give one code for one text.
 mobility_to_mb <- function(mode) {
-  if (is.na(mode) || is.null(mode) || nchar(trimws(mode)) == 0) return(NA_character_)
-  mode_lower <- tolower(trimws(mode))
-  for (mb_name in names(HARMONIZATION_CONFIG$mobility_patterns)) {
-    if (grepl(HARMONIZATION_CONFIG$mobility_patterns[[mb_name]], mode_lower))
-      return(sub("_.*", "", mb_name))
-  }
-  warning("Unrecognized mobility mode: '", mode, "'")
-  NA_character_
+  if (length(mode) == 0 || is.na(mode) || nchar(trimws(mode)) == 0) return(NA_character_)
+  code <- classify_by_patterns(mode, "mobility")
+  if (is.na(code)) warning("Unrecognized mobility mode: '", mode, "'")
+  code
 }
 
 protection_to_pr <- function(mode) {
-  if (is.na(mode) || is.null(mode) || nchar(trimws(mode)) == 0) return(NA_character_)
-  mode_lower <- tolower(trimws(mode))
-  for (pr_name in names(HARMONIZATION_CONFIG$protection_patterns)) {
-    if (grepl(HARMONIZATION_CONFIG$protection_patterns[[pr_name]], mode_lower))
-      return(sub("_.*", "", pr_name))
-  }
-  warning("Unrecognized protection mode: '", mode, "'")
-  NA_character_
+  if (length(mode) == 0 || is.na(mode) || nchar(trimws(mode)) == 0) return(NA_character_)
+  code <- classify_by_patterns(mode, "protection")
+  if (is.na(code)) warning("Unrecognized protection mode: '", mode, "'")
+  code
 }
 
 # ---------------------------------------------------------------------------
@@ -401,16 +396,14 @@ if (file.exists(biotic_path)) {
         mb_val  <- mobility_to_mb(biotic$mobility[i] %||% NA_character_)
         pr_val  <- protection_to_pr(biotic$skeleton[i] %||% NA_character_)
 
-        # EP from Living_habit if available
+        # EP from Living_habit if available. Through the vocabulary: burrower
+        # -> EP4; attached / tube_dweller / free_living / crevice_dweller /
+        # epizoic -> EP3 (F18: the inline regex sent burrowers to EP3 and
+        # the rest to EP2, so the live DB had 0 BIOTIC rows at EP4).
         ep_val <- NA_character_
         habit_col <- safe_grep_col("living.?habit", names(biotic))
         if (!is.null(habit_col)) {
-          habit <- tolower(trimws(biotic[[habit_col]][i] %||% ""))
-          if (grepl("burrow", habit)) {
-            ep_val <- "EP3"
-          } else if (grepl("tube|attached|free", habit)) {
-            ep_val <- "EP2"
-          }
+          ep_val <- classify_by_patterns(biotic[[habit_col]][i], "environmental")
         }
 
         conf <- if (!is.na(ms_val)) 0.7 else 0.0
@@ -539,16 +532,10 @@ if (file.exists(ptdb_path)) {
                   else if (grepl("heterotroph", strategy)) "FS1"
                   else NA_character_
 
-        # MB from motility
-        motile_col <- safe_grep_col("motil", names(ptdb))
-        mb_val <- NA_character_
-        if (!is.null(motile_col)) {
-          motility <- tolower(trimws(ptdb[[motile_col]][i] %||% ""))
-          mb_val <- if (grepl("motile|yes|true", motility) && !grepl("non", motility)) "MB4"
-                    else "MB2"
-        } else {
-          mb_val <- "MB2"
-        }
+        # MB: phytoplankton drift, motile or not: MB2 (passive floater /
+        # drifter). Flagellar motility is far below the size scale of the
+        # model's MB4 (facultative swimmer), which motile cells used to get.
+        mb_val <- "MB2"
 
         ep_val <- "EP1"
         pr_val <- "PR0"
@@ -697,17 +684,7 @@ if (file.exists(enriched_path) && has_readxl) {
 
         ep_val <- NA_character_
         if (!is.null(ep_col)) {
-          ep_raw <- enriched[[ep_col]][i] %||% NA_character_
-          if (!is.na(ep_raw) && nchar(trimws(ep_raw)) > 0) {
-            ep_lower <- tolower(trimws(ep_raw))
-            ep_val <- NA_character_
-            for (ep_name in names(HARMONIZATION_CONFIG$environmental_patterns)) {
-              if (grepl(HARMONIZATION_CONFIG$environmental_patterns[[ep_name]], ep_lower)) {
-                ep_val <- sub("_.*", "", ep_name)
-                break
-              }
-            }
-          }
+          ep_val <- classify_by_patterns(enriched[[ep_col]][i], "environmental")
         }
 
         pr_val <- NA_character_

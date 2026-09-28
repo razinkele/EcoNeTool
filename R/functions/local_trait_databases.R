@@ -507,8 +507,9 @@ harmonize_bvol_traits <- function(bvol_traits) {
     harmonized$FS_source <- "BVOL_trophy"
   }
 
-  # MB: Mobility (phytoplankton are generally planktonic)
-  harmonized$MB <- "MB4"  # Floater/drifter
+  # MB: Mobility. Phytoplankton drift: MB2 (passive floater / drifter) in the
+  # model vocabulary. Flagellar motility is far below the size scale of MB4.
+  harmonized$MB <- "MB2"
   harmonized$MB_confidence <- 0.90
   harmonized$MB_source <- "BVOL_taxon"
 
@@ -587,52 +588,29 @@ harmonize_species_enriched_traits <- function(species_traits) {
   }
   harmonized$FS_source <- "SpeciesEnriched_feeding"
 
-  # MB: Mobility (from mobility field)
-  mobility <- tolower(species_traits$mobility)
-
-  if (grepl("crawl|walk", mobility)) {
-    harmonized$MB <- "MB2"  # Crawler
+  # MB / EP / PR through the shared vocabulary (TRAIT_VOCAB). The old local
+  # table had Crawler = MB2 and Burrower = MB3, bare "benthic" = EP4 and
+  # shells = PR3 (burrow refuge), none of which the food-web model means.
+  mb <- classify_by_patterns(species_traits$mobility, "mobility")
+  if (!is.na(mb)) {
+    harmonized$MB <- mb
     harmonized$MB_confidence <- 0.90
-  } else if (grepl("burrow", mobility)) {
-    harmonized$MB <- "MB3"  # Burrower
-    harmonized$MB_confidence <- 0.90
-  } else if (grepl("swim", mobility)) {
-    harmonized$MB <- "MB5"  # Swimmer
-    harmonized$MB_confidence <- 0.90
-  } else if (grepl("sessile|attach", mobility)) {
-    harmonized$MB <- "MB1"  # Sessile
-    harmonized$MB_confidence <- 0.95
   }
   harmonized$MB_source <- "SpeciesEnriched_mobility"
 
-  # EP: Environmental Position
-  env_pos <- tolower(species_traits$environmental_position)
-
-  if (grepl("pelagic|water column", env_pos) && !grepl("benthopelagic", env_pos)) {
-    harmonized$EP <- "EP1"  # Pelagic
-    harmonized$EP_confidence <- 0.90
-  } else if (grepl("benthopelagic|demersal", env_pos)) {
-    harmonized$EP <- "EP2"  # Benthopelagic
-    harmonized$EP_confidence <- 0.90
-  } else if (grepl("epibenthic|epifauna|on surface", env_pos)) {
-    harmonized$EP <- "EP3"  # Epibenthic
-    harmonized$EP_confidence <- 0.90
-  } else if (grepl("infauna|endobenthic|burrowing|benthic|seabed|bottom", env_pos)) {
-    harmonized$EP <- "EP4"  # Endobenthic/Infaunal
+  ep <- classify_by_patterns(species_traits$environmental_position, "environmental")
+  if (!is.na(ep)) {
+    harmonized$EP <- ep
     harmonized$EP_confidence <- 0.90
   }
   harmonized$EP_source <- "SpeciesEnriched_position"
 
-  # PR: Protection (from body_flexibility or growth_form)
-  flexibility <- tolower(species_traits$body_flexibility)
-  growth_form <- tolower(species_traits$growth_form)
-
-  if (grepl("shell|test|exoskeleton", growth_form)) {
-    harmonized$PR <- "PR3"  # Hard shell/exoskeleton
-    harmonized$PR_confidence <- 0.95
-  } else if (grepl("soft|flexible", flexibility)) {
-    harmonized$PR <- "PR0"  # No protection
-    harmonized$PR_confidence <- 0.85
+  # PR from growth form. body_flexibility is not protection (its values are
+  # bending angles such as "None (less than 10 degrees)"), so it is not used.
+  pr <- classify_by_patterns(species_traits$growth_form, "protection")
+  if (!is.na(pr)) {
+    harmonized$PR <- pr
+    harmonized$PR_confidence <- 0.90
   }
   harmonized$PR_source <- "SpeciesEnriched_morphology"
 

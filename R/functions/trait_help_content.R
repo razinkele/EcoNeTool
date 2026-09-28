@@ -70,10 +70,29 @@ generate_trait_help_quickstart <- function() {
 }
 
 
+#' Help-table rows for one trait, from the vocabulary labels
+#'
+#' Code, label, description and examples come from get_trait_vocab()$labels
+#' (R/config/harmonization_config.R), escaped, so the help text cannot drift
+#' from the codes the harmonizers assign (pre-v2 it said MB2 = "Limited").
+#'
+#' @param trait "MS", "FS", "MB", "EP" or "PR".
+#' @return One HTML string of <tr> rows.
+trait_help_table_rows <- function(trait) {
+  labels <- get_trait_vocab()$labels[[trait]]
+  esc <- htmltools::htmlEscape
+  paste(vapply(names(labels), function(code) {
+    info <- labels[[code]]
+    sprintf("        <tr><td><strong>%s</strong></td><td>%s</td><td>%s</td><td>%s</td></tr>",
+            esc(code), esc(info$label), esc(info$description), esc(info$examples))
+  }, character(1)), collapse = "\n")
+}
+
+
 #' Generate Trait Dimensions HTML content
 #' @export
 generate_trait_help_dimensions <- function() {
-  HTML("
+  HTML(paste0("
     <div class='well'>
       <h5><strong>The Five Trait Dimensions</strong></h5>
       <p>Trait-based food webs use five categorical traits to predict species interactions:</p>
@@ -100,16 +119,10 @@ generate_trait_help_dimensions <- function() {
     <h5>2. Foraging Strategy (FS)</h5>
     <table class='table table-striped table-bordered'>
       <thead>
-        <tr><th>Code</th><th>Strategy</th><th>Description</th><th>Trophic Level</th></tr>
+        <tr><th>Code</th><th>Strategy</th><th>Description</th><th>Examples</th></tr>
       </thead>
       <tbody>
-        <tr><td><strong>FS0</strong></td><td>Primary Producer</td><td>Photosynthesis/chemosynthesis</td><td>1.0</td></tr>
-        <tr><td><strong>FS1</strong></td><td>Predator</td><td>Active pursuit of live prey</td><td>3.0+</td></tr>
-        <tr><td><strong>FS2</strong></td><td>Scavenger</td><td>Dead/moribund organisms</td><td>2.5-3.0</td></tr>
-        <tr><td><strong>FS3</strong></td><td>Omnivore</td><td>Mixed diet (plants + animals)</td><td>2.5-3.0</td></tr>
-        <tr><td><strong>FS4</strong></td><td>Grazer</td><td>Algae/plant consumption</td><td>2.0</td></tr>
-        <tr><td><strong>FS5</strong></td><td>Deposit Feeder</td><td>Sediment organic matter</td><td>2.0-2.5</td></tr>
-        <tr><td><strong>FS6</strong></td><td>Filter Feeder</td><td>Suspended particles</td><td>2.0-2.5</td></tr>
+", trait_help_table_rows("FS"), "
       </tbody>
     </table>
     <p><em>Principle:</em> Feeding mode determines which prey types can be captured/consumed.</p>
@@ -121,11 +134,7 @@ generate_trait_help_dimensions <- function() {
         <tr><th>Code</th><th>Type</th><th>Description</th><th>Examples</th></tr>
       </thead>
       <tbody>
-        <tr><td><strong>MB1</strong></td><td>Sessile</td><td>Permanently attached, no movement</td><td>Barnacles, mussels, corals</td></tr>
-        <tr><td><strong>MB2</strong></td><td>Limited</td><td>Passive floating, very slow creeping</td><td>Jellyfish, sea anemones</td></tr>
-        <tr><td><strong>MB3</strong></td><td>Crawling-Burrowing</td><td>Benthic locomotion</td><td>Crabs, gastropods, worms</td></tr>
-        <tr><td><strong>MB4</strong></td><td>Facultative Swimmer</td><td>Swimming + benthic resting</td><td>Flatfish, rays, shrimp</td></tr>
-        <tr><td><strong>MB5</strong></td><td>Obligate Swimmer</td><td>Continuous pelagic swimming</td><td>Most fish, squid, mammals</td></tr>
+", trait_help_table_rows("MB"), "
       </tbody>
     </table>
     <p><em>Principle:</em> Consumers must be able to encounter and capture prey based on relative mobility.</p>
@@ -137,10 +146,7 @@ generate_trait_help_dimensions <- function() {
         <tr><th>Code</th><th>Position</th><th>Description</th><th>Examples</th></tr>
       </thead>
       <tbody>
-        <tr><td><strong>EP1</strong></td><td>Pelagic</td><td>Water column, no substrate</td><td>Plankton, herring, jellyfish</td></tr>
-        <tr><td><strong>EP2</strong></td><td>Benthopelagic</td><td>Near bottom, some swimming</td><td>Adult cod, flatfish</td></tr>
-        <tr><td><strong>EP3</strong></td><td>Epibenthic</td><td>On sediment surface</td><td>Starfish, crabs, bottom fish</td></tr>
-        <tr><td><strong>EP4</strong></td><td>Endobenthic</td><td>Buried in sediment</td><td>Burrowing bivalves, polychaetes</td></tr>
+", trait_help_table_rows("EP"), "
       </tbody>
     </table>
     <p><em>Principle:</em> Trophic interactions require spatial co-occurrence (habitat overlap).</p>
@@ -152,17 +158,11 @@ generate_trait_help_dimensions <- function() {
         <tr><th>Code</th><th>Type</th><th>Structure</th><th>Examples</th></tr>
       </thead>
       <tbody>
-        <tr><td><strong>PR0</strong></td><td>None</td><td>Soft-bodied, no defenses</td><td>Fish, jellyfish, worms</td></tr>
-        <tr><td><strong>PR2</strong></td><td>Tube</td><td>Protective tube/case</td><td>Tube-dwelling polychaetes</td></tr>
-        <tr><td><strong>PR3</strong></td><td>Burrow</td><td>Sediment refuge</td><td>Burrowing shrimp</td></tr>
-        <tr><td><strong>PR5</strong></td><td>Soft Shell</td><td>Thin calcium carbonate</td><td>Small gastropods, young bivalves</td></tr>
-        <tr><td><strong>PR6</strong></td><td>Hard Shell</td><td>Thick calcium carbonate</td><td>Adult bivalves, large snails</td></tr>
-        <tr><td><strong>PR7</strong></td><td>Few Spines</td><td>Some defensive spines</td><td>Sea urchins, some fish</td></tr>
-        <tr><td><strong>PR8</strong></td><td>Armoured</td><td>Heavy exoskeleton + spines</td><td>Crabs, lobsters</td></tr>
+", trait_help_table_rows("PR"), "
       </tbody>
     </table>
     <p><em>Principle:</em> Physical defenses reduce predation vulnerability (but effectiveness decreases with predator size).</p>
-  ")
+  "))
 }
 
 

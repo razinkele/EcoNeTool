@@ -1201,11 +1201,7 @@ lookup_species_traits <- function(species_name,
       message("  Kept offline value: ", result$MB)
     }
     message("  \u2713 Output: ", result$MB)
-    mb_labels <- c("MB1"="Sessile", "MB2"="Limited Movement", "MB3"="Floater/Drifter",
-                   "MB4"="Crawler/Walker", "MB5"="Swimmer")
-    if (!is.na(result$MB) && result$MB %in% names(mb_labels)) {
-      message("     (", mb_labels[result$MB], ")")
-    }
+    if (!is.na(trait_code_label(result$MB))) message("     (", trait_code_label(result$MB), ")")
   } else {
     # Try fuzzy harmonization from ontology traits
     if (!is.null(raw_traits$ontology)) {
@@ -1216,11 +1212,7 @@ lookup_species_traits <- function(species_name,
         result$MB_source <- "Ontology"
         sources_used <- c(sources_used, "Fuzzy")
         message("  \u2713 Output: ", result$MB, " (from fuzzy ontology, confidence=", fuzzy_mb$confidence, ")")
-        mb_labels <- c("MB1"="Sessile", "MB2"="Burrower", "MB3"="Crawler",
-                       "MB4"="Limited Swimmer", "MB5"="Swimmer")
-        if (result$MB %in% names(mb_labels)) {
-          message("     (", mb_labels[result$MB], ")")
-        }
+        if (!is.na(trait_code_label(result$MB))) message("     (", trait_code_label(result$MB), ")")
         message("     Modalities: ", paste(fuzzy_mb$modalities, collapse = ", "))
       } else if (!"MB" %in% offline_prefilled) {
         message("  \u274c No mobility data available (including ontology)")
@@ -1249,10 +1241,7 @@ lookup_species_traits <- function(species_name,
       message("  Kept offline value: ", result$EP)
     }
     message("  \u2713 Output: ", result$EP)
-    ep_labels <- c(EP1 = "Pelagic", EP2 = "Benthopelagic", EP3 = "Epibenthic", EP4 = "Endobenthic")
-    if (!is.na(result$EP) && result$EP %in% names(ep_labels)) {
-      message("     (", ep_labels[result$EP], ")")
-    }
+    if (!is.na(trait_code_label(result$EP))) message("     (", trait_code_label(result$EP), ")")
   } else {
     # Try fuzzy harmonization from ontology traits
     if (!is.null(raw_traits$ontology)) {
@@ -1263,10 +1252,7 @@ lookup_species_traits <- function(species_name,
         result$EP_source <- "Ontology"
         sources_used <- c(sources_used, "Fuzzy")
         message("  \u2713 Output: ", result$EP, " (from fuzzy ontology, confidence=", fuzzy_ep$confidence, ")")
-        ep_labels <- c(EP1 = "Pelagic", EP2 = "Benthopelagic", EP3 = "Epibenthic", EP4 = "Endobenthic")
-        if (result$EP %in% names(ep_labels)) {
-          message("     (", ep_labels[result$EP], ")")
-        }
+        if (!is.na(trait_code_label(result$EP))) message("     (", trait_code_label(result$EP), ")")
         message("     Modalities: ", paste(fuzzy_ep$modalities, collapse = ", "))
       } else if (!"EP" %in% offline_prefilled) {
         message("  \u274c No depth/habitat data available (including ontology)")
@@ -1293,12 +1279,7 @@ lookup_species_traits <- function(species_name,
       message("  Kept offline value: ", result$PR)
     }
     message("  \u2713 Output: ", result$PR)
-    pr_labels <- c("PR0"="Unprotected", "PR2"="Tube", "PR3"="Burrow",
-                   "PR4"="Exoskeleton", "PR5"="Soft Shell", "PR6"="Hard Shell",
-                   "PR7"="Spines", "PR8"="Armoured")
-    if (!is.na(result$PR) && result$PR %in% names(pr_labels)) {
-      message("     (", pr_labels[result$PR], ")")
-    }
+    if (!is.na(trait_code_label(result$PR))) message("     (", trait_code_label(result$PR), ")")
   } else {
     message("  \U0001f6e1\ufe0f  Using taxonomic inference from WoRMS")
     if (!"PR" %in% offline_prefilled) {

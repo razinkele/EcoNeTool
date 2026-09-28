@@ -1,6 +1,24 @@
 # UI for Trait Research Module
 # Split into three tabs: Species List/Lookup Status, Found Traits, Trait Code Reference
 
+#' Legend rows for one trait, built from the vocabulary labels
+#'
+#' The MS/FS/MB/EP/PR legends are generated from get_trait_vocab()$labels
+#' (R/config/harmonization_config.R), so they can never drift from the codes
+#' the harmonizers assign and the food-web model prices (pre-v2 the MB table
+#' here said MB2 = "Limited movement", MB4 = "Burrower").
+#'
+#' @param trait "MS", "FS", "MB", "EP" or "PR".
+#' @param detail Label field for the third column: "examples" or "description".
+#' @return A tags$tbody.
+trait_vocab_legend_rows <- function(trait, detail = "examples") {
+  labels <- get_trait_vocab()$labels[[trait]]
+  do.call(tags$tbody, lapply(names(labels), function(code) {
+    info <- labels[[code]]
+    tags$tr(tags$td(code), tags$td(info$label), tags$td(info[[detail]]))
+  }))
+}
+
 trait_research_ui <- function() {
   tabItem(
     tabName = "trait_research",
@@ -464,21 +482,10 @@ trait_research_ui <- function() {
                         tags$th("Examples")
                       )
                     ),
-                    # Generated from get_harm_config()$foraging_labels
-                    # (R/config/harmonization_config.R + session overrides).
-                    # Single source of truth — same data-driven pattern as
-                    # protection_labels (PR1b) and RS/TT/ST labels (PR8b
-                    # Phase B). Pre-P4 the UI hard-coded a table with the
-                    # wrong ordering (FS1=Herbivore vs config FS1=predator).
-                    {
-                      .fs_labels <- (get_harm_config() %||% HARMONIZATION_CONFIG)$foraging_labels
-                      do.call(tags$tbody, lapply(names(.fs_labels), function(code) {
-                        info <- .fs_labels[[code]]
-                        tags$tr(tags$td(code),
-                                tags$td(info$label),
-                                tags$td(info$examples))
-                      }))
-                    }
+                    # Generated from the vocabulary labels (TRAIT_VOCAB). Pre-P4
+                    # the UI hard-coded a table with the wrong ordering
+                    # (FS1=Herbivore vs config FS1=predator).
+                    trait_vocab_legend_rows("FS")
                   )
                 )
               ),
@@ -498,13 +505,7 @@ trait_research_ui <- function() {
                         tags$th("Examples")
                       )
                     ),
-                    tags$tbody(
-                      tags$tr(tags$td("MB1"), tags$td("Sessile"), tags$td("Barnacles, mussels, sponges")),
-                      tags$tr(tags$td("MB2"), tags$td("Limited movement"), tags$td("Sea anemones, some worms")),
-                      tags$tr(tags$td("MB3"), tags$td("Crawler"), tags$td("Crabs, sea stars, snails")),
-                      tags$tr(tags$td("MB4"), tags$td("Burrower"), tags$td("Lugworms, clams")),
-                      tags$tr(tags$td("MB5"), tags$td("Swimmer"), tags$td("Fish, squid, jellyfish"))
-                    )
+                    trait_vocab_legend_rows("MB")
                   )
                 ),
 
@@ -520,12 +521,7 @@ trait_research_ui <- function() {
                         tags$th("Description")
                       )
                     ),
-                    tags$tbody(
-                      tags$tr(tags$td("EP1"), tags$td("Pelagic"), tags$td("Open water column")),
-                      tags$tr(tags$td("EP2"), tags$td("Benthopelagic"), tags$td("Near-bottom dwelling")),
-                      tags$tr(tags$td("EP3"), tags$td("Epibenthic"), tags$td("Lives on sediment surface")),
-                      tags$tr(tags$td("EP4"), tags$td("Endobenthic"), tags$td("Lives within sediment"))
-                    )
+                    trait_vocab_legend_rows("EP", detail = "description")
                   )
                 ),
 
@@ -541,20 +537,9 @@ trait_research_ui <- function() {
                         tags$th("Examples")
                       )
                     ),
-                    # Generated from get_harm_config()$protection_labels
-                    # (R/config/harmonization_config.R + session overrides)
-                    # so this table can no longer drift from
-                    # harmonize_protection() AND respects per-session config
-                    # overrides under PR9α.
-                    {
-                      .pr_labels <- (get_harm_config() %||% HARMONIZATION_CONFIG)$protection_labels
-                      do.call(tags$tbody, lapply(names(.pr_labels), function(code) {
-                        info <- .pr_labels[[code]]
-                        tags$tr(tags$td(code),
-                                tags$td(info$label),
-                                tags$td(info$examples))
-                      }))
-                    }
+                    # Generated from the vocabulary labels (TRAIT_VOCAB), so this
+                    # table can no longer drift from harmonize_protection().
+                    trait_vocab_legend_rows("PR")
                   )
                 ),
 
