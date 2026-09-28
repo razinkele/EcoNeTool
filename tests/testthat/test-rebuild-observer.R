@@ -7,6 +7,10 @@
 app_root <- get_app_root()
 
 source_rebuild_module <- function(env = parent.frame()) {
+  # trait_research_server() builds plotly / DT outputs at start-up, so a
+  # missing optional package is a clear skip rather than a module error.
+  skip_if_not_installed("plotly")
+  skip_if_not_installed("DT")
   # The module renders bs4Dash value boxes at start-up; attach bs4Dash only
   # for the calling test so no other test file sees it on the search path.
   withr::local_package("bs4Dash", .local_envir = env)

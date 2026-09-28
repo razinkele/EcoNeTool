@@ -124,6 +124,22 @@ job_apt_packages <- function(file, job) {
   grep("^lib[[:alnum:]._+-]+$", tokens, value = TRUE)
 }
 
+# test-rebuild-observer.R runs trait_research_server() under testServer();
+# the module builds plotly / DT outputs at start-up and launches the build
+# with processx. PR #13 CI errored with "there is no package called
+# 'plotly'" because the install list lacked it.
+test_that("testthat-offline installs every package trait_research_server() calls via ::", {
+  skip_if_not_installed("yaml")
+  offline <- job_r_packages("ci.yml", "testthat-offline")
+  src <- readLines(file.path(get_app_root(), "R/modules/trait_research_server.R"), warn = FALSE)
+  src <- src[!grepl("^\\s*#", src)]
+  used <- unique(sub("::$", "", unlist(regmatches(src, gregexpr("\\b[A-Za-z][A-Za-z0-9.]*::", src)))))
+  base_pkgs <- rownames(installed.packages(priority = "base"))
+  needed <- setdiff(used, base_pkgs)
+  expect_true(all(c("plotly", "DT", "processx") %in% needed), info = "premise: the module uses these")
+  expect_equal(setdiff(needed, offline), character(0))
+})
+
 test_that("the nightly live job installs every package the offline job installs", {
   skip_if_not_installed("yaml")
   offline <- job_r_packages("ci.yml", "testthat-offline")

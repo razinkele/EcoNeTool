@@ -253,6 +253,10 @@ jobs:
             any::shinyBS
             any::future
             any::future.apply
+            any::plotly
+            any::processx
+            any::htmltools
+            any::writexl
 
       - name: Run offline testthat suite (fail on any test failure)
         run: |
