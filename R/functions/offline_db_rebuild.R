@@ -27,10 +27,52 @@ offline_db_lock_path <- function() {
 
 .read_rebuild_lock_token <- function(lock_dir) {
   owner <- file.path(lock_dir, "owner")
+  # A MISSING owner file is a normal state (no lock, or lock still being
+  # written) and stays silent. An owner file that EXISTS but cannot be read
+  # (e.g. permission trouble, or something odd sitting at that path) is not
+  # normal, so it warns rather than degrading silently to "no token".
   if (!file.exists(owner)) return(NA_character_)
-  lines <- tryCatch(readLines(owner, warn = FALSE), error = function(e) character(0))
+  lines <- tryCatch(readLines(owner, warn = FALSE), error = function(e) {
+    warning(sprintf("[rebuild lock] could not read lock owner '%s': %s",
+                    owner, conditionMessage(e)), call. = FALSE)
+    character(0)
+  })
   tok <- sub("^token=", "", grep("^token=", lines, value = TRUE))
   if (length(tok) == 1L && nzchar(tok)) tok else NA_character_
+}
+
+#' Atomically move a stale lock aside, verifying it is still stale
+#'
+#' Two requesters can both observe the same stale lock and both decide to
+#' reclaim it. `file.rename()` on the same source is atomic, so only one of
+#' two truly concurrent renames can succeed - the loser's rename simply fails
+#' because the source is already gone, and it is left treating the lock as
+#' held (see `acquire_rebuild_lock()`'s dir.create() fallback below).
+#'
+#' There is a narrower window this alone would not close: a caller can win
+#' the rename right after another process has already reclaimed the same
+#' stale lock AND recreated a fresh one at `lock_dir` - the "loser" then
+#' renames away a perfectly live lock. To guard against that, after a
+#' successful rename this re-checks the age of what actually got moved; if
+#' it turns out fresh after all, it is put back and treated as a loss.
+#'
+#' @param lock_dir Lock directory path.
+#' @param stale_after_mins Passed through from acquire_rebuild_lock().
+#' @return TRUE when this caller reclaimed (and discarded) a genuinely stale
+#'   lock; FALSE when it lost the race (nothing was removed).
+.reclaim_stale_lock <- function(lock_dir, stale_after_mins = REBUILD_LOCK_STALE_MINS) {
+  aside <- paste0(lock_dir, ".stale.", Sys.getpid(), ".", basename(tempfile("")))
+  if (!isTRUE(suppressWarnings(file.rename(lock_dir, aside)))) {
+    return(invisible(FALSE))
+  }
+  age_mins <- as.numeric(difftime(Sys.time(), file.mtime(aside), units = "mins"))
+  if (!is.na(age_mins) && age_mins <= stale_after_mins) {
+    # We captured a lock someone else just (re)created - not ours to take.
+    file.rename(aside, lock_dir)
+    return(invisible(FALSE))
+  }
+  unlink(aside, recursive = TRUE)
+  invisible(TRUE)
 }
 
 #' Acquire the process-wide offline-DB rebuild lock
@@ -58,7 +100,11 @@ acquire_rebuild_lock <- function(lock_dir = offline_db_lock_path(),
     if (!is.na(age_mins) && age_mins > stale_after_mins) {
       warning(sprintf("[rebuild lock] reclaiming stale lock %s (%.0f min old)",
                       lock_dir, age_mins), call. = FALSE)
-      unlink(lock_dir, recursive = TRUE)
+      # Rename-aside is the sole arbiter of who gets to reclaim (see
+      # .reclaim_stale_lock()); a losing caller here simply falls through to
+      # the dir.create() below, which then reports the winner's fresh lock
+      # as "already running" instead of erroring.
+      .reclaim_stale_lock(lock_dir, stale_after_mins)
     }
   }
 
@@ -94,6 +140,14 @@ acquire_rebuild_lock <- function(lock_dir = offline_db_lock_path(),
 }
 
 #' Release the rebuild lock if (and only if) `token` owns it
+#'
+#' Accepted read-token-then-unlink race: between the token check and the
+#' unlink another process could in principle reclaim the lock as stale and
+#' install its own, which this would then delete. Left unfixed by design -
+#' it requires the owner to have been stalled for more than
+#' REBUILD_LOCK_STALE_MINS (60 minutes), which is far longer than this
+#' function's own execution time.
+#'
 #' @return TRUE when a lock was removed, FALSE otherwise (invisibly).
 release_rebuild_lock <- function(lock_dir = offline_db_lock_path(), token = NULL) {
   if (is.null(token) || !dir.exists(lock_dir)) return(invisible(FALSE))
@@ -121,14 +175,17 @@ request_offline_rebuild <- function(unlocked, launch,
     if (!admin_gate_enabled()) {
       warning("[admin auth] rebuild_offline_db refused: admin gate not configured on this instance",
               call. = FALSE)
+      # Built from B1's ADMIN_STRICT_MSG_UNSET (R/functions/admin_auth.R),
+      # with the rebuild-specific suffix appended locally - not a copy.
       return(list(status = "refused", proc = NULL, token = NULL,
-                  message = paste("Admin gate not configured on this instance;",
-                                  "the offline database cannot be rebuilt from the app")))
+                  message = paste0(ADMIN_STRICT_MSG_UNSET,
+                                   "; the offline database cannot be rebuilt from the app")))
     }
     warning("[admin auth] rebuild_offline_db fired without an unlocked session; refusing",
             call. = FALSE)
+    # Built from B1's ADMIN_STRICT_MSG_LOCKED, likewise with a local suffix.
     return(list(status = "refused", proc = NULL, token = NULL,
-                message = "Unlock via Trait Research > Configure API Keys first, then rebuild the database"))
+                message = paste0(ADMIN_STRICT_MSG_LOCKED, ", then rebuild the database")))
   }
 
   lock <- acquire_rebuild_lock(lock_dir, stale_after_mins = stale_after_mins)

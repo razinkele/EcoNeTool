@@ -197,3 +197,80 @@ test_that("finalize falls back to copy when the rename fails", {
   expect_identical(readLines(db_path), "NEW BUILD")
   expect_false(file.exists(tmp_path))
 })
+
+# ---------------------------------------------------------------------------
+# Fix round 1 (task review of f9bba93)
+# ---------------------------------------------------------------------------
+
+test_that("release with the old token fails after a stale reclaim; the new lock stays", {
+  lock_dir <- local_lock_dir()
+  old <- acquire_rebuild_lock(lock_dir)
+  Sys.setFileTime(lock_dir, Sys.time() - 2 * 3600)
+
+  expect_warning(fresh <- acquire_rebuild_lock(lock_dir), "reclaiming stale lock")
+  expect_true(fresh$acquired)
+
+  expect_false(release_rebuild_lock(lock_dir, old$token))
+  expect_true(dir.exists(lock_dir))
+  expect_identical(.read_rebuild_lock_token(lock_dir), fresh$token)
+})
+
+test_that(".reclaim_stale_lock leaves a lock recreated in the meantime untouched", {
+  lock_dir <- local_lock_dir()
+  acquire_rebuild_lock(lock_dir)
+  Sys.setFileTime(lock_dir, Sys.time() - 2 * 3600)
+
+  # Simulate the winning side: it reclaims the stale directory and installs
+  # a fresh lock in its place.
+  expect_true(.reclaim_stale_lock(lock_dir, REBUILD_LOCK_STALE_MINS))
+  fresh <- acquire_rebuild_lock(lock_dir)
+  expect_true(fresh$acquired)
+
+  # Simulate the losing side: it decided the (now-stale) lock needed
+  # reclaiming before the winner recreated it, and only gets to the rename
+  # after the winner's fresh lock is already in place. It must not steal it.
+  losing <- .reclaim_stale_lock(lock_dir, REBUILD_LOCK_STALE_MINS)
+  expect_false(losing)
+  expect_true(dir.exists(lock_dir))
+  expect_identical(.read_rebuild_lock_token(lock_dir), fresh$token)
+
+  again <- acquire_rebuild_lock(lock_dir)
+  expect_false(again$acquired)
+  expect_match(again$message, "^Rebuild already running")
+})
+
+test_that("an unreadable owner file warns instead of failing silently", {
+  lock_dir <- local_lock_dir()
+  dir.create(lock_dir, recursive = TRUE)
+  # A directory where the owner file should be: readLines() on it errors,
+  # unlike a genuinely missing owner file, which is a normal, silent state.
+  dir.create(file.path(lock_dir, "owner"))
+
+  expect_warning(tok <- .read_rebuild_lock_token(lock_dir), "could not read lock owner")
+  expect_identical(tok, NA_character_)
+})
+
+test_that("a missing owner file stays silent (normal state, not an error)", {
+  lock_dir <- local_lock_dir()
+  dir.create(lock_dir, recursive = TRUE)
+  expect_silent(tok <- .read_rebuild_lock_token(lock_dir))
+  expect_identical(tok, NA_character_)
+})
+
+test_that("refusal messages are built from B1's ADMIN_STRICT_MSG_* constants", {
+  withr::local_envvar(ECONETOOL_ADMIN_PASSWORD_HASH = "")
+  lock_dir <- local_lock_dir()
+  expect_warning(
+    unset_res <- request_offline_rebuild(TRUE, function(token) NULL, lock_dir = lock_dir),
+    "admin gate not configured"
+  )
+  expect_true(grepl(ADMIN_STRICT_MSG_UNSET, unset_res$message, fixed = TRUE))
+
+  withr::local_envvar(ECONETOOL_ADMIN_PASSWORD_HASH = gate_hash)
+  lock_dir2 <- local_lock_dir()
+  expect_warning(
+    locked_res <- request_offline_rebuild(NULL, function(token) NULL, lock_dir = lock_dir2),
+    "without an unlocked session"
+  )
+  expect_true(grepl(ADMIN_STRICT_MSG_LOCKED, locked_res$message, fixed = TRUE))
+})
