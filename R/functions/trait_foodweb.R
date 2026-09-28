@@ -239,8 +239,23 @@ construct_trait_foodweb <- function(species_data, threshold = 0.05, return_probs
   prob_matrix <- matrix(0, nrow = n_species, ncol = n_species,
                         dimnames = list(Consumer = species_names, Resource = species_names))
 
+  # validate_trait_data() lets NA codes through. A species with any missing
+  # code the model uses gets no links; say so once instead of silently
+  # yielding 0 for every pair (it used to be swallowed by the pair loop).
+  model_traits <- c("MS", "FS", "MB", "EP", "PR")
+  incomplete <- rowSums(is.na(as.data.frame(species_data)[, model_traits, drop = FALSE])) > 0
+  if (any(incomplete)) {
+    missing_names <- species_names[incomplete]
+    warning(sprintf("[trait foodweb] %d species have missing trait codes and get no links: %s",
+                    length(missing_names), paste(head(missing_names, 10), collapse = ", ")),
+            call. = FALSE)
+  }
+  n_errors <- 0L
+  first_error <- NULL
+
   # Calculate all pairwise probabilities
   for (i in 1:n_species) {
+    if (incomplete[i]) next
     consumer_traits <- c(
       MS = species_data$MS[i],
       FS = species_data$FS[i],
@@ -249,8 +264,8 @@ construct_trait_foodweb <- function(species_data, threshold = 0.05, return_probs
     )
 
     for (j in 1:n_species) {
-      # Skip self-loops
-      if (i == j) next
+      # Skip self-loops and species already reported as incomplete
+      if (i == j || incomplete[j]) next
 
       resource_traits <- c(
         MS = species_data$MS[j],
@@ -262,11 +277,19 @@ construct_trait_foodweb <- function(species_data, threshold = 0.05, return_probs
       # Calculate probability
       prob <- tryCatch(
         calc_interaction_probability(consumer_traits, resource_traits),
-        error = function(e) 0
+        error = function(e) {
+          n_errors <<- n_errors + 1L
+          if (is.null(first_error)) first_error <<- conditionMessage(e)
+          0
+        }
       )
 
       prob_matrix[i, j] <- prob
     }
+  }
+  if (n_errors > 0L) {
+    warning(sprintf("[trait foodweb] %d species pairs failed and got no link (first error: %s)",
+                    n_errors, first_error), call. = FALSE)
   }
 
   # Return probabilities or binary adjacency matrix
