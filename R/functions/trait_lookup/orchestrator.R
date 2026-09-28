@@ -49,6 +49,39 @@ reset_offline_vocab_gate <- function() {
   invisible(TRUE)
 }
 
+#' Trait-vocabulary status of an offline trait DB (for the DB status panel)
+#'
+#' Reads metadata.trait_vocab_version defensively: no metadata table, or no
+#' stamp row, counts as "none". The status panel shows `message`, so an admin
+#' sees that the mandatory rebuild is pending even though the gate's warning
+#' in lookup_offline_traits() never reaches production logs.
+#'
+#' @param db_path Path to the offline SQLite DB (must exist).
+#' @return list(ok, version, message): ok is TRUE when the DB's vocabulary is
+#'   current_trait_vocab_version(); version is the stamp as character or
+#'   "none"; message is "Available" or
+#'   "Rebuild required (trait vocabulary v<X>, app uses v<Y>)".
+offline_db_vocab_status <- function(db_path) {
+  con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  version <- "none"
+  if (DBI::dbExistsTable(con, "metadata")) {
+    row <- DBI::dbGetQuery(con, "SELECT value FROM metadata WHERE key = 'trait_vocab_version'")
+    if (nrow(row) > 0 && !is.na(row$value[1]) && nzchar(row$value[1])) {
+      version <- as.character(row$value[1])
+    }
+  }
+  app_version <- as.character(current_trait_vocab_version())
+  ok <- identical(version, app_version)
+  message <- if (ok) {
+    "Available"
+  } else {
+    sprintf("Rebuild required (trait vocabulary %s, app uses v%s)",
+            if (identical(version, "none")) "none" else paste0("v", version), app_version)
+  }
+  list(ok = ok, version = version, message = message)
+}
+
 #' Quick lookup from offline pre-computed trait database
 #'
 #' A DB whose metadata.trait_vocab_version is missing or differs from
@@ -1179,11 +1212,9 @@ lookup_species_traits <- function(species_name,
       message("  Kept offline value: ", result$FS)
     }
     message("  \u2713 Output: ", result$FS)
-    fs_labels <- c("FS0"="Primary Producer", "FS1"="Predator", "FS2"="Scavenger",
-                   "FS3"="Omnivore", "FS4"="Grazer", "FS5"="Deposit Feeder", "FS6"="Filter Feeder",
-                   "FS7"="Xylophagous")
-    if (!is.na(result$FS) && result$FS %in% names(fs_labels)) {
-      message("     (", fs_labels[result$FS], ")")
+    fs_label <- if (!is.na(result$FS)) trait_code_label(result$FS) else NA_character_
+    if (!is.na(fs_label)) {
+      message("     (", fs_label, ")")
     }
   } else {
     # Try fuzzy harmonization from ontology traits
@@ -1195,11 +1226,9 @@ lookup_species_traits <- function(species_name,
         result$FS_source <- "Ontology"
         sources_used <- c(sources_used, "Fuzzy")
         message("  \u2713 Output: ", result$FS, " (from fuzzy ontology, confidence=", fuzzy_fs$confidence, ")")
-        fs_labels <- c("FS0"="Primary Producer", "FS1"="Predator", "FS2"="Scavenger",
-                       "FS3"="Omnivore", "FS4"="Grazer", "FS5"="Deposit Feeder", "FS6"="Filter Feeder",
-                       "FS7"="Xylophagous")
-        if (result$FS %in% names(fs_labels)) {
-          message("     (", fs_labels[result$FS], ")")
+        fs_label <- if (!is.na(result$FS)) trait_code_label(result$FS) else NA_character_
+        if (!is.na(fs_label)) {
+          message("     (", fs_label, ")")
         }
         message("     Modalities: ", paste(fuzzy_fs$modalities, collapse = ", "))
       } else if (!"FS" %in% offline_prefilled) {
