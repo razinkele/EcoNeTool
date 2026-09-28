@@ -24,12 +24,20 @@ test_that("the FS pattern inputs cover every configured foraging pattern", {
                   names(HARMONIZATION_CONFIG$foraging_patterns))
 })
 
-rendered_harm_ids <- function() {
+render_harm_ui <- function() {
   suppressPackageStartupMessages(library(shiny)) # the UI builders are unqualified, as in app.R
+  # The UI reads HARM_THRESHOLD_RANGES / HARMONIZATION_CONFIG, as app.R
+  # sources the config before R/ui/.
+  source(file.path(app_root, "R/config/harmonization_config.R"), local = FALSE)
   source(file.path(app_root, "R/ui/harmonization_settings_ui.R"), local = FALSE)
-  html <- as.character(harmonization_settings_ui())
+  as.character(harmonization_settings_ui())
+}
+
+rendered_harm_ids <- function(dedupe = TRUE) {
+  html <- render_harm_ui()
   hits <- regmatches(html, gregexpr('\\sid="harm_[A-Za-z0-9_]+"', html))[[1]]
-  ids <- unique(sub('^\\sid="(.*)"$', "\\1", hits))
+  ids <- sub('^\\sid="(.*)"$', "\\1", hits)
+  if (dedupe) ids <- unique(ids)
   # fileInput() adds a "<id>_progress" bar div of its own; it is not an input.
   ids[!grepl("_progress$", ids)]
 }
@@ -61,4 +69,43 @@ test_that("generated widget IDs are wired from the same vectors the UI uses", {
   expect_true(grepl('paste0("harm_pattern_", key)', src, fixed = TRUE))
   expect_true(grepl("names(CONSUMED_TAXONOMIC_RULES)", src, fixed = TRUE))
   expect_true(grepl("names(HARM_FS_PATTERN_LABELS)", src, fixed = TRUE))
+})
+
+# Final fix wave (F-b): the rendered rule checkboxes and FS inputs are exactly
+# the wired vectors - no rule dropped from a column, none rendered twice.
+test_that("rendered harm_rule_* / harm_pattern_* ids equal the wired vectors exactly", {
+  skip_if_not_installed("shiny")
+  ids <- rendered_harm_ids(dedupe = FALSE)
+  rule_ids <- ids[startsWith(ids, "harm_rule_")]
+  pattern_ids <- ids[startsWith(ids, "harm_pattern_")]
+  expected_rules <- paste0("harm_rule_", names(CONSUMED_TAXONOMIC_RULES))
+  expected_patterns <- paste0("harm_pattern_", names(HARM_FS_PATTERN_LABELS))
+
+  expect_setequal(rule_ids, expected_rules)
+  expect_length(rule_ids, length(CONSUMED_TAXONOMIC_RULES))
+  expect_setequal(pattern_ids, expected_patterns)
+  expect_length(pattern_ids, length(HARM_FS_PATTERN_LABELS))
+})
+
+# Final fix wave (I3): the sliders and the validator share HARM_THRESHOLD_RANGES,
+# so the browser can never clamp or snap a value the validator accepted.
+test_that("each threshold slider's min/max/step and default come from the shared constants", {
+  skip_if_not_installed("shiny")
+  html <- render_harm_ui()
+  for (key in HARM_THRESHOLD_KEYS) {
+    id <- paste0("harm_thresh_", key)
+    tag <- regmatches(html, regexpr(sprintf('<input[^>]*id="%s"[^>]*>', id), html))
+    expect_length(tag, 1L)
+    attr_num <- function(name) {
+      as.numeric(sub(sprintf('.*\\s%s="([^"]*)".*', name), "\\1", tag))
+    }
+    rng <- HARM_THRESHOLD_RANGES[[key]]
+    expect_equal(attr_num("data-min"), rng[["min"]], info = key)
+    expect_equal(attr_num("data-max"), rng[["max"]], info = key)
+    expect_equal(attr_num("data-step"), rng[["step"]], info = key)
+    expect_equal(attr_num("data-from"), HARMONIZATION_CONFIG$size_thresholds[[key]], info = key)
+    # Labels are unchanged: "MS1/MS2 boundary:" etc.
+    expect_true(grepl(sprintf('<label[^>]*for="%s"[^>]*>%s boundary:</label>', id, sub("_", "/", key)), html),
+                info = key)
+  }
 })

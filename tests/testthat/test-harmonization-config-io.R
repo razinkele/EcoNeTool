@@ -12,6 +12,8 @@ with_threshold <- function(key, value) {
   cfg
 }
 
+read_json_raw <- function(path) jsonlite::fromJSON(path, simplifyVector = FALSE)
+
 errors_of <- function(cfg) paste(validate_harmonization_config(cfg)$errors, collapse = " | ")
 
 test_that("the built-in defaults validate", {
@@ -211,4 +213,101 @@ test_that("save removes the tmp file and leaves the target untouched when the wr
   expect_false(file.exists(target))
   expect_true(dir.exists(tmp)) # the blocking directory itself is left alone
   expect_identical(list.files(dir), "harmonization_custom.json.tmp")
+})
+
+# --- Final fix wave (I2): the validator covers every section an import can
+# carry, because an imported config can then be saved as the server default.
+# Pre-fix only size_thresholds, foraging_patterns, taxonomic_rules and
+# active_profile were checked, and utils::modifyList() silently deleted a key
+# given as JSON null and silently ignored an array where an object belongs.
+# Each probe is parsed from literal JSON so it has the real imported shape.
+validate_json <- function(txt) {
+  validate_harmonization_config(jsonlite::fromJSON(txt, simplifyVector = FALSE))
+}
+
+test_that("an uncompilable pattern in any *_patterns section is rejected", {
+  v <- validate_json('{"mobility_patterns": {"MB1_sessile": "(("}}')
+  expect_false(v$ok)
+  expect_match(paste(v$errors, collapse = " | "), "mobility_patterns.*MB1_sessile")
+  v <- validate_json('{"salinity_patterns": {"ST5_eu": ""}}')
+  expect_false(v$ok)
+  expect_match(paste(v$errors, collapse = " | "), "salinity_patterns.*ST5_eu")
+})
+
+test_that("an explicit null for a key the defaults have is an error, not a silent deletion", {
+  v <- validate_json('{"foraging_labels": null}')
+  expect_false(v$ok)
+  expect_match(paste(v$errors, collapse = " | "), "foraging_labels")
+  v <- validate_json('{"foraging_patterns": {"FS0_primary_producer": null}}')
+  expect_false(v$ok)
+  expect_match(paste(v$errors, collapse = " | "), "FS0_primary_producer")
+})
+
+test_that("an array where the defaults have a named object is rejected", {
+  v <- validate_json('{"foraging_patterns": ["x"]}')
+  expect_false(v$ok)
+  expect_match(paste(v$errors, collapse = " | "), "foraging_patterns")
+  v <- validate_json('{"protection_labels": "PR0"}')
+  expect_false(v$ok)
+  expect_match(paste(v$errors, collapse = " | "), "protection_labels")
+})
+
+test_that("a profile size_multiplier must be a finite number > 0", {
+  for (bad in c('"big"', "0", "-1", "[1, 2]")) {
+    v <- validate_json(sprintf('{"profiles": {"arctic": {"size_multiplier": %s}}}', bad))
+    expect_false(v$ok, info = bad)
+    expect_match(paste(v$errors, collapse = " | "), "arctic.*size_multiplier", info = bad)
+  }
+  expect_true(validate_json('{"profiles": {"arctic": {"size_multiplier": 1.25}}}')$ok)
+})
+
+test_that("a whole-file JSON null is invalid, with a warning, not silently the defaults", {
+  tmp <- tempfile(fileext = ".json")
+  on.exit(unlink(tmp), add = TRUE)
+  writeLines("null", tmp)
+  expect_warning(got <- load_harmonization_config(tmp), "invalid config")
+  expect_identical(got, HARMONIZATION_CONFIG)
+  expect_error(import_config_json(tmp), "JSON object")
+})
+
+test_that("the defaults still validate, and survive an export/import round trip", {
+  expect_true(validate_harmonization_config(HARMONIZATION_CONFIG)$ok)
+  tmp <- tempfile(fileext = ".json")
+  on.exit(unlink(tmp), add = TRUE)
+  export_config_json(tmp, HARMONIZATION_CONFIG)
+  expect_true(validate_harmonization_config(read_json_raw(tmp))$ok)
+})
+
+# --- Final fix wave (I3): the sliders clamp and snap, so an out-of-range or
+# off-step threshold from an import or a hand-edited server file was silently
+# changed by the browser echo (MS6_MS7 = 500 became 300). The validator now
+# rejects such values against HARM_THRESHOLD_RANGES, the same constant the
+# sliders are built from.
+test_that("thresholds outside the slider range or off the slider step are rejected", {
+  expect_setequal(names(HARM_THRESHOLD_RANGES), HARM_THRESHOLD_KEYS)
+  v <- validate_harmonization_config(with_threshold("MS6_MS7", 500))
+  expect_false(v$ok)
+  expect_match(paste(v$errors, collapse = " | "), "MS6_MS7.*range")
+  v <- validate_harmonization_config(with_threshold("MS6_MS7", 155))
+  expect_false(v$ok)
+  expect_match(paste(v$errors, collapse = " | "), "MS6_MS7.*step")
+  v <- validate_harmonization_config(with_threshold("MS3_MS4", 7.3))
+  expect_false(v$ok)
+  expect_match(paste(v$errors, collapse = " | "), "MS3_MS4.*step")
+  expect_true(validate_harmonization_config(with_threshold("MS3_MS4", 7.5))$ok)
+  expect_true(validate_harmonization_config(HARMONIZATION_CONFIG)$ok)
+})
+
+# --- Final fix wave (F-a): more producer-vocabulary diet probes.
+test_that("an FS0 pattern matching plantae, vegetation or macrophytes is rejected", {
+  for (p in c("photosyn|plantae", "photosyn|vegetation", "photosyn|macrophyte",
+              "photosyn|plant matter", "photosyn|periphyton", "photosyn|microphytobenthos")) {
+    cfg <- HARMONIZATION_CONFIG
+    cfg$foraging_patterns$FS0_primary_producer <- p
+    v <- validate_harmonization_config(cfg)
+    expect_false(v$ok, info = p)
+    expect_match(paste(v$errors, collapse = " | "), "diet nouns", info = p)
+  }
+  fs0 <- HARMONIZATION_CONFIG$foraging_patterns$FS0_primary_producer
+  expect_false(any(grepl(fs0, HARM_FS0_DIET_PROBES, ignore.case = TRUE)))
 })

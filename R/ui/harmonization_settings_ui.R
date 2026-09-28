@@ -42,6 +42,17 @@ harm_rule_checkboxes <- function(rules) {
   })
 }
 
+# One slider per size-class boundary (inputId harm_thresh_<key>, label
+# "MS1/MS2 boundary:" ...). min/max/step come from HARM_THRESHOLD_RANGES - the
+# same constant validate_harmonization_config() checks against - so the
+# browser never clamps or snaps a value the validator accepted.
+harm_threshold_slider <- function(key) {
+  rng <- HARM_THRESHOLD_RANGES[[key]]
+  sliderInput(paste0("harm_thresh_", key), paste0(sub("_", "/", key, fixed = TRUE), " boundary:"),
+              min = rng[["min"]], max = rng[["max"]], value = HARMONIZATION_CONFIG$size_thresholds[[key]],
+              step = rng[["step"]], post = " cm")
+}
+
 harmonization_settings_ui <- function() {
   fs_keys <- names(HARM_FS_PATTERN_LABELS)
   fs_input <- function(key) textInput(paste0("harm_pattern_", key), HARM_FS_PATTERN_LABELS[[key]], value = "")
@@ -63,18 +74,7 @@ harmonization_settings_ui <- function() {
         fluidRow(
           column(6,
             h4("Maximum Size (MS) Class Boundaries"),
-            sliderInput("harm_thresh_MS1_MS2", "MS1/MS2 boundary:",
-                       min = 0.01, max = 0.5, value = 0.1, step = 0.01, post = " cm"),
-            sliderInput("harm_thresh_MS2_MS3", "MS2/MS3 boundary:",
-                       min = 0.1, max = 5.0, value = 1.0, step = 0.1, post = " cm"),
-            sliderInput("harm_thresh_MS3_MS4", "MS3/MS4 boundary:",
-                       min = 1.0, max = 20.0, value = 5.0, step = 0.5, post = " cm"),
-            sliderInput("harm_thresh_MS4_MS5", "MS4/MS5 boundary:",
-                       min = 5.0, max = 50.0, value = 20.0, step = 1.0, post = " cm"),
-            sliderInput("harm_thresh_MS5_MS6", "MS5/MS6 boundary:",
-                       min = 20.0, max = 100.0, value = 50.0, step = 5.0, post = " cm"),
-            sliderInput("harm_thresh_MS6_MS7", "MS6/MS7 boundary:",
-                       min = 50.0, max = 300.0, value = 150.0, step = 10.0, post = " cm")
+            lapply(HARM_THRESHOLD_KEYS, harm_threshold_slider)
           ),
           column(6,
             h4("Size Class Preview"),

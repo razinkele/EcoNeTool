@@ -293,6 +293,20 @@ HARMONIZATION_CONFIG_FILE <- if (exists("app_path", mode = "function")) {
 # and the tests all iterate this one vector.
 HARM_THRESHOLD_KEYS <- c("MS1_MS2", "MS2_MS3", "MS3_MS4", "MS4_MS5", "MS5_MS6", "MS6_MS7")
 
+# Slider min/max/step (cm) per size-class boundary. The sliders in
+# R/ui/harmonization_settings_ui.R are built from this, and the validator
+# rejects any threshold outside [min, max] or off the step grid. Reason: the
+# browser slider clamps and snaps, and its echo writes the adjusted value back
+# into the session config, so an imported MS6_MS7 = 500 silently became 300.
+HARM_THRESHOLD_RANGES <- list(
+  MS1_MS2 = c(min = 0.01, max = 0.5, step = 0.01),
+  MS2_MS3 = c(min = 0.1, max = 5.0, step = 0.1),
+  MS3_MS4 = c(min = 1.0, max = 20.0, step = 0.5),
+  MS4_MS5 = c(min = 5.0, max = 50.0, step = 1.0),
+  MS5_MS6 = c(min = 20.0, max = 100.0, step = 5.0),
+  MS6_MS7 = c(min = 50.0, max = 300.0, step = 10.0)
+)
+
 # Diet nouns an FS0 (primary producer) pattern must never match. They were
 # removed from FS0 on 2026-07-17: FS0 is tested before FS1-FS6 on the pasted
 # feeding text, so a consumer whose diet mentions algae or diatoms was coded
@@ -317,7 +331,11 @@ HARM_FS0_DIET_PROBES <- unique(c(
   c("microalgae", "macroalgae", "algal", "seagrass", "seagrasses", "kelp",
     "seaweed", "seaweeds", "plant material", "planktonic algae"),
   c("feeds on diatoms", "grazes microalgae", "algal film",
-    "herbivore eating plants", "phytoplankton feeder")
+    "herbivore eating plants", "phytoplankton feeder"),
+  # Final fix wave: producer vocabulary that shares no substring with the
+  # entries above ("plantae", "vegetation", "macrophyte", ...).
+  c("plantae", "plant matter", "vegetation", "macrophyte", "macrophytes",
+    "periphyton", "microphytobenthos")
 ))
 
 #' Does a foraging pattern compile the way harmonize_foraging_strategy() uses it?
@@ -340,12 +358,49 @@ harm_pattern_compiles <- function(pattern) {
   }, error = function(e) FALSE)
 }
 
+#' Shape errors in a raw config, checked BEFORE it is merged with the defaults
+#'
+#' utils::modifyList() deletes a key whose new value is NULL (JSON null) and
+#' silently ignores an unnamed list (a JSON array) given where the defaults hold
+#' a named list, so both must be caught on the raw input. Walks every level at
+#' which the defaults hold a non-empty named list.
+#'
+#' @param raw The raw (parsed) value at `path`.
+#' @param default The HARMONIZATION_CONFIG value at the same path.
+#' @param path Dotted path used in the error text.
+#' @return character() of errors.
+harm_raw_shape_errors <- function(raw, default, path = "") {
+  errors <- character()
+  for (key in intersect(names(raw), names(default))) {
+    here <- if (nzchar(path)) paste0(path, ".", key) else key
+    val <- raw[[key]]
+    def <- default[[key]]
+    if (is.null(val)) {
+      errors <- c(errors, sprintf("%s: explicit null is not allowed (the key exists in the defaults)", here))
+    } else if (is.list(def) && length(def) > 0L && !is.null(names(def))) {
+      if (!is.list(val)) {
+        errors <- c(errors, sprintf("%s: must be a JSON object with named keys", here))
+      } else if (length(val) > 0L && (is.null(names(val)) || !all(nzchar(names(val))))) {
+        errors <- c(errors, sprintf("%s: must be a JSON object with named keys, not an array", here))
+      } else {
+        errors <- c(errors, harm_raw_shape_errors(val, def, here))
+      }
+    }
+  }
+  errors
+}
+
 #' Validate (and normalise) a harmonization config
 #'
 #' Shared by the server-default loader, JSON import and the "Save as server
 #' default" button (spec B section 4.1, F2/F8). Unknown top-level keys are
-#' dropped; missing keys are filled from HARMONIZATION_CONFIG with
-#' utils::modifyList() BEFORE the checks run.
+#' dropped; explicit nulls and arrays-for-objects are rejected on the raw input;
+#' missing keys are then filled from HARMONIZATION_CONFIG with
+#' utils::modifyList() BEFORE the remaining checks run. Every section an import
+#' can carry is checked, because an imported config can be saved as the server
+#' default: all *_patterns sections, all *_labels sections, profiles, the size
+#' thresholds (against HARM_THRESHOLD_RANGES), taxonomic_rules and
+#' active_profile.
 #'
 #' @param cfg A config list (e.g. from jsonlite::fromJSON(simplifyVector = FALSE)).
 #' @return list(ok = logical(1), errors = character(), config = <normalised list>).
@@ -355,8 +410,9 @@ validate_harmonization_config <- function(cfg) {
     return(list(ok = FALSE, errors = "config must be a JSON object (a named list)",
                 config = HARMONIZATION_CONFIG))
   }
-  cfg <- utils::modifyList(HARMONIZATION_CONFIG, cfg[intersect(names(cfg), names(HARMONIZATION_CONFIG))])
-  errors <- character()
+  cfg <- cfg[intersect(names(cfg), names(HARMONIZATION_CONFIG))]
+  errors <- harm_raw_shape_errors(cfg, HARMONIZATION_CONFIG)
+  cfg <- utils::modifyList(HARMONIZATION_CONFIG, cfg)
 
   thr <- if (is.list(cfg$size_thresholds)) cfg$size_thresholds else list()
   vals <- vapply(HARM_THRESHOLD_KEYS, function(k) {
@@ -369,21 +425,75 @@ validate_harmonization_config <- function(cfg) {
   } else if (any(diff(vals) <= 0)) {
     errors <- c(errors, "size_thresholds must be strictly increasing from MS1_MS2 to MS6_MS7")
   }
-
-  pats <- if (is.list(cfg$foraging_patterns)) cfg$foraging_patterns else list()
-  bad_pats <- names(pats)[!vapply(pats, harm_pattern_compiles, logical(1))]
-  if (length(pats) == 0L || length(bad_pats) > 0L) {
-    errors <- c(errors, sprintf("foraging_patterns: not a valid non-empty regular expression: %s",
-                                paste(bad_pats, collapse = ", ")))
+  # A separate check (not folded into the NA path above) so the "strictly
+  # increasing" error is still reported alongside an out-of-range value.
+  for (key in HARM_THRESHOLD_KEYS[!is.na(vals)]) {
+    rng <- HARM_THRESHOLD_RANGES[[key]]
+    v <- vals[[key]]
+    steps <- (v - rng[["min"]]) / rng[["step"]]
+    if (v < rng[["min"]] - 1e-8 || v > rng[["max"]] + 1e-8) {
+      errors <- c(errors, sprintf("size_thresholds: %s = %s is outside the slider range [%s, %s]",
+                                  key, format(v), format(rng[["min"]]), format(rng[["max"]])))
+    } else if (abs(round(steps) - steps) >= 1e-8) {
+      errors <- c(errors, sprintf("size_thresholds: %s = %s is not on the slider step (%s from %s)",
+                                  key, format(v), format(rng[["step"]]), format(rng[["min"]])))
+    }
   }
-  fs0 <- pats$FS0_primary_producer
+
+  # Every *_patterns section: a named list holding all of the defaults' keys,
+  # each value a single compilable, non-blank regular expression.
+  for (section in grep("_patterns$", names(HARMONIZATION_CONFIG), value = TRUE)) {
+    pats <- cfg[[section]]
+    if (!is.list(pats) || length(pats) == 0L || is.null(names(pats))) {
+      errors <- c(errors, sprintf("%s: must be a named list of regular expressions", section))
+      next
+    }
+    missing_keys <- setdiff(names(HARMONIZATION_CONFIG[[section]]), names(pats))
+    if (length(missing_keys) > 0L) {
+      errors <- c(errors, sprintf("%s: missing patterns: %s", section, paste(missing_keys, collapse = ", ")))
+    }
+    bad_pats <- names(pats)[!vapply(pats, harm_pattern_compiles, logical(1))]
+    if (length(bad_pats) > 0L) {
+      errors <- c(errors, sprintf("%s: not a valid non-empty regular expression: %s",
+                                  section, paste(bad_pats, collapse = ", ")))
+    }
+  }
+  fs0 <- cfg$foraging_patterns$FS0_primary_producer
   if (harm_pattern_compiles(fs0)) {
     diet_hits <- HARM_FS0_DIET_PROBES[grepl(fs0, HARM_FS0_DIET_PROBES, ignore.case = TRUE)]
     if (length(diet_hits) > 0L) {
-      errors <- c(errors, sprintf(paste0(
-        "foraging_patterns: FS0_primary_producer matches diet nouns (%s); FS0 is tested first, ",
-        "so consumers whose diet mentions them would be coded as producers"),
-        paste(diet_hits, collapse = ", ")))
+      errors <- c(errors, sprintf(
+        paste0("foraging_patterns: FS0_primary_producer matches diet nouns (%s); FS0 is tested first, ",
+               "so consumers whose diet mentions them would be coded as producers"),
+        paste(diet_hits, collapse = ", ")
+      ))
+    }
+  }
+
+  # Every *_labels section feeds a legend table (trait_research_ui.R).
+  for (section in grep("_labels$", names(HARMONIZATION_CONFIG), value = TRUE)) {
+    labels <- cfg[[section]]
+    if (!is.list(labels) || length(labels) == 0L || is.null(names(labels))) {
+      errors <- c(errors, sprintf("%s: must be a non-empty named list", section))
+    }
+  }
+
+  # Profiles: apply_size_adjustment() multiplies measured lengths by
+  # size_multiplier, so it must be a single finite number > 0 where present.
+  profiles <- cfg$profiles
+  if (!is.list(profiles) || length(profiles) == 0L || is.null(names(profiles))) {
+    errors <- c(errors, "profiles: must be a non-empty named list")
+  } else {
+    for (name in names(profiles)) {
+      prof <- profiles[[name]]
+      if (!is.list(prof)) {
+        errors <- c(errors, sprintf("profiles: %s must be a JSON object", name))
+        next
+      }
+      mult <- prof$size_multiplier
+      if (!is.null(mult) && !(is.numeric(mult) && length(mult) == 1L && is.finite(mult) && mult > 0)) {
+        errors <- c(errors, sprintf("profiles: %s size_multiplier must be a finite number > 0", name))
+      }
     }
   }
 
@@ -427,22 +537,50 @@ save_harmonization_config <- function(config = HARMONIZATION_CONFIG,
   invisible(file)
 }
 
+#' Warn that the server-default file was rejected
+#'
+#' The warning carries class "harm_config_rejected" and the error texts in
+#' `$errors`, so the settings module can show them to the user at session
+#' start (production keeps no logs, so the warning alone is invisible there).
+#'
+#' @param text Warning message.
+#' @param errors Character vector of the reasons.
+harm_warn_rejected <- function(text, errors) {
+  warning(warningCondition(text, class = "harm_config_rejected", call = NULL,
+                           errors = errors))
+}
+
+#' Read the server-default config file
+#'
+#' Returns HARMONIZATION_CONFIG when the file is missing. When it cannot be
+#' parsed or does not validate, warns (class "harm_config_rejected", see
+#' harm_warn_rejected()) and returns HARMONIZATION_CONFIG.
+#'
+#' @param file Path to the JSON file.
+#' @return A config list.
 load_harmonization_config <- function(file = HARMONIZATION_CONFIG_FILE) {
   if (!file.exists(file)) return(HARMONIZATION_CONFIG)
+  # A flag, not a NULL result: a file holding the JSON literal `null` also
+  # parses to NULL and must reach the validator (and warn), not silently
+  # become the defaults.
+  parse_failed <- FALSE
   raw <- tryCatch({
     jsonlite::fromJSON(file, simplifyVector = FALSE)
   }, error = function(e) {
     # Falling back to defaults is right; doing it silently is not - the user
     # would see their saved settings quietly revert with no explanation.
-    warning(sprintf("[harmonization] could not parse '%s', using defaults: %s",
-                    file, conditionMessage(e)), call. = FALSE)
+    parse_failed <<- TRUE
+    harm_warn_rejected(sprintf("[harmonization] could not parse '%s', using defaults: %s",
+                               file, conditionMessage(e)),
+                       paste("could not parse the file:", conditionMessage(e)))
     NULL
   })
-  if (is.null(raw)) return(HARMONIZATION_CONFIG)
+  if (parse_failed) return(HARMONIZATION_CONFIG)
   checked <- validate_harmonization_config(raw)
   if (!checked$ok) {
-    warning(sprintf("[harmonization] invalid config in '%s', using defaults: %s",
-                    file, paste(checked$errors, collapse = "; ")), call. = FALSE)
+    harm_warn_rejected(sprintf("[harmonization] invalid config in '%s', using defaults: %s",
+                               file, paste(checked$errors, collapse = "; ")),
+                       checked$errors)
     return(HARMONIZATION_CONFIG)
   }
   checked$config
