@@ -164,6 +164,10 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   `config/api_keys.json` and `.Renviron` are both gitignored. Check
   before committing if you touch that area.
 
+- **Never commit API keys or other secrets, not even as defaults or
+  template examples; keys live only in the gitignored
+  `config/api_keys.json` (set via the API-key modal).**
+
 - **Deploy-script guards read code lines only.** Assertions about
   `deploy.sh`, `deployment/deploy.sh` or `deploy-windows.ps1` go through
   `code_lines()` / `script_array()` in `tests/testthat/helper-deploy.R`,

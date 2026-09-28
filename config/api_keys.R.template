@@ -43,8 +43,7 @@ API_KEYS$algaebase_password <- ""  # Your AlgaeBase password
 # API endpoint: https://www.freshwaterecology.info/api/
 # Documentation: https://www.freshwaterecology.info/api/documentation
 #
-# Default key: a06a5fe6-dfe5-11f0-a4f8-525400ca9bdd
-# For higher rate limits, register at: https://www.freshwaterecology.info/
+# Get a key at https://www.freshwaterecology.info/ (free registration)
 
 # SEALIFEBASE
 # -----------
@@ -72,7 +71,7 @@ API_KEYS$algaebase_password <- ""  # Your AlgaeBase password
 # Example (DO NOT USE - these are fake credentials):
 # API_KEYS$algaebase_username <- "john.doe@university.edu"
 # API_KEYS$algaebase_password <- "MySecurePassword123"
-# API_KEYS$freshwaterecology_key <- "a06a5fe6-dfe5-11f0-a4f8-525400ca9bdd"
+# API_KEYS$freshwaterecology_key <- "your-freshwaterecology-key"
 
 # =============================================================================
 # TESTING YOUR CONFIGURATION

@@ -191,8 +191,8 @@ API_KEYS <- list2env(list(
   algaebase_username = "",
   algaebase_password = "",
 
-  # freshwaterecology.info API key (public demo key provided)
-  freshwaterecology_key = "a06a5fe6-dfe5-11f0-a4f8-525400ca9bdd",
+  # freshwaterecology.info API key (set via config/api_keys.json)
+  freshwaterecology_key = "",
 
   # SeaLifeBase uses same API as FishBase (no key needed)
   # SHARK API (Swedish ocean archives) - no key needed, public API
