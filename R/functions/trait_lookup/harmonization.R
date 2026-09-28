@@ -568,7 +568,10 @@ apply_taxon_rules <- function(taxonomy, trait, text = NULL, override_only = FALS
   for (rule in get_trait_vocab()$taxon_rules[[trait]]) {
     if (override_only && !isTRUE(rule$override_text)) next
     if (!is.null(rule$flag) && !any(vapply(rule$flag, is_rule_enabled, logical(1)))) next
-    if (!is.null(rule$text) && !isTRUE(grepl(rule$text, text_lower, perl = TRUE))) next
+    # Same leading word boundary as classify_by_patterns(): "benthopelagic"
+    # must not satisfy a "pelagic" text condition.
+    if (!is.null(rule$text) &&
+        !isTRUE(grepl(paste0("(?<![a-z])(?:", rule$text, ")"), text_lower, perl = TRUE))) next
     matched <- all(vapply(names(rule$match), function(rank) {
       v <- field(rank)
       isTRUE(!is.na(v) && grepl(rule$match[[rank]], v, ignore.case = TRUE))
@@ -773,7 +776,8 @@ harmonize_environmental_position <- function(depth_min = NULL, depth_max = NULL,
 #' @param taxonomic_info Taxonomic classification
 #' @return PR code (PR0-PR8). Pre-PR1b PR1 and PR4 had no branches and
 #'   any matching input silently produced NA; both gaps now closed and
-#'   the labels are sourced from HARMONIZATION_CONFIG$protection_labels.
+#'   the labels come from the trait vocabulary (TRAIT_VOCAB, via
+#'   trait_code_label()).
 #' @export
 harmonize_protection <- function(skeleton_info = NULL, taxonomic_info = NULL) {
 

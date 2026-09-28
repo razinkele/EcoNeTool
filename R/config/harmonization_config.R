@@ -106,9 +106,12 @@ TRAIT_VOCAB <- local({
         MB5_obligate_swimmer = "swim|nekton|active.?swim"
       ),
       environmental = list(
-        EP1_pelagic = paste0("(epi|meso|bathy|abysso)?pelagic|water.?column|(holo|mero|zoo|phyto)?plankton|",
-                             "nekton|open.?water|midwater|neust"),
-        EP2_benthopelagic = "bentho.?pelagic|benthic.pelagic|demersal|near.?bottom|hyperbenth",
+        # No "nekton" here: it is a mobility word (MB5), and the orchestrator
+        # appends WoRMS functional group "nekton" to the habitat text, which
+        # would force demersal fish to EP1 before the depth and order rules.
+        EP1_pelagic = paste0("(epi|meso|bathy|abysso)?pelagic|water.?column|(holo|mero|zoo|phyto|ichthyo)?plankton|",
+                             "open.?water|midwater|neust"),
+        EP2_benthopelagic = "bentho.?pelagic|benthic.pelagic|(bathy)?demersal|near.?bottom|hyperbenth",
         EP3_epibenthic = paste0("epibenth|epifaun|epilith|epiflor|epiphyt|epizo|benthic|benthos|bottom|seabed|",
                                 "^surface$|surface.?dwell|on.?substrate|attached|sessile|tube|free.?living|crevice"),
         EP4_endobenthic = "endobenth|infaun|burrow|interstitial|within.?sediment|buried|lithotom"

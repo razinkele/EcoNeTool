@@ -536,3 +536,112 @@ test_that("the build writes trait_vocab_version and v2 codes into the DB it inst
   expect_identical(rows$MB[rows$species == "Aurelia aurita"], "MB2")
   expect_identical(rows$EP[rows$species == "Aurelia aurita"], "EP1")
 })
+
+# ---------------------------------------------------------------------------
+# Final fix wave (I1, F2-F6)
+# ---------------------------------------------------------------------------
+
+test_that("FishBase 'bathydemersal' is benthopelagic (EP2), like 'demersal' (I1)", {
+  expect_identical(classify_by_patterns("bathydemersal", "environmental"), "EP2")
+  expect_identical(classify_by_patterns("Bathydemersal; marine; depth range 200 - 1000 m", "environmental"), "EP2")
+  expect_identical(classify_by_patterns("demersal", "environmental"), "EP2")
+})
+
+test_that("taxon-rule text conditions respect the leading word boundary (F2)", {
+  hydrozoa <- list(phylum = "Cnidaria", class = "Hydrozoa")
+  # "benthopelagic" has no mobility pattern (no swim/drift/...), so the taxon
+  # rules decide. The medusa/pelagic Hydrozoa rule must NOT fire on the
+  # embedded "pelagic"; the next rule (Hydrozoa polyps) gives MB1.
+  expect_identical(classify_by_patterns("benthopelagic", "mobility"), NA_character_)
+  expect_identical(apply_taxon_rules(hydrozoa, "mobility", text = "benthopelagic"), "MB1")
+  expect_identical(harmonize_mobility("benthopelagic", taxonomic_info = hydrozoa), "MB1")
+  # The same wrap guards the environmental_pelagic Hydrozoa rule.
+  expect_identical(apply_taxon_rules(hydrozoa, "environmental_pelagic", text = "benthopelagic"), NA_character_)
+  # Real "medusa" / "pelagic" text still triggers the rule.
+  expect_identical(apply_taxon_rules(hydrozoa, "mobility", text = "medusa stage"), "MB2")
+  expect_identical(apply_taxon_rules(hydrozoa, "mobility", text = "pelagic"), "MB2")
+  expect_identical(apply_taxon_rules(hydrozoa, "environmental_pelagic", text = "pelagic medusa"), "EP1")
+})
+
+test_that("ichthyoplankton is pelagic (EP1) (F3)", {
+  expect_identical(classify_by_patterns("ichthyoplankton", "environmental"), "EP1")
+})
+
+test_that("'nekton' is a mobility word only, not an environmental position (F3)", {
+  expect_identical(classify_by_patterns("nekton", "environmental"), NA_character_)
+  expect_identical(classify_by_patterns("nekton", "mobility"), "MB5")
+  # The orchestrator appends the WoRMS functional group ("nekton") to the
+  # habitat text. A deep demersal gadoid must keep EP2 (as on master), not be
+  # forced to EP1 before the depth and fish-order rules run.
+  cod <- list(phylum = "Chordata", class = "Actinopteri", order = "Gadiformes")
+  expect_identical(harmonize_environmental_position(depth_min = 100, depth_max = 400,
+                                                    habitat_info = "nekton", taxonomic_info = cod), "EP2")
+  expect_identical(harmonize_environmental_position(habitat_info = "nekton", taxonomic_info = cod), "EP2")
+  # Legacy (v1) patterns are historical and untouched.
+  expect_identical(get_trait_vocab()$legacy_patterns$environmental$EP1_pelagic,
+                   "pelagic|water column|planktonic|nektonic|open water")
+})
+
+test_that("species with missing trait codes raise ONE warning and leave other links unchanged (F4)", {
+  d <- data.frame(species = c("pred", "prey", "ghost"), MS = c("MS4", "MS3", "MS3"),
+                  FS = c("FS1", "FS0", "FS3"), MB = c("MB5", "MB3", "MB4"),
+                  EP = c("EP2", "EP3", NA), PR = c("PR0", "PR0", "PR0"), stringsAsFactors = FALSE)
+  w <- testthat::capture_warnings(adj <- construct_trait_foodweb(d, threshold = 0))
+  expect_length(w, 1L)
+  expect_match(w, "1 species have missing trait codes and get no links: ghost", fixed = TRUE)
+  expect_true(all(adj["ghost", ] == 0))
+  expect_true(all(adj[, "ghost"] == 0))
+  complete <- d[d$species != "ghost", ]
+  expect_no_warning(ref <- construct_trait_foodweb(complete, threshold = 0))
+  expect_identical(adj[c("pred", "prey"), c("pred", "prey")], ref)
+  # An NA in MS (which used to throw inside the pair loop) still gives one warning.
+  d2 <- d
+  d2$EP[3] <- "EP3"
+  d2$MS[3] <- NA
+  expect_length(testthat::capture_warnings(construct_trait_foodweb(d2)), 1L)
+})
+
+test_that("a complete trait table builds without warnings (F4)", {
+  d <- data.frame(species = c("pred", "prey"), MS = c("MS4", "MS3"), FS = c("FS1", "FS0"),
+                  MB = c("MB5", "MB3"), EP = c("EP2", "EP3"), PR = c("PR0", "PR0"), stringsAsFactors = FALSE)
+  expect_no_warning(construct_trait_foodweb(d))
+  expect_no_warning(construct_trait_foodweb(d, return_probs = TRUE))
+})
+
+test_that("offline_db_vocab_status flags a DB in another vocabulary as needing a rebuild (F5)", {
+  v1 <- offline_db_vocab_status(make_offline_db_fixture(offline_row(), vocab_version = 1L))
+  expect_false(v1$ok)
+  expect_identical(v1$version, "1")
+  expect_identical(v1$message, sprintf("Rebuild required (trait vocabulary v1, app uses v%s)",
+                                       current_trait_vocab_version()))
+
+  ok <- offline_db_vocab_status(make_offline_db_fixture(offline_row(), vocab_version = 2L))
+  expect_true(ok$ok)
+  expect_identical(ok$version, "2")
+  expect_identical(ok$message, "Available")
+
+  unstamped <- offline_db_vocab_status(make_offline_db_fixture(offline_row(), vocab_version = NULL))
+  expect_false(unstamped$ok)
+  expect_identical(unstamped$version, "none")
+  expect_match(unstamped$message, "trait vocabulary none,", fixed = TRUE)
+
+  no_meta <- make_offline_db_fixture(offline_row(), vocab_version = 2L)
+  con <- DBI::dbConnect(RSQLite::SQLite(), no_meta)
+  DBI::dbExecute(con, "DROP TABLE metadata")
+  DBI::dbDisconnect(con)
+  nm <- offline_db_vocab_status(no_meta)
+  expect_false(nm$ok)
+  expect_identical(nm$version, "none")
+  expect_match(nm$message, "^Rebuild required")
+})
+
+test_that("the DB status panel reads the vocab status and styles a stale DB as a warning (F5)", {
+  src <- readLines(file.path(get_app_root(), "R/modules/trait_research_server.R"), warn = FALSE)
+  expect_true(any(grepl("offline_db_vocab_status(", src, fixed = TRUE)))
+})
+
+test_that("the orchestrator's FS console labels come from the vocabulary (F6)", {
+  orch <- readLines(file.path(get_app_root(), "R/functions/trait_lookup/orchestrator.R"), warn = FALSE)
+  expect_false(any(grepl("fs_labels", orch, fixed = TRUE)))
+  expect_false(any(grepl("\"Xylophagous\"", orch, fixed = TRUE)))
+})
