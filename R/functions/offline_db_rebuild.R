@@ -161,8 +161,9 @@ acquire_rebuild_lock <- function(lock_dir = offline_db_lock_path(),
   # Console builds run as the developer, the app as `shiny` (same group).
   # Group-writable so either side can reclaim a stale lock the other left.
   # No-op on Windows.
-  Sys.chmod(lock_dir, mode = "0775")
-  Sys.chmod(owner, mode = "0664")
+  # use_umask = FALSE: the default applies the umask, turning 0775 into 0755.
+  Sys.chmod(lock_dir, mode = "0775", use_umask = FALSE)
+  Sys.chmod(owner, mode = "0664", use_umask = FALSE)
   list(acquired = TRUE, token = token, message = NULL)
 }
 
@@ -238,27 +239,24 @@ request_offline_rebuild <- function(unlocked, launch,
 #' Install a freshly built offline DB over the live one
 #'
 #' Disconnects first (Windows cannot rename an open SQLite file), widens the
-#' mode so the app user can migrate the schema, then renames; if the rename
-#' fails (e.g. the live DB is open on Windows) falls back to copy + remove.
+#' mode so the app user can migrate the schema, then renames. file.rename()
+#' replaces an existing target on Linux and Windows alike, so there is no
+#' copy fallback: copying over the live DB could leave it half-written. If
+#' the rename fails the tmp build is removed and the live DB is untouched.
 #'
 #' @param con DBI connection to `tmp_path` (or NULL).
 #' @param tmp_path The completed build.
 #' @param db_path The live DB path.
 #' @param rename Injectable for tests; defaults to file.rename.
-#' @return db_path, invisibly. stop()s if neither rename nor copy worked,
-#'   leaving the live DB untouched.
+#' @return db_path, invisibly. stop()s if the rename failed.
 finalize_offline_db_build <- function(con, tmp_path, db_path, rename = file.rename) {
   if (!is.null(con) && DBI::dbIsValid(con)) DBI::dbDisconnect(con)
-  try(Sys.chmod(tmp_path, mode = "0664"), silent = TRUE)
+  try(Sys.chmod(tmp_path, mode = "0664", use_umask = FALSE), silent = TRUE)
   if (!isTRUE(suppressWarnings(rename(tmp_path, db_path)))) {
-    warning(sprintf("[rebuild] rename %s -> %s failed; copying instead", tmp_path, db_path),
-            call. = FALSE)
-    if (!isTRUE(file.copy(tmp_path, db_path, overwrite = TRUE))) {
-      stop(sprintf("could not install %s over %s; the live DB is unchanged", tmp_path, db_path),
-           call. = FALSE)
-    }
     unlink(tmp_path)
+    stop(sprintf("could not rename %s over %s; the live DB is unchanged", tmp_path, db_path),
+         call. = FALSE)
   }
-  try(Sys.chmod(db_path, mode = "0664"), silent = TRUE)
+  try(Sys.chmod(db_path, mode = "0664", use_umask = FALSE), silent = TRUE)
   invisible(db_path)
 }

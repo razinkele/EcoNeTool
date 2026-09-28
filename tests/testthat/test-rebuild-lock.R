@@ -193,7 +193,7 @@ test_that("a launch failure releases the lock and reports the error", {
 })
 
 # ---------------------------------------------------------------------------
-# finalize_offline_db_build(): rename, with a copy fallback
+# finalize_offline_db_build(): rename only, never a copy over the live DB
 # ---------------------------------------------------------------------------
 
 test_that("finalize replaces the live DB with the build and removes the tmp file", {
@@ -215,19 +215,35 @@ test_that("finalize replaces the live DB with the build and removes the tmp file
   expect_equal(DBI::dbGetQuery(con2, "SELECT x FROM t")$x, 42L)
 })
 
-test_that("finalize falls back to copy when the rename fails", {
+test_that("a failed rename leaves the live DB byte-identical and removes the tmp (no copy fallback)", {
   dir <- withr::local_tempdir()
   db_path <- file.path(dir, "offline_traits.db")
   tmp_path <- paste0(db_path, ".tmp.123")
   writeLines("OLD LIVE DB", db_path)
   writeLines("NEW BUILD", tmp_path)
+  before <- readBin(db_path, "raw", file.size(db_path))
 
-  expect_warning(
+  expect_error(
     finalize_offline_db_build(NULL, tmp_path, db_path, rename = function(from, to) FALSE),
-    "copying instead"
+    "live DB is unchanged"
   )
-  expect_identical(readLines(db_path), "NEW BUILD")
+  expect_identical(readBin(db_path, "raw", file.size(db_path)), before)
   expect_false(file.exists(tmp_path))
+})
+
+test_that("every Sys.chmod() in the lock / key-file code bypasses the umask", {
+  # Sys.chmod() applies the umask by default (use_umask = TRUE), so under the
+  # usual 022 a requested 0775 / 0664 silently became 0755 / 0644 on Linux.
+  files <- c("R/functions/offline_db_rebuild.R", "R/modules/plugin_server.R",
+             "scripts/initialization/build_offline_trait_db.R")
+  calls <- unlist(lapply(files, function(rel) {
+    code <- code_lines(file.path(app_root, rel))
+    hits <- grep("Sys.chmod(", code, fixed = TRUE, value = TRUE)
+    if (length(hits)) paste0(rel, ": ", trimws(hits)) else character(0)
+  }))
+  expect_gt(length(calls), 3L)
+  missing <- calls[!grepl("use_umask\\s*=\\s*FALSE", calls)]
+  expect_equal(missing, character(0))
 })
 
 # ---------------------------------------------------------------------------

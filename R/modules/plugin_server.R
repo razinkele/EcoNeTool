@@ -51,27 +51,30 @@ merge_api_key_submission <- function(stored, username, password, freshwater_key)
 #' Write the API keys JSON atomically with owner-only permissions
 #'
 #' Writes a sibling tmp file under umask 077 (so it is 0600 from the moment
-#' it exists), chmods it 0600 again, then renames it over `path` (copy +
-#' remove if the rename fails), so a crash never leaves a truncated key file
-#' and the secrets are never world-readable. A failed write removes the tmp
-#' file. umask/chmod are no-ops on Windows.
+#' it exists), chmods it 0600 again, then renames it over `path`, so a crash
+#' never leaves a truncated key file and the secrets are never
+#' world-readable. file.rename() replaces an existing target on Linux and
+#' Windows alike, so there is no copy fallback (a copy over the live file
+#' could leave it half-written). A failed write or rename removes the tmp
+#' file and leaves the stored keys untouched. umask/chmod are no-ops on
+#' Windows.
 #' @param keys_list Named list of keys.
 #' @param path Destination (API_KEYS_JSON).
 #' @param write Injectable writer for tests; defaults to jsonlite::write_json.
-write_api_keys_json <- function(keys_list, path, write = jsonlite::write_json) {
+#' @param rename Injectable for tests; defaults to file.rename.
+write_api_keys_json <- function(keys_list, path, write = jsonlite::write_json, rename = file.rename) {
   dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)
   tmp <- paste0(path, ".tmp.", Sys.getpid())
   old_umask <- Sys.umask("077")
   on.exit(Sys.umask(old_umask), add = TRUE)
   on.exit(if (file.exists(tmp)) unlink(tmp), add = TRUE)
   write(keys_list, tmp, auto_unbox = TRUE, pretty = TRUE)
-  Sys.chmod(tmp, mode = "0600")
-  if (!isTRUE(suppressWarnings(file.rename(tmp, path)))) {
-    ok <- file.copy(tmp, path, overwrite = TRUE)
-    unlink(tmp)
-    if (!isTRUE(ok)) stop("could not write ", path, call. = FALSE)
+  Sys.chmod(tmp, mode = "0600", use_umask = FALSE)
+  if (!isTRUE(suppressWarnings(rename(tmp, path)))) {
+    stop(sprintf("could not rename the new key file over %s; the stored keys are unchanged", path),
+         call. = FALSE)
   }
-  Sys.chmod(path, mode = "0600")
+  Sys.chmod(path, mode = "0600", use_umask = FALSE)
   invisible(path)
 }
 

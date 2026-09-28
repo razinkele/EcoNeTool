@@ -156,6 +156,21 @@ test_that("a failed JSON write leaves no tmp file and the old key file intact (I
   expect_identical(readLines(path), "{\"old\": true}")
 })
 
+test_that("a failed rename leaves the stored key file byte-identical (no copy fallback)", {
+  skip_if_not_installed("withr")
+  skip_if_not_installed("jsonlite")
+  source_plugin_module()
+  dir <- withr::local_tempdir()
+  path <- file.path(dir, "api_keys.json")
+  writeLines("{\"old\": true}", path)
+  before <- readBin(path, "raw", file.size(path))
+
+  expect_error(write_api_keys_json(list(a = "b"), path, rename = function(from, to) FALSE),
+               "stored keys are unchanged")
+  expect_identical(readBin(path, "raw", file.size(path)), before)
+  expect_length(list.files(dir, pattern = "\\.tmp\\."), 0)
+})
+
 test_that("the tmp key file is created owner-only, not chmod-ed after the fact (I2)", {
   skip_on_os("windows")  # umask / chmod are no-ops there
   skip_if_not_installed("withr")

@@ -890,8 +890,8 @@ if (coverage$total > 0) {
 
 # F19: install the finished build over the live DB. Disconnects first
 # (Windows cannot rename an open SQLite file), widens the mode to 0664 so the
-# app user (`shiny`) can migrate the schema at runtime, renames, and falls
-# back to copy + remove if the rename fails.
+# app user (`shiny`) can migrate the schema at runtime, then renames. A failed
+# rename stop()s with the live DB untouched (no copy fallback).
 finalize_offline_db_build(con, tmp_path, db_path)
 
 cat("\nDatabase saved to:", db_path, "\n")
