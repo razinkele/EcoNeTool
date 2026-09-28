@@ -50,16 +50,21 @@ merge_api_key_submission <- function(stored, username, password, freshwater_key)
 
 #' Write the API keys JSON atomically with owner-only permissions
 #'
-#' Writes a sibling tmp file, chmods it 0600, then renames it over `path`
-#' (copy + remove if the rename fails), so a crash never leaves a truncated
-#' key file and the secrets are never world-readable. chmod is a no-op on
-#' Windows.
+#' Writes a sibling tmp file under umask 077 (so it is 0600 from the moment
+#' it exists), chmods it 0600 again, then renames it over `path` (copy +
+#' remove if the rename fails), so a crash never leaves a truncated key file
+#' and the secrets are never world-readable. A failed write removes the tmp
+#' file. umask/chmod are no-ops on Windows.
 #' @param keys_list Named list of keys.
 #' @param path Destination (API_KEYS_JSON).
-write_api_keys_json <- function(keys_list, path) {
+#' @param write Injectable writer for tests; defaults to jsonlite::write_json.
+write_api_keys_json <- function(keys_list, path, write = jsonlite::write_json) {
   dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)
   tmp <- paste0(path, ".tmp.", Sys.getpid())
-  jsonlite::write_json(keys_list, tmp, auto_unbox = TRUE, pretty = TRUE)
+  old_umask <- Sys.umask("077")
+  on.exit(Sys.umask(old_umask), add = TRUE)
+  on.exit(if (file.exists(tmp)) unlink(tmp), add = TRUE)
+  write(keys_list, tmp, auto_unbox = TRUE, pretty = TRUE)
   Sys.chmod(tmp, mode = "0600")
   if (!isTRUE(suppressWarnings(file.rename(tmp, path)))) {
     ok <- file.copy(tmp, path, overwrite = TRUE)
@@ -328,7 +333,18 @@ plugin_server <- function(input, output, session, plugin_states) {
       password = input$api_key_algaebase_pass,
       freshwater_key = input$api_key_freshwater
     )
-    write_api_keys_json(keys_list, API_KEYS_JSON)
+    # I2: a write error (disk full, permissions) must not end the admin's
+    # session, and in-memory API_KEYS must stay in step with the file.
+    saved <- tryCatch({
+      write_api_keys_json(keys_list, API_KEYS_JSON)
+      TRUE
+    }, error = function(e) {
+      warning(sprintf("[api keys] saving failed: %s", conditionMessage(e)), call. = FALSE)
+      showNotification("Saving the API keys failed; the stored keys are unchanged. See the server log.",
+                       type = "error", duration = 10)
+      FALSE
+    })
+    if (!saved) return()
 
     # Remove old vulnerable .R format if it exists
     old_file <- API_KEYS_FILE

@@ -139,6 +139,65 @@ test_that("the modal never sends a stored secret to the browser", {
   expect_match(html, "leave blank to keep", fixed = TRUE)
 })
 
+test_that("a failed JSON write leaves no tmp file and the old key file intact (I2)", {
+  skip_if_not_installed("withr")
+  skip_if_not_installed("jsonlite")
+  source_plugin_module()
+  dir <- withr::local_tempdir()
+  path <- file.path(dir, "api_keys.json")
+  writeLines("{\"old\": true}", path)
+  half_write <- function(x, tmp, ...) {
+    writeLines("{\"trunc", tmp)
+    stop("disk full")
+  }
+
+  expect_error(write_api_keys_json(list(a = "b"), path, write = half_write), "disk full")
+  expect_length(list.files(dir, pattern = "\\.tmp\\."), 0)
+  expect_identical(readLines(path), "{\"old\": true}")
+})
+
+test_that("the tmp key file is created owner-only, not chmod-ed after the fact (I2)", {
+  skip_on_os("windows")  # umask / chmod are no-ops there
+  skip_if_not_installed("withr")
+  skip_if_not_installed("jsonlite")
+  source_plugin_module()
+  old_umask <- Sys.umask("0022")
+  withr::defer(Sys.umask(old_umask))
+  dir <- withr::local_tempdir()
+  mode_at_write <- NULL
+  spy <- function(x, tmp, ...) {
+    jsonlite::write_json(x, tmp, ...)
+    mode_at_write <<- as.character(file.info(tmp)$mode)
+  }
+
+  write_api_keys_json(list(a = "b"), file.path(dir, "api_keys.json"), write = spy)
+  expect_identical(mode_at_write, "600")
+  expect_identical(as.character(Sys.umask(NA)), "22")  # restored
+})
+
+test_that("a save error keeps the session alive and API_KEYS unchanged (I2)", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("withr")
+  skip_if_not_installed("jsonlite")
+  source_plugin_module()
+  store <- local_key_store()
+  withr::local_envvar(ECONETOOL_ADMIN_PASSWORD_HASH = "")
+  local_global_value("write_api_keys_json",
+                     function(keys_list, path, ...) stop("cannot open file: disk full"),
+                     environment())
+
+  shiny::testServer(plugin_test_module(), {
+    w <- testthat::capture_warnings(submit_keys(session, user = "new_user", pass = "s3cr3t_pw",
+                                                fresh = "s3cr3t_key"))
+    expect_true(any(grepl("[api keys] saving failed", w, fixed = TRUE)), info = paste(w, collapse = " | "))
+    expect_false(any(grepl("s3cr3t", w, fixed = TRUE)))
+    expect_false(session$isClosed())
+  })
+  expect_identical(store$API_KEYS$algaebase_username, "old_user")
+  expect_identical(store$API_KEYS$algaebase_password, "old_pass")
+  expect_identical(store$API_KEYS$freshwaterecology_key, "old_key")
+})
+
 test_that("merge_api_key_submission keeps blank, NA and NULL secrets", {
   source_plugin_module()
   stored <- list(algaebase_username = "u", algaebase_password = "p", freshwaterecology_key = "k")
