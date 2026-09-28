@@ -223,3 +223,47 @@ test_that("a password record survives an .Renviron round-trip intact", {
     expect_true(verify_admin_password("correct horse battery staple"))
   })
 })
+
+# ---------------------------------------------------------------------------
+# admin_authorized_strict: the fail-CLOSED gate for server-wide writes (B1)
+# ---------------------------------------------------------------------------
+# admin_authorized() fails OPEN when no hash is configured, so the API-key
+# modal keeps working on unconfigured instances. Saving the harmonization
+# server default (B1) and rebuilding the offline DB (B3) must not: with no
+# hash configured they are refused outright.
+
+test_that("admin_authorized_strict refuses everything when the gate is off", {
+  with_admin_hash(NULL, {
+    expect_identical(admin_authorized_strict(TRUE), FALSE)
+    expect_identical(admin_authorized_strict(FALSE), FALSE)
+    expect_identical(admin_authorized_strict(NULL), FALSE)
+  })
+  with_admin_hash("", expect_identical(admin_authorized_strict(TRUE), FALSE))
+  with_admin_hash("   ", expect_identical(admin_authorized_strict(TRUE), FALSE))
+})
+
+test_that("admin_authorized_strict needs the gate on AND an unlocked session", {
+  # admin_gate_enabled() only checks that the record is non-blank.
+  with_admin_hash("econetool1$12$00$00", {
+    expect_identical(admin_authorized_strict(TRUE), TRUE)
+    expect_identical(admin_authorized_strict(FALSE), FALSE)
+    expect_identical(admin_authorized_strict(NULL), FALSE)
+    expect_identical(admin_authorized_strict(NA), FALSE)
+    expect_identical(admin_authorized_strict("yes"), FALSE)
+  })
+})
+
+test_that("admin_strict_refusal returns the user-facing reason and warns", {
+  with_admin_hash(NULL, {
+    expect_warning(msg <- admin_strict_refusal(TRUE, "save server default"),
+                   "[admin auth] save server default refused", fixed = TRUE)
+    expect_identical(msg, "Admin gate not configured on this instance; server defaults are read-only")
+  })
+  with_admin_hash("econetool1$12$00$00", {
+    expect_warning(msg <- admin_strict_refusal(NULL, "save server default"),
+                   "[admin auth]", fixed = TRUE)
+    expect_identical(msg, "Unlock via Trait Research > Configure API Keys first")
+    expect_silent(ok <- admin_strict_refusal(TRUE, "save server default"))
+    expect_null(ok)
+  })
+})

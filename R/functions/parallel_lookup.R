@@ -366,6 +366,11 @@ batch_lookup_parallel <- function(species_list,
     pb <- txtProgressBar(min = 0, max = n_species, style = 3)
   }
 
+  # The caller's harmonization settings key the shared trait cache (F72).
+  # Computed here, in the calling process: a worker has no Shiny session, so
+  # harm_config_hash() inside it would always see the process default.
+  cfg_hash <- harm_config_hash()
+
   # Parallel batch processing
   results <- future_lapply(seq_along(species_list), function(i) {
     species <- species_list[i]
@@ -378,7 +383,7 @@ batch_lookup_parallel <- function(species_list,
     cached <- NULL
     if (!is.null(cache_dir)) {
       cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species), ".rds"))
-      cached <- read_cache_field(cache_file, "traits")
+      cached <- read_cache_field(cache_file, "traits", config_hash = cfg_hash)
     }
 
     if (!is.null(cached)) {

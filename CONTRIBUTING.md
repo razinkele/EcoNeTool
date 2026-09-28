@@ -180,6 +180,39 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   writes anything under `/etc/shiny-server/`: laguna is shared with ~30
   other apps, so conf changes are printed as a snippet and applied by
   hand after review.
+- **Server-wide writes use the strict (fail-closed) gate.**
+  `admin_authorized()` fails OPEN when `ECONETOOL_ADMIN_PASSWORD_HASH` is
+  unset, which is right for the API-key modal only. Anything that changes
+  what every session sees (the harmonization server default, the offline DB
+  rebuild) must call `admin_authorized_strict(session$userData$admin_unlocked)`,
+  or `admin_strict_refusal(unlocked, "<action>")`, which also warns and
+  returns the user-facing reason. With no hash configured these actions are
+  refused ("Admin gate not configured on this instance; server defaults are
+  read-only"). For local work, put a `set_admin_password()` line in
+  `.Renviron` or run the build script from a console.
+- **Trait-cache envelopes carry `config_hash`.** Harmonized codes depend on
+  the session's harmonization settings, and every session shares
+  `cache/taxonomy/<species>.rds`. A writer stamps `config_hash =
+  harm_config_hash()` (or `harm_default_config_hash()` when the codes were
+  harmonized with the defaults, e.g. offline-DB rows); a reader passes
+  `config_hash = harm_config_hash()` to `read_cache_field()`, which treats a
+  different or missing hash as a miss. Compute the hash in the calling
+  process, never inside a `future` worker (a worker has no Shiny session).
+- **Every `harm_*` widget needs a server consumer.** The Harmonization tab
+  once shipped rule checkboxes and FS inputs nothing read.
+  `tests/testthat/test-ui-inputs-have-handlers.R` renders the UI and fails
+  for any `harm_*` id the module does not read as `input$<id>`/`output$<id>`
+  or wire from `CONSUMED_TAXONOMIC_RULES` / `HARM_FS_PATTERN_LABELS`. Drive
+  widgets from the session config with `push_config_to_widgets(cfg)`, write
+  it only through `set_session_config(cfg)`, and return early when an
+  incoming value already equals `isolate(rv$config)` (echo safety, B0).
+- **The rule-checkbox start-up guard needs static checkboxes.** Each
+  `harm_rule_*` observer ignores the FIRST report if it is `TRUE`, because
+  that is the UI literal (`checkboxInput(..., TRUE)`) arriving before the
+  start-up push. This is only correct while the checkboxes are bound at
+  session init by the static `harmonization_settings_ui()`. Do not move them
+  into `renderUI()`/`insertUI()` without replacing the guard: rendered later,
+  the first report can follow the push and be a real click.
 
 ## Commit Messages
 

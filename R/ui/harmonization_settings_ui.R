@@ -1,14 +1,68 @@
 # Harmonization Settings UI
 # GUI for configuring trait harmonization thresholds and rules
 
+# One text input per configured foraging pattern (inputId harm_pattern_<key>).
+# Keys match HARMONIZATION_CONFIG$foraging_patterns exactly. The inputs start
+# EMPTY: the server pushes the real patterns from the session config at start,
+# so no stale literal (FS0 once carried "plant|algae", removed 2026-07-17
+# because it inverted trophic structure) can ever be the source of truth.
+HARM_FS_PATTERN_LABELS <- c(
+  FS0_primary_producer = "FS0 - Primary producer:",
+  FS1_predator = "FS1 - Predator:",
+  FS2_scavenger = "FS2 - Scavenger / detritivore:",
+  FS3_omnivore = "FS3 - Omnivore:",
+  FS4_grazer = "FS4 - Grazer / herbivore:",
+  FS5_deposit = "FS5 - Deposit feeder:",
+  FS6_filter = "FS6 - Filter / suspension feeder:",
+  FS7_xylophagous = "FS7 - Xylophagous:"
+)
+
+# The taxonomic rules the harmonize_* code actually reads through
+# is_rule_enabled() (R/functions/trait_lookup/harmonization.R). One checkbox
+# per rule, inputId harm_rule_<name>; the server wires the same vector.
+# tests/testthat/test-ui-inputs-have-handlers.R fails if this list and the
+# is_rule_enabled() calls drift apart.
+CONSUMED_TAXONOMIC_RULES <- c(
+  fish_obligate_swimmers = "Fish -> MB5 (swimmer)",
+  cephalopods_swimmers = "Cephalopods -> MB5 (swimmer)",
+  bivalves_sessile = "Bivalves -> MB1 (sessile)",
+  cnidarians_sessile = "Cnidarians -> MB1 (sessile)",
+  phytoplankton_pelagic = "Phytoplankton -> EP1 (pelagic)",
+  zooplankton_pelagic = "Copepods / cladocerans -> EP1 (pelagic)",
+  infaunal_bivalves = "Bivalves -> EP4 (endobenthic)",
+  bivalves_hard_shell = "Bivalves -> PR6 (hard shell)",
+  gastropods_hard_shell = "Gastropods -> PR6 (hard shell)",
+  crustaceans_exoskeleton = "Crustaceans -> PR8 / PR4 (exoskeleton)",
+  echinoderms_calcium_plates = "Echinoderms -> PR5 (calcium plates)"
+)
+
+harm_rule_checkboxes <- function(rules) {
+  lapply(rules, function(rule) {
+    checkboxInput(paste0("harm_rule_", rule), CONSUMED_TAXONOMIC_RULES[[rule]], TRUE)
+  })
+}
+
+# One slider per size-class boundary (inputId harm_thresh_<key>, label
+# "MS1/MS2 boundary:" ...). min/max/step come from HARM_THRESHOLD_RANGES - the
+# same constant validate_harmonization_config() checks against - so the
+# browser never clamps or snaps a value the validator accepted.
+harm_threshold_slider <- function(key) {
+  rng <- HARM_THRESHOLD_RANGES[[key]]
+  sliderInput(paste0("harm_thresh_", key), paste0(sub("_", "/", key, fixed = TRUE), " boundary:"),
+              min = rng[["min"]], max = rng[["max"]], value = HARMONIZATION_CONFIG$size_thresholds[[key]],
+              step = rng[["step"]], post = " cm")
+}
+
 harmonization_settings_ui <- function() {
+  fs_keys <- names(HARM_FS_PATTERN_LABELS)
+  fs_input <- function(key) textInput(paste0("harm_pattern_", key), HARM_FS_PATTERN_LABELS[[key]], value = "")
+
   tagList(
     h3(icon("sliders-h"), " Harmonization Configuration"),
     p("Configure how raw trait data is converted to categorical trait classes."),
     hr(),
 
     tabsetPanel(
-      id = "harm_tabs",
       type = "pills",
 
       # TAB 1: SIZE THRESHOLDS
@@ -20,18 +74,7 @@ harmonization_settings_ui <- function() {
         fluidRow(
           column(6,
             h4("Maximum Size (MS) Class Boundaries"),
-            sliderInput("harm_thresh_MS1_MS2", "MS1/MS2 boundary:",
-                       min = 0.01, max = 0.5, value = 0.1, step = 0.01, post = " cm"),
-            sliderInput("harm_thresh_MS2_MS3", "MS2/MS3 boundary:",
-                       min = 0.1, max = 5.0, value = 1.0, step = 0.1, post = " cm"),
-            sliderInput("harm_thresh_MS3_MS4", "MS3/MS4 boundary:",
-                       min = 1.0, max = 20.0, value = 5.0, step = 0.5, post = " cm"),
-            sliderInput("harm_thresh_MS4_MS5", "MS4/MS5 boundary:",
-                       min = 5.0, max = 50.0, value = 20.0, step = 1.0, post = " cm"),
-            sliderInput("harm_thresh_MS5_MS6", "MS5/MS6 boundary:",
-                       min = 20.0, max = 100.0, value = 50.0, step = 5.0, post = " cm"),
-            sliderInput("harm_thresh_MS6_MS7", "MS6/MS7 boundary:",
-                       min = 50.0, max = 300.0, value = 150.0, step = 10.0, post = " cm")
+            lapply(HARM_THRESHOLD_KEYS, harm_threshold_slider)
           ),
           column(6,
             h4("Size Class Preview"),
@@ -48,23 +91,12 @@ harmonization_settings_ui <- function() {
         value = "foraging_tab",
         br(),
         h4("Foraging Strategy (FS) Pattern Matching"),
+        p(class = "text-muted",
+          "Regular expressions matched (case-insensitive) against feeding text, FS0 first. ",
+          "An invalid or empty pattern is ignored and the previous one kept."),
         fluidRow(
-          column(6,
-            textInput("harm_pattern_FS0", "FS0 - Primary Producer:",
-                     value = "photosyn|autotrop|producer|plant|algae"),
-            textInput("harm_pattern_FS1", "FS1 - Predator:",
-                     value = "predat|carnivor|pisciv|hunter"),
-            textInput("harm_pattern_FS2", "FS2 - Scavenger:",
-                     value = "scaveng|detritivor|carrion")
-          ),
-          column(6,
-            textInput("harm_pattern_FS4", "FS4 - Grazer:",
-                     value = "graz|herbiv|scraper|browser"),
-            textInput("harm_pattern_FS5", "FS5 - Deposit Feeder:",
-                     value = "deposit|sediment|burrower"),
-            textInput("harm_pattern_FS6", "FS6 - Filter Feeder:",
-                     value = "filter|suspension|planktivor")
-          )
+          column(6, lapply(fs_keys[1:4], fs_input)),
+          column(6, lapply(fs_keys[5:8], fs_input))
         )
       ),
 
@@ -77,19 +109,18 @@ harmonization_settings_ui <- function() {
         fluidRow(
           column(4,
             h5("Mobility Rules"),
-            checkboxInput("harm_rule_fish_swimmers", "Fish -> MB5", TRUE),
-            checkboxInput("harm_rule_bivalves_sessile", "Bivalves -> MB1/MB2", TRUE),
-            checkboxInput("harm_rule_gastropods_crawlers", "Gastropods -> MB3", TRUE)
+            harm_rule_checkboxes(c("fish_obligate_swimmers", "cephalopods_swimmers",
+                                   "bivalves_sessile", "cnidarians_sessile"))
           ),
           column(4,
-            h5("Foraging Rules"),
-            checkboxInput("harm_rule_phytoplankton_producers", "Phytoplankton -> FS0", TRUE),
-            checkboxInput("harm_rule_bivalves_filter", "Bivalves -> FS6", TRUE)
+            h5("Position Rules"),
+            harm_rule_checkboxes(c("phytoplankton_pelagic", "zooplankton_pelagic",
+                                   "infaunal_bivalves"))
           ),
           column(4,
             h5("Protection Rules"),
-            checkboxInput("harm_rule_molluscs_shells", "Molluscs -> PR3", TRUE),
-            checkboxInput("harm_rule_arthropods_exo", "Arthropods -> PR3", TRUE)
+            harm_rule_checkboxes(c("bivalves_hard_shell", "gastropods_hard_shell",
+                                   "crustaceans_exoskeleton", "echinoderms_calcium_plates"))
           )
         )
       ),
@@ -137,7 +168,8 @@ harmonization_settings_ui <- function() {
           ),
           column(6,
             h5("Import Configuration"),
-            fileInput("harm_import_json", "Select JSON:", accept = c(".json"))
+            fileInput("harm_import_json", "Select JSON:", accept = c(".json")),
+            p(class = "text-muted", "An imported file applies to your session only.")
           )
         )
       )
@@ -149,10 +181,15 @@ harmonization_settings_ui <- function() {
     fluidRow(
       column(12,
         div(style = "text-align: center;",
-          actionButton("harm_save_config", "Apply Changes", class = "btn-success btn-lg"),
           actionButton("harm_reset_defaults", "Reset to Defaults", class = "btn-warning"),
-          actionButton("harm_cancel", "Cancel", class = "btn-secondary")
-        )
+          actionButton("harm_save_config", "Save as server default",
+                       class = "btn-success", icon = icon("lock")),
+          actionButton("harm_reset_server_default", "Reset server default",
+                       class = "btn-outline-danger", icon = icon("lock"))
+        ),
+        p(class = "text-muted", style = "text-align: center; margin-top: 8px;",
+          "Changes on this tab apply to your session only. Saving or resetting the server default ",
+          "needs an admin unlock (Trait Research > Configure API Keys).")
       )
     ),
 
