@@ -185,7 +185,8 @@ cat("\n[3] Checking R Package Dependencies...\n")
 
 required_packages <- c(
   "shiny", "bs4Dash", "igraph", "fluxweb", "visNetwork",
-  "ggplot2", "DT", "dplyr", "tidyr", "jsonlite"
+  "ggplot2", "DT", "dplyr", "tidyr", "jsonlite",
+  "digest" # harm_config_hash() (trait-cache config_hash, B1)
 )
 
 # Phase 1 (Spatial Analysis) packages

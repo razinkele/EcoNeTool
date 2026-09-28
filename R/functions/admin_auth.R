@@ -219,8 +219,11 @@ admin_authorized_strict <- function(unlocked) {
   admin_gate_enabled() && isTRUE(unlocked)
 }
 
-# User-facing refusal texts for strict-gated actions. B3 shows the same two
-# texts for the offline-DB rebuild, so keep them word-for-word.
+# User-facing refusal texts for strict-gated actions. B3 (offline-DB rebuild,
+# planned in docs/superpowers/plans/2026-09-27-b3-security-admin-gating.md)
+# reuses these constants by NAME and builds its own messages from them - they
+# are not word-for-word identical (B3 appends ", then rebuild the database").
+# Change a text here, not a copy.
 ADMIN_STRICT_MSG_UNSET <- "Admin gate not configured on this instance; server defaults are read-only"
 ADMIN_STRICT_MSG_LOCKED <- "Unlock via Trait Research > Configure API Keys first"
 
