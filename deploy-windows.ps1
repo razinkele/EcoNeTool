@@ -104,6 +104,10 @@ $EXCLUDE_PATTERNS = @(
     ".DS_Store",
     ".claude",
     "*backup*",
+    # Editor and OneDrive conflict copies can hold secrets (M8): a
+    # *-laguna-safeBackup-*.R.bak once held an API key.
+    "*.bak",
+    "*safeBackup*",
     "*test*.R",
     "deploy*.ps1",
     "deploy*.sh",

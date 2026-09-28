@@ -103,6 +103,18 @@ if [[ "$DEPLOY_METHOD" == "--shiny-server" ]] && [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
+# M8: this script has no exclude list - it copies R/ with cp -rT - so an
+# editor or OneDrive conflict copy (*.bak, *-safeBackup-*) under R/ or
+# config/ would go live, and such copies have held API keys. Refuse to
+# deploy while any exists. Print the names only, never the contents.
+SECRET_COPIES=$(find "$APP_DIR/R" "$APP_DIR/config" \( -name '*safeBackup*' -o -name '*.bak' \) -print 2>/dev/null || true)
+if [ -n "$SECRET_COPIES" ]; then
+    print_error "Refusing to deploy: backup/conflict copies found under R/ or config/ (they can hold secrets):"
+    printf '%s\n' "$SECRET_COPIES" | sed "s|^$APP_DIR/|  |"
+    echo "Move them out of the source tree, then re-run."
+    exit 1
+fi
+
 # ============================================================================
 # Docker Deployment
 # ============================================================================

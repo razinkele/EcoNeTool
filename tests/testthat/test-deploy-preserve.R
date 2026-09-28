@@ -77,6 +77,28 @@ test_that("deployment/deploy.sh never copies data/ or config/ over the live tree
   expect_true(any(grepl("config/api_keys.R.template", code, fixed = TRUE)))
 })
 
+test_that("deployment/deploy.sh refuses to deploy while backup/conflict copies sit in R/ or config/ (M8)", {
+  code <- code_lines(deploy_file("deployment/deploy.sh"))
+  # it has no exclude list: `cp -rT R/` would ship any *.bak under R/
+  finder <- grep('find "$APP_DIR/R" "$APP_DIR/config"', code, fixed = TRUE)
+  expect_length(finder, 1L)
+  if (length(finder) != 1L) return()
+  for (pat in SECRET_BACKUP_PATTERNS) {
+    expect_true(grepl(sprintf("-name '%s'", pat), code[finder], fixed = TRUE), info = pat)
+  }
+  var <- sub("^\\s*([A-Z_]+)=.*$", "\\1", code[finder])
+  expect_match(var, "^[A-Z_]+$")
+  guard <- grep(sprintf('^\\s*if \\[ -n "\\$%s" \\]', var), code)
+  expect_length(guard, 1L)
+  expect_true(any(grepl("^\\s*exit 1\\s*$", code[guard + 1:6])), info = "the guard must abort the deploy")
+  # names only, never contents
+  expect_false(any(grepl(sprintf("(cat|less|head|tail|xargs)[^|]*\\$%s|\\$%s[^|]*\\|\\s*xargs", var, var), code)))
+  # before anything is wiped, backed up or copied
+  wipe <- grep("find /srv/shiny-server/EcoNeTool .*-exec rm -rf", code)
+  expect_true(length(wipe) == 1L && guard < wipe)
+  expect_true(guard < grep("^\\s*deploy_shiny_server\\(\\)\\s*\\{", code))
+})
+
 test_that("deployment/deploy.sh copies with cp -rT, not rsync, and keeps *.csv", {
   code <- code_lines(deploy_file("deployment/deploy.sh"))
   expect_false(any(grepl("\\brsync\\b", code)), info = "rsync is not installed on laguna")
@@ -206,6 +228,11 @@ test_that("deploy-windows.ps1 ships models/ and never uploads runtime config", {
   expect_true("models/" %in% script_array(code, "DEPLOY_ITEMS"))
   excl <- script_array(code, "EXCLUDE_PATTERNS")
   expect_equal(setdiff(RUNTIME_CONFIG_FILES, excl), character(0))
+})
+
+test_that("deploy-windows.ps1 never uploads *.bak or OneDrive safeBackup copies (M8)", {
+  excl <- script_array(code_lines(deploy_file("deploy-windows.ps1")), "EXCLUDE_PATTERNS")
+  expect_equal(setdiff(SECRET_BACKUP_PATTERNS, excl), character(0))
 })
 
 test_that("deploy-windows.ps1 backups are tar archives outside site_dir", {
@@ -387,6 +414,8 @@ test_that("deploy-windows.ps1 Test-ShouldExclude drops runtime config by relativ
     "C:\\repo\\config\\harmonization_custom.json" = "True",
     "/repo/config/api_keys.R"                     = "True",
     "C:\\repo\\config\\.Renviron"                 = "True",
+    "C:\\repo\\R\\config-laguna-safeBackup-0001-X.R.bak" = "True",
+    "C:\\repo\\R\\functions\\helper.R.bak"        = "True",
     "C:\\repo\\config\\api_keys.R.template"       = "False",
     "C:\\repo\\R\\functions\\api_keys.R"          = "False",
     "C:\\repo\\models\\trait_ml_models.rds"       = "False",
@@ -408,6 +437,14 @@ test_that("deploy.sh rsync --delete excludes server state and runtime config", {
   # config/ itself ships (templates); its runtime files are excluded below
   expect_equal(setdiff(c(".*", "data", "cache", "r-libs", "models"), prot), character(0))
   expect_equal(setdiff(RUNTIME_CONFIG_FILES, prot), character(0))
+})
+
+test_that("deploy.sh rsync never sends *.bak or OneDrive safeBackup copies (M8)", {
+  # rsync globs are case-sensitive: "*backup*" does not match "safeBackup"
+  path <- deploy_file("deploy.sh")
+  expect_true(length(protected_root_sh(path)) > 0L, info = "premise: EXCLUDE_PATTERNS reaches every rsync call")
+  excl <- script_array(code_lines(path), "EXCLUDE_PATTERNS")
+  expect_equal(setdiff(SECRET_BACKUP_PATTERNS, excl), character(0))
 })
 
 test_that("deploy.sh backups leave out data/ and retention only prunes its own archives", {
