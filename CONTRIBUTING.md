@@ -238,6 +238,19 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   session init by the static `harmonization_settings_ui()`. Do not move them
   into `renderUI()`/`insertUI()` without replacing the guard: rendered later,
   the first report can follow the push and be a real click.
+- **The trait vocabulary lives only in `TRAIT_VOCAB`.** MS/FS/MB/EP/PR
+  codes, their labels, the default MB/EP/PR text patterns, their precedence
+  and the taxonomic rules are in `TRAIT_VOCAB`
+  (`R/config/harmonization_config.R`); read them through `get_trait_vocab()`,
+  `trait_codes()`, `trait_code_label()`, `classify_by_patterns(text, trait)`
+  and `apply_taxon_rules(taxonomy, trait)`, never through a private regex or
+  a literal code list. Sessions and saved JSON may tune `*_patterns` only.
+  `tests/testthat/test-trait-vocabulary.R` fails on a habitat, mobility or
+  protection word inside a `grepl("...")` in the MB/EP/PR code. When a code
+  changes meaning, bump `trait_vocab_version`: offline DBs
+  (`metadata.trait_vocab_version`), cache envelopes and the ML model are
+  then ignored until rebuilt or retrained, and the production offline DB
+  must be rebuilt after the deploy.
 
 ## Commit Messages
 
