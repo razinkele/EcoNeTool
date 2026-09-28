@@ -164,9 +164,30 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   `config/api_keys.json` and `.Renviron` are both gitignored. Check
   before committing if you touch that area.
 
-- **Never commit API keys or other secrets, not even as defaults or
+- **Never commit API keys or other secrets,** not even as defaults or
   template examples; keys live only in the gitignored
-  `config/api_keys.json` (set via the API-key modal).**
+  `config/api_keys.json` (set via the API-key modal).
+  `tests/testthat/test-no-hardcoded-keys.R` fails on any UUID-shaped
+  literal in `R/`, `app.R` or `config/*.template`.
+
+- **Third-party and uploaded text reaches the page only through tag
+  builders.** EcoBase metadata, `.ewemdb` metadata, upload file names and
+  error messages go into `tags$td(x)`, `tags$p(x)` etc., which escape
+  them - never into `HTML(paste0(...))`. Links go through `safe_href()`
+  (http/https only) or `safe_doi_href()` (rebuilt on https://doi.org/),
+  both in `R/functions/validation_utils.R`. `tests/testthat/test-xss-escaping.R`
+  fails if `ecobase_server.R` or `ecopath_import_server.R` pastes anything
+  dynamic into `HTML()`.
+
+- **The offline trait DB is rebuilt only under the rebuild lock.** The
+  in-app button needs `admin_authorized_strict()` (so nothing happens
+  while `ECONETOOL_ADMIN_PASSWORD_HASH` is unset); the lock is the
+  directory `cache/offline_traits.db.lock`, shared with console runs of
+  `scripts/initialization/build_offline_trait_db.R`, and a build writes
+  `offline_traits.db.tmp.<pid>` and renames it over the live DB only when
+  it has finished. Use `request_offline_rebuild()` /
+  `acquire_rebuild_lock()` from `R/functions/offline_db_rebuild.R`; do not
+  delete or write the live DB directly.
 
 - **Deploy-script guards read code lines only.** Assertions about
   `deploy.sh`, `deployment/deploy.sh` or `deploy-windows.ps1` go through
