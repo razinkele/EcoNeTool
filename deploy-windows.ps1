@@ -89,7 +89,19 @@ $DEPLOY_ITEMS = @(
     # uploaded only with -IncludeData (see Get-FilesToDeploy).
     "config/",
     # Tracked in git and loaded at runtime by ml_trait_prediction.R.
-    "models/"
+    "models/",
+    # The offline trait DB build (Rebuild Database button and console runs)
+    # and the small tracked inputs it reads. Without these the server kept a
+    # stale build script and built without BIOTIC/MAREDAT/PTDB (fixed 1.6.1).
+    # Listed file by file so the rest of data/ stays server-managed.
+    "scripts/initialization/build_offline_trait_db.R",
+    "data/ontology_traits.csv",
+    "data/biotic_traits.csv",
+    "data/maredat_zooplankton.csv",
+    "data/ptdb_phytoplankton.csv",
+    "data/bvol_nomp_version_2024.xlsx",
+    "data/species_enriched.xlsx",
+    "data/external_traits/"
 )
 
 # Patterns to exclude

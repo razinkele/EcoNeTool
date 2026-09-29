@@ -201,7 +201,10 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   `/srv/shiny-server-data/EcoNeTool/backups` (or `/home/$User/backups`
   for `deploy-windows.ps1 -NoSudo`) - never under `/srv/shiny-server/`,
   which shiny-server serves. `deploy-windows.bat` is a retired stub; any
-  `.bat`/`.cmd` deploy script must stay one. No deploy script
+  `.bat`/`.cmd` deploy script must stay one. `deploy-windows.ps1` ships
+  `scripts/initialization/build_offline_trait_db.R` and, file by file, the
+  tracked `data/` inputs it reads; a guard test derives that list from the
+  script, so a new build input must be added to `DEPLOY_ITEMS`. No deploy script
   writes anything under `/etc/shiny-server/`: laguna is shared with ~30
   other apps, so conf changes are printed as a snippet and applied by
   hand after review.
