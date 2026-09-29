@@ -479,3 +479,33 @@ test_that("harm_config_hash changes with the lookup revision, so pre-C-6a envelo
   assign("TRAIT_LOOKUP_REVISION", old - 1L, envir = globalenv())
   expect_false(identical(harm_config_hash(HARMONIZATION_CONFIG), before))
 })
+
+# ---------------------------------------------------------------------------
+# User decision (2026-09-29): infaunal bivalves before the depth rule
+# ---------------------------------------------------------------------------
+
+test_that("an infaunal bivalve with only a shallow depth range is endobenthic (EP4)", {
+  mya <- list(phylum = "Mollusca", class = "Bivalvia", order = "Myida", family = "Myidae", genus = "Mya")
+  # OBIS depth only (no habitat text): the depth rule used to return EP3 first.
+  expect_identical(harmonize_environmental_position(depth_min = 0, depth_max = 10, taxonomic_info = mya), "EP4")
+  # Explicit text still wins, and the switch still turns the rule off.
+  expect_identical(harmonize_environmental_position(depth_min = 0, depth_max = 10, habitat_info = "epifaunal",
+                                                    taxonomic_info = mya), "EP3")
+  cfg <- HARMONIZATION_CONFIG
+  cfg$taxonomic_rules$infaunal_bivalves <- FALSE
+  session <- shiny::MockShinySession$new()
+  on.exit(session$close(), add = TRUE)
+  session$userData$harm_config <- cfg
+  shiny::withReactiveDomain(session, {
+    expect_identical(harmonize_environmental_position(depth_min = 0, depth_max = 10, taxonomic_info = mya), "EP3")
+  })
+})
+
+test_that("shallow and deep fish keep the depth rule before their order rules", {
+  cod <- list(phylum = "Chordata", class = "Teleostei", order = "Gadiformes")
+  herring <- list(phylum = "Chordata", class = "Teleostei", order = "Clupeiformes")
+  expect_identical(harmonize_environmental_position(depth_min = 0, depth_max = 20, taxonomic_info = cod), "EP3")
+  expect_identical(harmonize_environmental_position(depth_min = 0, depth_max = 20, taxonomic_info = herring), "EP3")
+  expect_identical(harmonize_environmental_position(depth_min = 150, depth_max = 600, taxonomic_info = herring), "EP2")
+  expect_identical(harmonize_environmental_position(taxonomic_info = herring), "EP1")
+})

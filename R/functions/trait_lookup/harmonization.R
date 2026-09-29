@@ -758,8 +758,9 @@ harmonize_environmental_position <- function(depth_min = NULL, depth_max = NULL,
   code <- classify_by_patterns(habitat_info, "environmental")
   if (!is.na(code)) return(code)
 
-  # 2. Pelagic taxa (phyto- and zooplankton, medusae). Before the depth rule:
-  #    a copepod caught at 10-20 m is pelagic, not epibenthic (F36).
+  # 2. Pelagic taxa (phyto- and zooplankton, medusae) and infaunal bivalves.
+  #    Before the depth rule: a copepod caught at 10-20 m is pelagic, not
+  #    epibenthic (F36), and a shallow Mya is endobenthic (C-6a).
   code <- apply_taxon_rules(taxonomic_info, "environmental_pelagic", text = habitat_info)
   if (!is.na(code)) return(code)
 
@@ -773,7 +774,7 @@ harmonize_environmental_position <- function(depth_min = NULL, depth_max = NULL,
     if (avg_depth > 200) return("EP2")
   }
 
-  # 4. Other taxonomic rules (infaunal bivalves, fish by order)
+  # 4. Other taxonomic rules (fish by order)
   code <- apply_taxon_rules(taxonomic_info, "environmental", text = habitat_info)
   if (!is.na(code)) return(code)
 

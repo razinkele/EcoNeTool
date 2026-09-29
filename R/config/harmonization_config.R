@@ -151,6 +151,9 @@ TRAIT_VOCAB <- local({
     # `flag`s (taxonomic_rules switches in the harmonization settings) is on.
     # `override_text = TRUE` rules win over text patterns (protection only).
     # environmental_pelagic runs BEFORE the depth rule, environmental after it.
+    # Despite its name, environmental_pelagic also holds the infaunal-bivalve
+    # rule (user decision 2026-09-29, C-6a): a shallow depth range says nothing
+    # about living in the sediment, so it must not turn Mya or Macoma into EP3.
     taxon_rules = list(
       mobility = list(
         list(match = list(class = "Actinopteri|Elasmobranchii|Teleostei"), code = "MB5",
@@ -179,10 +182,10 @@ TRAIT_VOCAB <- local({
         list(match = list(phylum = "^Cnidaria$", class = "^(Scyphozoa|Cubozoa)$"), code = "EP1",
              flag = "zooplankton_pelagic"),
         list(match = list(phylum = "^Cnidaria$", class = "^Hydrozoa$"), text = "medusa|pelagic", code = "EP1",
-             flag = "zooplankton_pelagic")
+             flag = "zooplankton_pelagic"),
+        list(match = list(phylum = "^Mollusca$", class = "^Bivalvia$"), code = "EP4", flag = "infaunal_bivalves")
       ),
       environmental = list(
-        list(match = list(phylum = "^Mollusca$", class = "^Bivalvia$"), code = "EP4", flag = "infaunal_bivalves"),
         # Fish by order: defaulting all fish to EP1 mislabelled every flatfish,
         # goby, eel and sandeel; unknown orders fall back to EP2.
         list(match = list(class = "Actinopteri|Teleostei",
