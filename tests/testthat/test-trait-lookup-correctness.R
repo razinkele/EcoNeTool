@@ -712,8 +712,8 @@ test_that("the Ecopath import stores body mass via classification_body_mass_g() 
 })
 
 # ---------------------------------------------------------------------------
-# CodeRabbit #3 - Trait Research: a failed lookup row must not be counted
-# both as "No data" and as "Failed"
+# CodeRabbit #2 / #3 - Trait Research: failed lookup rows must not be
+# transferred to Food Web Construction, and must not be double-counted
 # ---------------------------------------------------------------------------
 
 source_trait_research_module_file <- function() {
@@ -753,3 +753,73 @@ test_that("trait_research_summary_counts works without an error column", {
   expect_identical(counts$n_missing, 2L)
 })
 
+test_that("trait_research_successful_rows drops error rows and counts skipped (CodeRabbit #2)", {
+  df <- data.frame(species = c("Good1", "Bad", "Good2"),
+                   MS = c("MS4", NA_character_, "MS4"),
+                   error = c(NA_character_, "boom", NA_character_),
+                   stringsAsFactors = FALSE)
+  res <- trait_research_successful_rows(df)
+  expect_identical(res$data$species, c("Good1", "Good2"))
+  expect_identical(res$n_transferred, 2L)
+  expect_identical(res$n_skipped, 1L)
+})
+
+test_that("trait_research_successful_rows: an all-error frame transfers nothing", {
+  df <- data.frame(species = c("Bad1", "Bad2"), MS = c(NA_character_, NA_character_),
+                   error = c("boom1", "boom2"), stringsAsFactors = FALSE)
+  res <- trait_research_successful_rows(df)
+  expect_identical(nrow(res$data), 0L)
+  expect_identical(res$n_transferred, 0L)
+  expect_identical(res$n_skipped, 2L)
+})
+
+# local_trait_research_module() strips the shared_data formal entirely
+# (formals(mod)$shared_data <- NULL deletes the list element, it does not
+# give it a NULL default) so the F33 tests above never reference it. These
+# two tests need a real shared_data; testServer() only accepts extra `args`
+# for genuine Shiny modules (an `id` formal), which this server lacks, so
+# give shared_data a real default (a call, not a literal NULL, so the
+# formal survives) instead.
+local_trait_research_module_with_shared_data <- function(env = parent.frame()) {
+  skip_if_not_installed("plotly")
+  skip_if_not_installed("DT")
+  skip_if_not_installed("bs4Dash")
+  withr::local_package("bs4Dash", .local_envir = env)
+  for (f in c("R/functions/admin_auth.R", "R/functions/offline_db_rebuild.R",
+              "R/modules/trait_research_server.R")) {
+    source(file.path(get_app_root(), f), local = FALSE)
+  }
+  withr::local_dir(withr::local_tempdir(.local_envir = env), .local_envir = env)
+  mod <- trait_research_server
+  formals(mod)$shared_data <- quote(shiny::reactiveValues())
+  mod
+}
+
+test_that("the use-in-foodweb observer transfers only successful rows (CodeRabbit #2)", {
+  mod <- local_trait_research_module_with_shared_data()
+  with_mocked_function(globalenv(), "lookup_species_traits", fake_lookup, {
+    shiny::testServer(mod, {
+      session$setInputs(trait_research_input_method = "manual",
+                        trait_research_species_list = "Good one\nBad one\nGood two",
+                        trait_research_databases = "worms")
+      expect_warning(session$setInputs(trait_research_run_lookup = 1),
+                     "\\[trait_research\\] lookup failed for 'Bad one'")
+      session$setInputs(trait_research_use_in_foodweb = 1)
+      expect_identical(shiny::isolate(shared_data$trait_data$species), c("Good one", "Good two"))
+    })
+  })
+})
+
+test_that("the use-in-foodweb observer transfers nothing when every lookup failed", {
+  mod <- local_trait_research_module_with_shared_data()
+  with_mocked_function(globalenv(), "lookup_species_traits", fake_lookup, {
+    shiny::testServer(mod, {
+      session$setInputs(trait_research_input_method = "manual",
+                        trait_research_species_list = "Bad only",
+                        trait_research_databases = "worms")
+      expect_warning(session$setInputs(trait_research_run_lookup = 1), "lookup failed for 'Bad only'")
+      session$setInputs(trait_research_use_in_foodweb = 1)
+      expect_null(shiny::isolate(shared_data$trait_data))
+    })
+  })
+})

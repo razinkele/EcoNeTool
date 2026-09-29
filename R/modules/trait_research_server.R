@@ -57,6 +57,24 @@ trait_research_summary_counts <- function(results_df) {
   list(n_complete = n_complete, n_partial = n_partial, n_missing = n_missing, n_failed = n_failed)
 }
 
+#' Split a trait-results frame into successful rows to transfer, and a count
+#'
+#' A failed lookup row (see `.trait_research_error_mask()`) carries no trait
+#' data and must not be sent to Food Web Construction.
+#'
+#' @param results_df Trait-results data.frame.
+#' @return `list(data, n_transferred, n_skipped)`. `data` keeps only the
+#'   successful rows (all columns, unfiltered).
+#' @keywords internal
+trait_research_successful_rows <- function(results_df) {
+  has_error <- .trait_research_error_mask(results_df)
+  list(
+    data = results_df[!has_error, , drop = FALSE],
+    n_transferred = sum(!has_error),
+    n_skipped = sum(has_error)
+  )
+}
+
 # =============================================================================
 # TRAIT TABLE RENDERING HELPERS
 # =============================================================================
@@ -553,12 +571,30 @@ trait_research_server <- function(input, output, session, shared_data) {
   observeEvent(input$trait_research_use_in_foodweb, {
     req(rv$trait_results)
 
-    # Transfer to shared data for Food Web Construction module
-    shared_data$trait_data <- rv$trait_results[, c("species", "MS", "FS", "MB", "EP", "PR")]
+    # Failed lookup rows (lookup_species_traits_safely()'s error rows) carry
+    # no trait data and must not be transferred (CodeRabbit #2).
+    transfer <- trait_research_successful_rows(rv$trait_results)
 
+    if (transfer$n_transferred == 0) {
+      showNotification(
+        "No species transferred - every trait lookup failed.",
+        type = "warning",
+        duration = 8
+      )
+      return()
+    }
+
+    # Transfer to shared data for Food Web Construction module
+    shared_data$trait_data <- transfer$data[, c("species", "MS", "FS", "MB", "EP", "PR")]
+
+    skipped_note <- if (transfer$n_skipped > 0) {
+      sprintf("<br>%d skipped (failed lookup)", transfer$n_skipped)
+    } else {
+      ""
+    }
     showNotification(
-      HTML(sprintf("<b>%d species transferred to Food Web Construction!</b><br>Navigate to 'Food Web Construction' in the sidebar to continue.",
-                   nrow(rv$trait_results))),
+      HTML(sprintf("<b>%d species transferred to Food Web Construction!</b>%s<br>Navigate to 'Food Web Construction' in the sidebar to continue.",
+                   transfer$n_transferred, skipped_note)),
       type = "message",
       duration = 5
     )
