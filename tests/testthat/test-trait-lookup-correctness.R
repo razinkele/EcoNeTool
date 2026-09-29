@@ -125,6 +125,38 @@ test_that("the qualitative body-size row gives the unit before the class heurist
   expect_identical(size$size_unit_source, "qualitative")
 })
 
+test_that("a qualitative unit written right after the number is still found (CodeRabbit #4)", {
+  # No word boundary between a digit and a letter, so \\bcm\\b / \\bmm\\b /
+  # \\bm\\b all fail to match "5mm" or "12cm" and this used to fall through
+  # to the class heuristic instead.
+  attrs <- worms_attr(c("Body size", "Body size (qualitative)"), c("20", "5mm"))
+  expect_no_warning(size <- worms_body_size_cm(attrs, "Bivalvia", "Mytilus edulis"))
+  expect_identical(size$size_unit_source, "qualitative")
+  expect_equal(size$max_length_cm, 2)
+
+  attrs <- worms_attr(c("Body size", "Body size (qualitative)"), c("20", "12cm"))
+  size <- worms_body_size_cm(attrs, "Bivalvia", "Mytilus edulis")
+  expect_equal(size$max_length_cm, 20)
+  expect_identical(size$size_unit_source, "qualitative")
+
+  attrs <- worms_attr(c("Body size", "Body size (qualitative)"), c("20", "3 m"))
+  size <- worms_body_size_cm(attrs, "Bivalvia", "Mytilus edulis")
+  expect_equal(size$max_length_cm, 2000)
+  expect_identical(size$size_unit_source, "qualitative")
+
+  # "mm" alone must resolve to mm, never fall through to the "m" check.
+  attrs <- worms_attr(c("Body size", "Body size (qualitative)"), c("20", "mm"))
+  size <- worms_body_size_cm(attrs, "Bivalvia", "Mytilus edulis")
+  expect_equal(size$max_length_cm, 2)
+  expect_identical(size$size_unit_source, "qualitative")
+
+  # A pre-existing word-boundary case must keep working.
+  attrs <- worms_attr(c("Body size", "Body size (qualitative)"), c("20", "150 mm"))
+  size <- worms_body_size_cm(attrs, "Bivalvia", "Mytilus edulis")
+  expect_equal(size$max_length_cm, 2)
+  expect_identical(size$size_unit_source, "qualitative")
+})
+
 test_that("weight rows (kg) never become a length (F32, Phoca)", {
   attrs <- worms_attr(rep("Body size", 3), c(186, 250, 160), c("cm", "kg", "cm"))
   size <- worms_body_size_cm(attrs, "Mammalia", "Phoca vitulina")

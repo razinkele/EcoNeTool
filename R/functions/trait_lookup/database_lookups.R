@@ -873,11 +873,16 @@ worms_body_size_cm <- function(attributes, class_name = NA_character_, species_n
     qual <- attributes$measurementValue[grepl("body size \\(qualitative\\)", type, ignore.case = TRUE)]
     if (length(qual) > 0) {
       q <- tolower(qual[1])
-      if (grepl("\\bcm\\b", q)) {
+      # Boundaries that ignore digits: a unit written right after the number
+      # ("5mm", "12cm") has no \\b between digit and letter, so \\bcm\\b /
+      # \\bmm\\b / \\bm\\b never matched it and this fell through to the
+      # class heuristic. Order stays cm, mm, m so "mm" is never matched by
+      # the "m" check.
+      if (grepl("(?<![a-z])cm(?![a-z])", q, perl = TRUE)) {
         fallback <- "cm"
-      } else if (grepl("\\bmm\\b", q)) {
+      } else if (grepl("(?<![a-z])mm(?![a-z])", q, perl = TRUE)) {
         fallback <- "mm"
-      } else if (grepl("\\bm\\b", q)) {
+      } else if (grepl("(?<![a-z])m(?![a-z])", q, perl = TRUE)) {
         fallback <- "m"
       }
     }
