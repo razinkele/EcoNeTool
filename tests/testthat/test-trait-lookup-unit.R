@@ -81,6 +81,15 @@ test_that("WoRMS body-size unit fallback handles marine mammals", {
             label = "harbour seal max_length_cm should be < 300 cm")
 })
 
+test_that("the WoRMS Mytilus fixture records its body size in cm (F32)", {
+  result <- load_fixture("worms_mytilus_edulis")
+  skip_if(is.null(result$traits$size_unit_source),
+          paste("worms_mytilus_edulis predates C-6a (2 cm mussel); re-capture with",
+                "RUN_LIVE_TESTS=true Rscript tests/testthat/capture_fixtures.R worms fishbase"))
+  expect_gte(result$traits$max_length_cm, 10)
+  expect_identical(result$traits$size_unit_source, "child")
+})
+
 # ============================================================================
 # FishBase Lookup
 # ============================================================================
@@ -129,6 +138,17 @@ test_that("FishBase returns traits for herring", {
   # Herring trophic level should be lower (planktivore)
   expect_gt(traits$trophic_level, 2.5)
   expect_lt(traits$trophic_level, 4.5)
+})
+
+test_that("the FishBase cod fixture records its weight in grams (F78)", {
+  result <- load_fixture("fishbase_gadus_morhua")
+  skip_if(!isTRUE(result$success) || is.null(result$traits$max_weight_g),
+          "fishbase_gadus_morhua fixture has no max_weight_g; refresh with capture_fixtures.R")
+  skip_if(isTRUE(result$traits$max_weight_g == 9.6e7),
+          paste("fishbase_gadus_morhua predates C-6a (96 t cod); re-capture with",
+                "RUN_LIVE_TESTS=true Rscript tests/testthat/capture_fixtures.R worms fishbase"))
+  expect_lt(result$traits$max_weight_g, 1e6)
+  expect_gt(result$traits$max_weight_g, 1e4)
 })
 
 test_that("FishBase trait list has expected fields", {
