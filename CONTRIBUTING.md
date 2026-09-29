@@ -254,6 +254,16 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   (`metadata.trait_vocab_version`), cache envelopes and the ML model are
   then ignored until rebuilt or retrained, and the production offline DB
   must be rebuilt after the deploy.
+- **Normalise database fields where they are read; batch lookups go
+  through the safe wrapper.** A rank or column a database does not report
+  arrives as `character(0)`, and a zero-length value makes `&&` / `if`
+  error. Read taxonomy and other scalar fields with `.scalar_chr(x)`
+  (`R/functions/validation_utils.R`; NA for NULL, zero-length, NA or "").
+  Loops over species call `lookup_species_traits_safely()`, never
+  `lookup_species_traits()` directly, so one bad taxon becomes a warning
+  and an error row instead of aborting the batch. When a lookup fix changes
+  values the cache already holds, bump `TRAIT_LOOKUP_REVISION`
+  (`harmonization.R`).
 
 ## Commit Messages
 
