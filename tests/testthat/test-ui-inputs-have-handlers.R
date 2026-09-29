@@ -6,12 +6,17 @@
 app_root <- normalizePath(file.path(testthat::test_path(), "..", ".."), winslash = "/")
 
 test_that("the rule checkboxes are exactly the rules the harmonize_* code reads", {
+  source(file.path(app_root, "R/config/harmonization_config.R"), local = FALSE)
   source(file.path(app_root, "R/ui/harmonization_settings_ui.R"), local = FALSE)
   files <- list.files(file.path(app_root, "R"), pattern = "\\.R$", recursive = TRUE, full.names = TRUE)
   code <- unlist(lapply(files, readLines, warn = FALSE))
   code <- code[!startsWith(trimws(code), "#")]
   calls <- regmatches(code, gregexpr('is_rule_enabled\\("[A-Za-z0-9_]+"\\)', code))
-  read_rules <- unique(sub('is_rule_enabled\\("(.*)"\\)', "\\1", unlist(calls)))
+  literal_rules <- sub('is_rule_enabled\\("(.*)"\\)', "\\1", unlist(calls))
+  # Trait vocab v2: the MB/EP/PR rules are data (TRAIT_VOCAB$taxon_rules)
+  # and apply_taxon_rules() checks each rule's `flag` via is_rule_enabled().
+  flag_rules <- unlist(lapply(TRAIT_VOCAB$taxon_rules, function(rules) lapply(rules, `[[`, "flag")))
+  read_rules <- unique(c(literal_rules, flag_rules))
 
   expect_gt(length(read_rules), 5L)
   expect_setequal(names(get0("CONSUMED_TAXONOMIC_RULES", ifnotfound = character())), read_rules)

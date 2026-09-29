@@ -361,8 +361,10 @@ trait_research_server <- function(input, output, session, shared_data) {
     tryCatch({
       results_list <- list()
       raw_list <- list()
-      # This session's harmonization settings key the shared trait cache (F72).
+      # This session's harmonization settings key the shared trait cache (F72),
+      # and envelopes from another trait vocabulary are misses (C-5).
       cfg_hash <- harm_config_hash()
+      vocab_ver <- current_trait_vocab_version()
 
       for (i in seq_along(species_list)) {
         species <- species_list[i]
@@ -379,7 +381,8 @@ trait_research_server <- function(input, output, session, shared_data) {
         # guard (a classify_species_api {data,...} envelope collides on the
         # same filename - deep-analysis #4) and the config-hash match (F72).
         cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species), ".rds"))
-        cached_traits <- read_cache_field(cache_file, "traits", config_hash = cfg_hash)
+        cached_traits <- read_cache_field(cache_file, "traits", config_hash = cfg_hash,
+                                          vocab_version = vocab_ver)
         if (!is.null(cached_traits)) {
           cat("  -> Using cached data\n")
           results_list[[i]] <- cached_traits
@@ -1062,8 +1065,14 @@ trait_research_server <- function(input, output, session, shared_data) {
       con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
       on.exit(DBI::dbDisconnect(con))
       count <- DBI::dbGetQuery(con, "SELECT COUNT(*) AS n FROM species_traits")$n
-      meta <- DBI::dbGetQuery(con,
-        "SELECT value FROM metadata WHERE key = 'build_timestamp'")
+      meta <- if (DBI::dbExistsTable(con, "metadata")) {
+        DBI::dbGetQuery(con, "SELECT value FROM metadata WHERE key = 'build_timestamp'")
+      } else {
+        data.frame(value = character(0))
+      }
+      # A DB in another trait vocabulary is skipped by the lookup gate, whose
+      # warning is invisible in production: show the pending rebuild here.
+      vocab <- offline_db_vocab_status(db_path)
       age_text <- "Unknown"; age_color <- "warning"
       if (nrow(meta) > 0) {
         build_time <- as.POSIXct(meta$value[1])
@@ -1075,7 +1084,8 @@ trait_research_server <- function(input, output, session, shared_data) {
       list(
         count = count,
         age_text = age_text, age_color = age_color,
-        status = "Available", status_color = "success"
+        status = vocab$message,
+        status_color = if (isTRUE(vocab$ok)) "success" else "warning"
       )
     }, error = function(e) {
       # A read failure (corrupt/locked/schema-drifted DB) is NOT the same as a

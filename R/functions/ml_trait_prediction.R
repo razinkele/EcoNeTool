@@ -202,6 +202,25 @@ predict_trait_ml <- function(trait_name, taxonomic_info, models_package = NULL) 
     }
   }
 
+  # Trait vocab v2 (C-5) re-keyed MB (MB2 was "burrower", is now "passive
+  # floater / drifter"). A model trained on pre-v2 labels predicts MB in the
+  # old meaning, so its MB model is not used until it is retrained on v2
+  # labels and stamped with trait_vocab_version. MS / FS / EP / PR kept their
+  # meaning. The gate lives here, in the exported entry point, so no caller
+  # can bypass it; it warns once per process.
+  if (identical(trait_name, "MB")) {
+    model_vocab <- models_package$trait_vocab_version
+    if (!identical(as.integer(model_vocab), as.integer(current_trait_vocab_version()))) {
+      if (!isTRUE(.ml_cache$vocab_warned)) {
+        .ml_cache$vocab_warned <- TRUE
+        warning(sprintf("[ml] models were trained on trait vocab v%s, the app uses v%s; MB predictions disabled",
+                        if (is.null(model_vocab)) "1" else model_vocab, current_trait_vocab_version()),
+                call. = FALSE)
+      }
+      return(NULL)
+    }
+  }
+
   # Check if model exists for this trait
   if (!trait_name %in% names(models_package$models)) {
     message("    ⚠️  No ML model available for trait: ", trait_name)
@@ -311,6 +330,8 @@ predict_missing_traits <- function(current_traits, taxonomic_info,
     return(list())
   }
 
+  # MB from a pre-v2 model is refused (with one warning) inside
+  # predict_trait_ml(), which returns NULL, so no MB entry is added below.
   predictions <- list()
 
   # Predict each missing trait

@@ -39,7 +39,55 @@ if (!exists("HARMONIZATION_CONFIG")) {
 # HIERARCHICAL WORKFLOW ORCHESTRATOR
 # ============================================================================
 
+# Vocab gate state: warn once per process, not once per species.
+.offline_vocab_gate <- new.env(parent = emptyenv())
+.offline_vocab_gate$warned <- FALSE
+
+#' Reset the once-per-process offline vocab warning (tests)
+reset_offline_vocab_gate <- function() {
+  .offline_vocab_gate$warned <- FALSE
+  invisible(TRUE)
+}
+
+#' Trait-vocabulary status of an offline trait DB (for the DB status panel)
+#'
+#' Reads metadata.trait_vocab_version defensively: no metadata table, or no
+#' stamp row, counts as "none". The status panel shows `message`, so an admin
+#' sees that the mandatory rebuild is pending even though the gate's warning
+#' in lookup_offline_traits() never reaches production logs.
+#'
+#' @param db_path Path to the offline SQLite DB (must exist).
+#' @return list(ok, version, message): ok is TRUE when the DB's vocabulary is
+#'   current_trait_vocab_version(); version is the stamp as character or
+#'   "none"; message is "Available" or
+#'   "Rebuild required (trait vocabulary v<X>, app uses v<Y>)".
+offline_db_vocab_status <- function(db_path) {
+  con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  version <- "none"
+  if (DBI::dbExistsTable(con, "metadata")) {
+    row <- DBI::dbGetQuery(con, "SELECT value FROM metadata WHERE key = 'trait_vocab_version'")
+    if (nrow(row) > 0 && !is.na(row$value[1]) && nzchar(row$value[1])) {
+      version <- as.character(row$value[1])
+    }
+  }
+  app_version <- as.character(current_trait_vocab_version())
+  ok <- identical(version, app_version)
+  message <- if (ok) {
+    "Available"
+  } else {
+    sprintf("Rebuild required (trait vocabulary %s, app uses v%s)",
+            if (identical(version, "none")) "none" else paste0("v", version), app_version)
+  }
+  list(ok = ok, version = version, message = message)
+}
+
 #' Quick lookup from offline pre-computed trait database
+#'
+#' A DB whose metadata.trait_vocab_version is missing or differs from
+#' current_trait_vocab_version() holds codes in another vocabulary (e.g. a
+#' pre-v2 build: MB2 = burrower) and is skipped - with one warning per
+#' process - until it is rebuilt; lookups then fall back to the live APIs.
 #'
 #' @param species_name Scientific name
 #' @param db_path Path to offline SQLite database
@@ -59,6 +107,18 @@ lookup_offline_traits <- function(species_name, db_path = "cache/offline_traits.
     # Migrate schema if needed (adds new columns without losing data)
     if (exists("migrate_offline_schema", mode = "function")) {
       migrate_offline_schema(con)
+    }
+
+    # Vocab gate: never serve codes written in another trait vocabulary.
+    vocab_row <- DBI::dbGetQuery(con, "SELECT value FROM metadata WHERE key = 'trait_vocab_version'")
+    db_vocab <- if (nrow(vocab_row) > 0) vocab_row$value[1] else "none"
+    if (!identical(db_vocab, as.character(current_trait_vocab_version()))) {
+      if (!isTRUE(.offline_vocab_gate$warned)) {
+        .offline_vocab_gate$warned <- TRUE
+        warning(sprintf("[offline] DB vocab v%s != config v%s; rebuild required, offline DB skipped",
+                        db_vocab, current_trait_vocab_version()), call. = FALSE)
+      }
+      return(NULL)
     }
 
     # Check staleness
@@ -243,7 +303,8 @@ lookup_species_traits <- function(species_name,
   # hash makes a row harmonized under another session's settings a miss (F72).
   if (!is.null(cache_dir) && dir.exists(cache_dir)) {
     cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species_name), ".rds"))
-    cached_traits <- read_cache_field(cache_file, "traits", config_hash = harm_config_hash())
+    cached_traits <- read_cache_field(cache_file, "traits", config_hash = harm_config_hash(),
+                                      vocab_version = current_trait_vocab_version())
     if (!is.null(cached_traits)) {
       message("Using cached traits for ", species_name)
       return(cached_traits)
@@ -425,7 +486,8 @@ lookup_species_traits <- function(species_name,
         cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species_name), ".rds"))
         # Offline-DB codes were harmonized at build time with the defaults.
         saveRDS(list(traits = result, timestamp = Sys.time(),
-                     config_hash = harm_default_config_hash()), cache_file)
+                     config_hash = harm_default_config_hash(),
+                     trait_vocab_version = current_trait_vocab_version()), cache_file)
       }
 
       total_time <- round(as.numeric(difftime(Sys.time(), total_start, units = "secs")), 2)
@@ -1150,11 +1212,9 @@ lookup_species_traits <- function(species_name,
       message("  Kept offline value: ", result$FS)
     }
     message("  \u2713 Output: ", result$FS)
-    fs_labels <- c("FS0"="Primary Producer", "FS1"="Predator", "FS2"="Scavenger",
-                   "FS3"="Omnivore", "FS4"="Grazer", "FS5"="Deposit Feeder", "FS6"="Filter Feeder",
-                   "FS7"="Xylophagous")
-    if (!is.na(result$FS) && result$FS %in% names(fs_labels)) {
-      message("     (", fs_labels[result$FS], ")")
+    fs_label <- if (!is.na(result$FS)) trait_code_label(result$FS) else NA_character_
+    if (!is.na(fs_label)) {
+      message("     (", fs_label, ")")
     }
   } else {
     # Try fuzzy harmonization from ontology traits
@@ -1166,11 +1226,9 @@ lookup_species_traits <- function(species_name,
         result$FS_source <- "Ontology"
         sources_used <- c(sources_used, "Fuzzy")
         message("  \u2713 Output: ", result$FS, " (from fuzzy ontology, confidence=", fuzzy_fs$confidence, ")")
-        fs_labels <- c("FS0"="Primary Producer", "FS1"="Predator", "FS2"="Scavenger",
-                       "FS3"="Omnivore", "FS4"="Grazer", "FS5"="Deposit Feeder", "FS6"="Filter Feeder",
-                       "FS7"="Xylophagous")
-        if (result$FS %in% names(fs_labels)) {
-          message("     (", fs_labels[result$FS], ")")
+        fs_label <- if (!is.na(result$FS)) trait_code_label(result$FS) else NA_character_
+        if (!is.na(fs_label)) {
+          message("     (", fs_label, ")")
         }
         message("     Modalities: ", paste(fuzzy_fs$modalities, collapse = ", "))
       } else if (!"FS" %in% offline_prefilled) {
@@ -1201,11 +1259,7 @@ lookup_species_traits <- function(species_name,
       message("  Kept offline value: ", result$MB)
     }
     message("  \u2713 Output: ", result$MB)
-    mb_labels <- c("MB1"="Sessile", "MB2"="Limited Movement", "MB3"="Floater/Drifter",
-                   "MB4"="Crawler/Walker", "MB5"="Swimmer")
-    if (!is.na(result$MB) && result$MB %in% names(mb_labels)) {
-      message("     (", mb_labels[result$MB], ")")
-    }
+    if (!is.na(trait_code_label(result$MB))) message("     (", trait_code_label(result$MB), ")")
   } else {
     # Try fuzzy harmonization from ontology traits
     if (!is.null(raw_traits$ontology)) {
@@ -1216,11 +1270,7 @@ lookup_species_traits <- function(species_name,
         result$MB_source <- "Ontology"
         sources_used <- c(sources_used, "Fuzzy")
         message("  \u2713 Output: ", result$MB, " (from fuzzy ontology, confidence=", fuzzy_mb$confidence, ")")
-        mb_labels <- c("MB1"="Sessile", "MB2"="Burrower", "MB3"="Crawler",
-                       "MB4"="Limited Swimmer", "MB5"="Swimmer")
-        if (result$MB %in% names(mb_labels)) {
-          message("     (", mb_labels[result$MB], ")")
-        }
+        if (!is.na(trait_code_label(result$MB))) message("     (", trait_code_label(result$MB), ")")
         message("     Modalities: ", paste(fuzzy_mb$modalities, collapse = ", "))
       } else if (!"MB" %in% offline_prefilled) {
         message("  \u274c No mobility data available (including ontology)")
@@ -1249,10 +1299,7 @@ lookup_species_traits <- function(species_name,
       message("  Kept offline value: ", result$EP)
     }
     message("  \u2713 Output: ", result$EP)
-    ep_labels <- c(EP1 = "Pelagic", EP2 = "Benthopelagic", EP3 = "Epibenthic", EP4 = "Endobenthic")
-    if (!is.na(result$EP) && result$EP %in% names(ep_labels)) {
-      message("     (", ep_labels[result$EP], ")")
-    }
+    if (!is.na(trait_code_label(result$EP))) message("     (", trait_code_label(result$EP), ")")
   } else {
     # Try fuzzy harmonization from ontology traits
     if (!is.null(raw_traits$ontology)) {
@@ -1263,10 +1310,7 @@ lookup_species_traits <- function(species_name,
         result$EP_source <- "Ontology"
         sources_used <- c(sources_used, "Fuzzy")
         message("  \u2713 Output: ", result$EP, " (from fuzzy ontology, confidence=", fuzzy_ep$confidence, ")")
-        ep_labels <- c(EP1 = "Pelagic", EP2 = "Benthopelagic", EP3 = "Epibenthic", EP4 = "Endobenthic")
-        if (result$EP %in% names(ep_labels)) {
-          message("     (", ep_labels[result$EP], ")")
-        }
+        if (!is.na(trait_code_label(result$EP))) message("     (", trait_code_label(result$EP), ")")
         message("     Modalities: ", paste(fuzzy_ep$modalities, collapse = ", "))
       } else if (!"EP" %in% offline_prefilled) {
         message("  \u274c No depth/habitat data available (including ontology)")
@@ -1293,12 +1337,7 @@ lookup_species_traits <- function(species_name,
       message("  Kept offline value: ", result$PR)
     }
     message("  \u2713 Output: ", result$PR)
-    pr_labels <- c("PR0"="Unprotected", "PR2"="Tube", "PR3"="Burrow",
-                   "PR4"="Exoskeleton", "PR5"="Soft Shell", "PR6"="Hard Shell",
-                   "PR7"="Spines", "PR8"="Armoured")
-    if (!is.na(result$PR) && result$PR %in% names(pr_labels)) {
-      message("     (", pr_labels[result$PR], ")")
-    }
+    if (!is.na(trait_code_label(result$PR))) message("     (", trait_code_label(result$PR), ")")
   } else {
     message("  \U0001f6e1\ufe0f  Using taxonomic inference from WoRMS")
     if (!"PR" %in% offline_prefilled) {
@@ -1743,7 +1782,8 @@ lookup_species_traits <- function(species_name,
       harmonized = harmonized_data,
       species = species_name,
       timestamp = Sys.time(),
-      config_hash = harm_config_hash()
+      config_hash = harm_config_hash(),
+      trait_vocab_version = current_trait_vocab_version()
     )
 
     # Include raw traits for reference

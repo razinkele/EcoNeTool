@@ -485,9 +485,15 @@ validate_file_exists <- function(file_path, param_name = "file") {
 #'   given, an envelope stamped with a different hash - or with none, i.e.
 #'   written before B1 - is a miss (spec B F72: harmonized codes depend on the
 #'   session's harmonization config).
-#' @return The field's value, or NULL if absent/stale/missing/unreadable/foreign-config.
+#' @param vocab_version Optional current_trait_vocab_version() of the reader.
+#'   When given, an envelope whose `trait_vocab_version` differs - or is
+#'   missing, i.e. written before trait vocab v2 - is a miss, so old MB/EP/PR
+#'   codes are refreshed on first read instead of served for 30 days. Compute
+#'   it in the calling process, like `config_hash`.
+#' @return The field's value, or NULL if absent/stale/missing/unreadable/foreign-config/foreign-vocab.
 #' @export
-read_cache_field <- function(cache_file, field, max_age_days = 30, config_hash = NULL) {
+read_cache_field <- function(cache_file, field, max_age_days = 30, config_hash = NULL,
+                             vocab_version = NULL) {
   if (!file.exists(cache_file)) return(NULL)
   cached <- tryCatch(readRDS(cache_file), error = function(e) {
     warning(sprintf("[cache] unreadable cache file '%s': %s",
@@ -501,6 +507,10 @@ read_cache_field <- function(cache_file, field, max_age_days = 30, config_hash =
     return(NULL)
   }
   if (!is.null(config_hash) && !identical(cached$config_hash, config_hash)) {
+    return(NULL)
+  }
+  if (!is.null(vocab_version) &&
+        !isTRUE(suppressWarnings(as.integer(cached$trait_vocab_version)) == as.integer(vocab_version))) {
     return(NULL)
   }
   cached[[field]]

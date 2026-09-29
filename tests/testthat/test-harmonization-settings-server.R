@@ -522,7 +522,7 @@ test_that("the widgets are seeded from the config at start, not from UI literals
   path <- tempfile("harm_cfg_", fileext = ".json")
   withr::defer(unlink(path))
   cfg <- HARMONIZATION_CONFIG
-  cfg$taxonomic_rules$cnidarians_sessile <- FALSE
+  cfg$taxonomic_rules$bivalves_sessile <- FALSE
   cfg$active_profile <- "baltic"
   suppressMessages(save_harmonization_config(cfg, path))
   local_harm_loader(path)
@@ -533,7 +533,7 @@ test_that("the widgets are seeded from the config at start, not from UI literals
   expect_false(grepl("algae|plant", fs0))
   expect_identical(h$sent$msgs$harm_pattern_FS7_xylophagous$value,
                    HARMONIZATION_CONFIG$foraging_patterns$FS7_xylophagous)
-  expect_false(h$sent$msgs$harm_rule_cnidarians_sessile$value)
+  expect_false(h$sent$msgs$harm_rule_bivalves_sessile$value)
   expect_true(h$sent$msgs$harm_rule_fish_obligate_swimmers$value)
   expect_identical(h$sent$msgs$harm_active_profile$value, "baltic")
 
@@ -566,24 +566,24 @@ test_that("the start-up TRUE echo of a rule checkbox does not re-enable a rule t
   path <- tempfile("harm_cfg_", fileext = ".json")
   withr::defer(unlink(path))
   cfg <- HARMONIZATION_CONFIG
-  cfg$taxonomic_rules$cnidarians_sessile <- FALSE
+  cfg$taxonomic_rules$bivalves_sessile <- FALSE
   suppressMessages(save_harmonization_config(cfg, path))
   local_harm_loader(path)
 
   shiny::testServer(harmonization_settings_server, {
     # A real browser first reports the checkbox's UI literal (TRUE), before
     # the start-up push of FALSE lands.
-    session$setInputs(harm_rule_cnidarians_sessile = TRUE)
-    expect_false(session$userData$harm_config$taxonomic_rules$cnidarians_sessile)
-    expect_false(shiny::isolate(is_rule_enabled("cnidarians_sessile")))
+    session$setInputs(harm_rule_bivalves_sessile = TRUE)
+    expect_false(session$userData$harm_config$taxonomic_rules$bivalves_sessile)
+    expect_false(shiny::isolate(is_rule_enabled("bivalves_sessile")))
     expect_false(shiny::isolate(rv$unsaved_changes))
     # Then the pushed value echoes back.
-    session$setInputs(harm_rule_cnidarians_sessile = FALSE)
-    expect_false(session$userData$harm_config$taxonomic_rules$cnidarians_sessile)
+    session$setInputs(harm_rule_bivalves_sessile = FALSE)
+    expect_false(session$userData$harm_config$taxonomic_rules$bivalves_sessile)
     expect_false(shiny::isolate(rv$unsaved_changes))
     # A later, real click does apply.
-    session$setInputs(harm_rule_cnidarians_sessile = TRUE)
-    expect_true(session$userData$harm_config$taxonomic_rules$cnidarians_sessile)
+    session$setInputs(harm_rule_bivalves_sessile = TRUE)
+    expect_true(session$userData$harm_config$taxonomic_rules$bivalves_sessile)
     expect_true(shiny::isolate(rv$unsaved_changes))
   })
 })

@@ -202,3 +202,29 @@ assert_prey_to_predator <- function(net, prey, predator) {
     label = sprintf("reverse edge %s -> %s (predator -> prey) exists", predator, prey)
   )
 }
+
+# ---------------------------------------------------------------------------
+# Offline trait DB fixture
+# ---------------------------------------------------------------------------
+# A temp SQLite file with the build script's schema (offline_db_schema_sql()
+# in R/functions/offline_db_rebuild.R, the same statements the writer runs)
+# plus metadata. `rows` is a data frame of species_traits columns; `species`
+# is required. vocab_version = NULL writes no trait_vocab_version row (a
+# pre-v2 build). The file is removed when the calling test ends.
+make_offline_db_fixture <- function(rows = NULL, vocab_version = 2L, env = parent.frame()) {
+  testthat::skip_if_not_installed("RSQLite")
+  source(file.path(get_app_root(), "R/functions/offline_db_rebuild.R"), local = TRUE)
+  path <- tempfile("offline_traits_", fileext = ".db")
+  withr::defer(unlink(path), envir = env)
+  con <- DBI::dbConnect(RSQLite::SQLite(), path)
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  for (stmt in offline_db_schema_sql()) DBI::dbExecute(con, stmt)
+  DBI::dbExecute(con, "INSERT INTO metadata (key, value) VALUES ('build_timestamp', ?)",
+                 params = list(format(Sys.time(), "%Y-%m-%dT%H:%M:%S")))
+  if (!is.null(vocab_version)) {
+    DBI::dbExecute(con, "INSERT INTO metadata (key, value) VALUES ('trait_vocab_version', ?)",
+                   params = list(as.character(vocab_version)))
+  }
+  if (!is.null(rows)) DBI::dbAppendTable(con, "species_traits", rows)
+  path
+}

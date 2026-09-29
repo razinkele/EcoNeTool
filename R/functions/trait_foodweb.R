@@ -45,9 +45,13 @@ FS_MS <- matrix(
 
 #' Mobility × Mobility interaction probabilities
 #' Consumer mobility (rows) × Resource mobility (columns)
+#' MB1 (sessile consumer) × MB2-MB5 (mobile prey) is 0.10, a calibration
+#' placeholder (user-approved, C-5): at 0.05 it sat on the "implausible"
+#' floor, and the strict p > threshold test then cut every sessile suspension
+#' feeder off from drifting plankton.
 MB_MB <- matrix(
   c(
-    0.95, 0.05, 0.05, 0.05, 0.05,  # MB1 Sessile
+    0.95, 0.10, 0.10, 0.10, 0.10,  # MB1 Sessile
     0.80, 0.95, 0.20, 0.20, 0.20,  # MB2 Passive floater
     0.80, 0.95, 0.95, 0.20, 0.20,  # MB3 Crawler-burrower
     0.80, 0.80, 0.80, 0.80, 0.80,  # MB4 Facultative swimmer
@@ -62,38 +66,43 @@ MB_MB <- matrix(
 
 #' Environmental position × Prey size interaction probabilities
 #' Consumer environmental position (rows) × Resource size (columns)
+#' MS1 copies MS2 and MS6 copies MS5 (nearest-neighbour placeholders until
+#' calibrated, F70); before, both fell to a hard-coded 0.05 floor.
 EP_MS <- matrix(
   c(
-    0.95, 0.80, 0.50, 0.05,  # EP1 Pelagic (high access to pelagic prey)
-    0.80, 0.95, 0.80, 0.50,  # EP2 Benthopelagic
-    0.50, 0.80, 0.95, 0.80,  # EP3 Epibenthic
-    0.05, 0.50, 0.80, 0.05   # EP4 Endobenthic/Infaunal
+    0.95, 0.95, 0.80, 0.50, 0.05, 0.05,  # EP1 Pelagic (high access to pelagic prey)
+    0.80, 0.80, 0.95, 0.80, 0.50, 0.50,  # EP2 Benthopelagic
+    0.50, 0.50, 0.80, 0.95, 0.80, 0.80,  # EP3 Epibenthic
+    0.05, 0.05, 0.50, 0.80, 0.05, 0.05   # EP4 Endobenthic/Infaunal
   ),
   nrow = 4, byrow = TRUE,
   dimnames = list(
     Consumer_EP = c("EP1", "EP2", "EP3", "EP4"),
-    Resource_MS = c("MS2", "MS3", "MS4", "MS5")
+    Resource_MS = c("MS1", "MS2", "MS3", "MS4", "MS5", "MS6")
   )
 )
 
 #' Protection × Prey size interaction probabilities
 #' Resource protection (rows) × Resource size (columns)
-#' Note: This affects resource vulnerability
+#' Note: This affects resource vulnerability. PR1 (mucus / cuticle) copies
+#' PR0: it gives negligible size-structured protection against gape-limited
+#' predators (F71). MS1 copies MS2 and MS6 copies MS5 (F70 placeholders).
 PR_MS <- matrix(
   c(
-    0.95, 0.95, 0.80, 0.50,  # PR0 None
-    0.80, 0.80, 0.50, 0.05,  # PR2 Tube
-    0.80, 0.80, 0.50, 0.05,  # PR3 Burrow
-    0.50, 0.50, 0.80, 0.50,  # PR4 Exoskeleton (thin carapace)
-    0.80, 0.50, 0.50, 0.20,  # PR5 Soft shell
-    0.50, 0.50, 0.80, 0.50,  # PR6 Hard shell
-    0.20, 0.20, 0.50, 0.20,  # PR7 Few spines
-    0.20, 0.20, 0.50, 0.20   # PR8 Armoured
+    0.95, 0.95, 0.95, 0.80, 0.50, 0.50,  # PR0 None
+    0.95, 0.95, 0.95, 0.80, 0.50, 0.50,  # PR1 Mucus / cuticle
+    0.80, 0.80, 0.80, 0.50, 0.05, 0.05,  # PR2 Tube
+    0.80, 0.80, 0.80, 0.50, 0.05, 0.05,  # PR3 Burrow
+    0.50, 0.50, 0.50, 0.80, 0.50, 0.50,  # PR4 Exoskeleton (thin carapace)
+    0.80, 0.80, 0.50, 0.50, 0.20, 0.20,  # PR5 Soft shell
+    0.50, 0.50, 0.50, 0.80, 0.50, 0.50,  # PR6 Hard shell
+    0.20, 0.20, 0.20, 0.50, 0.20, 0.20,  # PR7 Spines / ossicle plates
+    0.20, 0.20, 0.20, 0.50, 0.20, 0.20   # PR8 Armoured
   ),
-  nrow = 8, byrow = TRUE,
+  nrow = 9, byrow = TRUE,
   dimnames = list(
-    Resource_PR = c("PR0", "PR2", "PR3", "PR4", "PR5", "PR6", "PR7", "PR8"),
-    Resource_MS = c("MS2", "MS3", "MS4", "MS5")
+    Resource_PR = c("PR0", "PR1", "PR2", "PR3", "PR4", "PR5", "PR6", "PR7", "PR8"),
+    Resource_MS = c("MS1", "MS2", "MS3", "MS4", "MS5", "MS6")
   )
 )
 
@@ -101,51 +110,11 @@ PR_MS <- matrix(
 # TRAIT DEFINITIONS
 # ============================================================================
 
-#' Trait value definitions for reference
-TRAIT_DEFINITIONS <- list(
-  MS = c(
-    MS1 = "XS (Extra Small)",
-    MS2 = "S (Small)",
-    MS3 = "SM (Small-Medium)",
-    MS4 = "M (Medium)",
-    MS5 = "ML (Medium-Large)",
-    MS6 = "L (Large)",
-    MS7 = "XL (Extra Large - rarely prey)"
-  ),
-  FS = c(
-    FS0 = "None",
-    FS1 = "Predator",
-    FS2 = "Scavenger",
-    FS3 = "Omnivore",
-    FS4 = "Grazer",
-    FS5 = "Deposit feeder",
-    FS6 = "Filter feeder",
-    FS7 = "Xylophagous (wood borer)"
-  ),
-  MB = c(
-    MB1 = "Sessile",
-    MB2 = "Passive floater",
-    MB3 = "Crawler-burrower",
-    MB4 = "Facultative swimmer",
-    MB5 = "Obligate swimmer"
-  ),
-  EP = c(
-    EP1 = "Pelagic",
-    EP2 = "Benthopelagic",
-    EP3 = "Epibenthic",
-    EP4 = "Endobenthic/Infaunal"
-  ),
-  PR = c(
-    PR0 = "None",
-    PR2 = "Tube",
-    PR3 = "Burrow",
-    PR4 = "Exoskeleton",
-    PR5 = "Soft shell",
-    PR6 = "Hard shell",
-    PR7 = "Few spines",
-    PR8 = "Armoured"
-  )
-)
+#' Trait value definitions for reference: derived from the vocabulary labels
+#' (TRAIT_VOCAB in R/config/harmonization_config.R, which must be sourced
+#' first), so the model, validation, the UI legends and the harmonizers share
+#' one set of codes.
+TRAIT_DEFINITIONS <- trait_definitions()
 
 # ============================================================================
 # CORE FUNCTIONS
@@ -221,33 +190,19 @@ calc_interaction_probability <- function(consumer_traits, resource_traits) {
     return(0)  # Invalid mobility combination
   }
 
-  # 4. Environmental position × prey size (EP × MS)
+  # 4. Environmental position × prey size (EP × MS). EP_MS covers MS1-MS6;
+  # an unknown code is rejected by validate_trait_data() before construction.
   if (c_EP %in% rownames(EP_MS) && r_MS %in% colnames(EP_MS)) {
     probs <- c(probs, EP_MS[c_EP, r_MS])
   } else {
-    # EP_MS only covers MS2-MS5, so MS1 and MS6 need special handling
-    if (r_MS %in% c("MS1", "MS6")) {
-      # Use lower probability for extreme sizes
-      probs <- c(probs, 0.05)
-    } else {
-      return(0)
-    }
+    return(0)
   }
 
-  # 5. Protection × prey size (PR × MS)
+  # 5. Protection × prey size (PR × MS). PR_MS covers PR0-PR8 × MS1-MS6.
   if (r_PR %in% rownames(PR_MS) && r_MS %in% colnames(PR_MS)) {
     probs <- c(probs, PR_MS[r_PR, r_MS])
   } else {
-    # PR_MS only covers MS2-MS5
-    if (r_MS %in% c("MS1", "MS6")) {
-      # Use default probability
-      probs <- c(probs, 0.50)
-    } else if (!r_PR %in% rownames(PR_MS)) {
-      # PR5 (soft shell) not in matrix - treat as moderate protection
-      probs <- c(probs, 0.50)
-    } else {
-      return(0)
-    }
+    return(0)
   }
 
   # Aggregation rule: minimum of all probabilities
@@ -258,7 +213,9 @@ calc_interaction_probability <- function(consumer_traits, resource_traits) {
 #' Construct food web from species trait data
 #'
 #' @param species_data Data frame with columns: species, MS, FS, MB, EP, PR
-#' @param threshold Minimum probability threshold for link (default 0.05)
+#' @param threshold A link needs a probability strictly above this (default
+#'   0.05, the matrices' "implausible" floor, so floor-valued pairs are not
+#'   linked).
 #' @param return_probs If TRUE, return probability matrix instead of binary adjacency
 #' @return Adjacency matrix (rows = consumers, columns = resources)
 #' @export
@@ -269,6 +226,11 @@ construct_trait_foodweb <- function(species_data, threshold = 0.05, return_probs
   if (!all(required_cols %in% colnames(species_data))) {
     stop(paste("species_data must contain columns:", paste(required_cols, collapse = ", ")))
   }
+  # An unknown code used to fall to a silent floor value; now it is an error.
+  validation <- validate_trait_data(species_data)
+  if (!validation$valid) {
+    stop(paste("Invalid trait data:", paste(validation$messages, collapse = "; ")), call. = FALSE)
+  }
 
   n_species <- nrow(species_data)
   species_names <- species_data$species
@@ -277,8 +239,39 @@ construct_trait_foodweb <- function(species_data, threshold = 0.05, return_probs
   prob_matrix <- matrix(0, nrow = n_species, ncol = n_species,
                         dimnames = list(Consumer = species_names, Resource = species_names))
 
+  # validate_trait_data() lets NA codes through. Missing codes are
+  # role-aware: calc_interaction_probability() reads MS/FS/MB/EP of the
+  # consumer and MS/MB/EP/PR of the resource, so a species without PR still
+  # eats and one without FS is still eaten. Report the lost roles once
+  # instead of silently yielding 0 (it used to be swallowed by the pair loop).
+  sd <- as.data.frame(species_data)
+  consumer_traits_used <- c("MS", "FS", "MB", "EP")
+  resource_traits_used <- c("MS", "MB", "EP", "PR")
+  cannot_eat <- rowSums(is.na(sd[, consumer_traits_used, drop = FALSE])) > 0
+  cannot_be_eaten <- rowSums(is.na(sd[, resource_traits_used, drop = FALSE])) > 0
+  # One clause per lost role; each species is listed with only the traits it
+  # actually lacks for that role, e.g. "pred (missing PR)".
+  role_clause <- function(lost, what, traits) {
+    if (!any(lost)) return(NULL)
+    idx <- which(lost)
+    entries <- vapply(head(idx, 10), function(k) {
+      miss <- traits[is.na(unlist(sd[k, traits, drop = TRUE]))]
+      sprintf("%s (missing %s)", species_names[k], paste(miss, collapse = ", "))
+    }, character(1))
+    more <- if (length(idx) > 10) sprintf(", ... and %d more", length(idx) - 10) else ""
+    sprintf("%d species %s: %s%s", length(idx), what, paste(entries, collapse = ", "), more)
+  }
+  clauses <- c(role_clause(cannot_be_eaten, "cannot be eaten", resource_traits_used),
+               role_clause(cannot_eat, "cannot eat", consumer_traits_used))
+  if (length(clauses) > 0) {
+    warning(paste0("[trait foodweb] ", paste(clauses, collapse = "; ")), call. = FALSE)
+  }
+  n_errors <- 0L
+  first_error <- NULL
+
   # Calculate all pairwise probabilities
   for (i in 1:n_species) {
+    if (cannot_eat[i]) next
     consumer_traits <- c(
       MS = species_data$MS[i],
       FS = species_data$FS[i],
@@ -287,8 +280,8 @@ construct_trait_foodweb <- function(species_data, threshold = 0.05, return_probs
     )
 
     for (j in 1:n_species) {
-      # Skip self-loops
-      if (i == j) next
+      # Skip self-loops and resources already reported as uneatable
+      if (i == j || cannot_be_eaten[j]) next
 
       resource_traits <- c(
         MS = species_data$MS[j],
@@ -300,19 +293,27 @@ construct_trait_foodweb <- function(species_data, threshold = 0.05, return_probs
       # Calculate probability
       prob <- tryCatch(
         calc_interaction_probability(consumer_traits, resource_traits),
-        error = function(e) 0
+        error = function(e) {
+          n_errors <<- n_errors + 1L
+          if (is.null(first_error)) first_error <<- conditionMessage(e)
+          0
+        }
       )
 
       prob_matrix[i, j] <- prob
     }
+  }
+  if (n_errors > 0L) {
+    warning(sprintf("[trait foodweb] %d species pairs failed and got no link (first error: %s)",
+                    n_errors, first_error), call. = FALSE)
   }
 
   # Return probabilities or binary adjacency matrix
   if (return_probs) {
     return(prob_matrix)
   } else {
-    # Apply threshold
-    adjacency <- ifelse(prob_matrix >= threshold, 1, 0)
+    # Apply threshold (strict: a pair AT the threshold is not linked)
+    adjacency <- ifelse(prob_matrix > threshold, 1, 0)
     return(adjacency)
   }
 }
@@ -353,7 +354,7 @@ trait_foodweb_to_igraph <- function(species_data, threshold = 0.05, include_prob
   # Create edge list from probabilities above threshold.
   # prob_matrix is [consumer, resource]; the graph follows the app-wide edge
   # contract resource (prey) -> consumer (predator), so the columns swap here.
-  edges <- which(prob_matrix >= threshold, arr.ind = TRUE)
+  edges <- which(prob_matrix > threshold, arr.ind = TRUE)
   edge_list <- data.frame(
     from = colnames(prob_matrix)[edges[, 2]],
     to = rownames(prob_matrix)[edges[, 1]],
@@ -401,12 +402,13 @@ validate_trait_data <- function(species_data) {
     valid <- FALSE
   }
 
-  # Validate trait codes
-  valid_MS <- paste0("MS", 1:7)
-  valid_FS <- paste0("FS", c(0:7))
-  valid_MB <- paste0("MB", 1:5)
-  valid_EP <- paste0("EP", 1:4)
-  valid_PR <- paste0("PR", c(0, 2, 3, 5, 6, 7, 8))
+  # Validate trait codes against the vocabulary (PR1 and PR4 were missing
+  # from the old literal list, F71)
+  valid_MS <- trait_codes("MS")
+  valid_FS <- trait_codes("FS")
+  valid_MB <- trait_codes("MB")
+  valid_EP <- trait_codes("EP")
+  valid_PR <- trait_codes("PR")
 
   # Check MS
   invalid_MS <- !species_data$MS %in% valid_MS & !is.na(species_data$MS)
@@ -452,8 +454,8 @@ validate_trait_data <- function(species_data) {
   if (any(species_data$MS == "MS7", na.rm = TRUE)) {
     messages <- c(messages, "Warning: MS7 (XL) species will not appear as prey")
   }
-  if (any(species_data$FS %in% c("FS0", "FS3"), na.rm = TRUE)) {
-    messages <- c(messages, "Warning: FS0 (None) and FS3 (Parasite) will not appear as consumers")
+  if (any(species_data$FS == "FS0", na.rm = TRUE)) {
+    messages <- c(messages, "Warning: FS0 (Primary producer / none) species will not appear as consumers")
   }
 
   # Success message
@@ -474,11 +476,11 @@ create_trait_template <- function(n_species = 5) {
 
   example_species <- data.frame(
     species = paste0("Species_", 1:n_species),
-    MS = sample(paste0("MS", 1:6), n_species, replace = TRUE),
-    FS = sample(paste0("FS", c(1, 2, 4, 5, 6)), n_species, replace = TRUE),
-    MB = sample(paste0("MB", 1:5), n_species, replace = TRUE),
-    EP = sample(paste0("EP", 1:4), n_species, replace = TRUE),
-    PR = sample(paste0("PR", c(0, 2, 3, 5, 6, 7, 8)), n_species, replace = TRUE),
+    MS = sample(setdiff(trait_codes("MS"), "MS7"), n_species, replace = TRUE),
+    FS = sample(setdiff(trait_codes("FS"), c("FS0", "FS3", "FS7")), n_species, replace = TRUE),
+    MB = sample(trait_codes("MB"), n_species, replace = TRUE),
+    EP = sample(trait_codes("EP"), n_species, replace = TRUE),
+    PR = sample(trait_codes("PR"), n_species, replace = TRUE),
     stringsAsFactors = FALSE
   )
 

@@ -17,23 +17,24 @@ HARM_FS_PATTERN_LABELS <- c(
   FS7_xylophagous = "FS7 - Xylophagous:"
 )
 
-# The taxonomic rules the harmonize_* code actually reads through
-# is_rule_enabled() (R/functions/trait_lookup/harmonization.R). One checkbox
-# per rule, inputId harm_rule_<name>; the server wires the same vector.
+# The taxonomic rules the harmonize_* code actually reads: the `flag`s of
+# TRAIT_VOCAB$taxon_rules (R/config/harmonization_config.R), checked by
+# apply_taxon_rules() through is_rule_enabled(). One checkbox per rule,
+# inputId harm_rule_<name>; the server wires the same vector.
 # tests/testthat/test-ui-inputs-have-handlers.R fails if this list and the
-# is_rule_enabled() calls drift apart.
+# flags drift apart. cnidarians_sessile is retired (vocab v2 classifies
+# Cnidaria by class), so it has no checkbox.
 CONSUMED_TAXONOMIC_RULES <- c(
-  fish_obligate_swimmers = "Fish -> MB5 (swimmer)",
-  cephalopods_swimmers = "Cephalopods -> MB5 (swimmer)",
+  fish_obligate_swimmers = "Fish -> MB5 (obligate swimmer)",
+  cephalopods_swimmers = "Cephalopods -> MB5 (obligate swimmer)",
   bivalves_sessile = "Bivalves -> MB1 (sessile)",
-  cnidarians_sessile = "Cnidarians -> MB1 (sessile)",
   phytoplankton_pelagic = "Phytoplankton -> EP1 (pelagic)",
-  zooplankton_pelagic = "Copepods / cladocerans -> EP1 (pelagic)",
+  zooplankton_pelagic = "Zooplankton (copepods, cladocerans, salps, medusae) -> EP1 (pelagic)",
   infaunal_bivalves = "Bivalves -> EP4 (endobenthic)",
   bivalves_hard_shell = "Bivalves -> PR6 (hard shell)",
   gastropods_hard_shell = "Gastropods -> PR6 (hard shell)",
-  crustaceans_exoskeleton = "Crustaceans -> PR8 / PR4 (exoskeleton)",
-  echinoderms_calcium_plates = "Echinoderms -> PR5 (calcium plates)"
+  crustaceans_exoskeleton = "Malacostraca -> PR8 (armoured)",
+  echinoderms_calcium_plates = "Echinoderms -> PR7 (ossicle plates), sea cucumbers -> PR1"
 )
 
 harm_rule_checkboxes <- function(rules) {
@@ -110,7 +111,7 @@ harmonization_settings_ui <- function() {
           column(4,
             h5("Mobility Rules"),
             harm_rule_checkboxes(c("fish_obligate_swimmers", "cephalopods_swimmers",
-                                   "bivalves_sessile", "cnidarians_sessile"))
+                                   "bivalves_sessile"))
           ),
           column(4,
             h5("Position Rules"),

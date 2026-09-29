@@ -370,6 +370,7 @@ batch_lookup_parallel <- function(species_list,
   # Computed here, in the calling process: a worker has no Shiny session, so
   # harm_config_hash() inside it would always see the process default.
   cfg_hash <- harm_config_hash()
+  vocab_ver <- current_trait_vocab_version()
 
   # Parallel batch processing
   results <- future_lapply(seq_along(species_list), function(i) {
@@ -383,7 +384,7 @@ batch_lookup_parallel <- function(species_list,
     cached <- NULL
     if (!is.null(cache_dir)) {
       cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species), ".rds"))
-      cached <- read_cache_field(cache_file, "traits", config_hash = cfg_hash)
+      cached <- read_cache_field(cache_file, "traits", config_hash = cfg_hash, vocab_version = vocab_ver)
     }
 
     if (!is.null(cached)) {

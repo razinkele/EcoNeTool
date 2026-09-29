@@ -84,12 +84,20 @@ get_harm_config <- function() {
 #' (they do not change any code). The JSON text is hashed rather than the R
 #' object, so 150L after a JSON round trip hashes like 150.
 #'
+#' The trait vocabulary (TRAIT_VOCAB: version, default patterns, precedence,
+#' taxon rules) is hashed in too. It is not part of any config, so a JSON file
+#' cannot pin it, but it changes the codes just as much: bumping
+#' trait_vocab_version (or editing a default pattern) turns every envelope
+#' written under the old vocabulary into a miss for every reader and for
+#' phylogenetic imputation, instead of serving old MB codes for 30 days.
+#'
 #' @param cfg Config list; defaults to this session's config.
 #' @return Character(1) xxhash64 digest, or NULL when no config is loaded.
 harm_config_hash <- function(cfg = get_harm_config()) {
   if (is.null(cfg)) return(NULL)
   cfg$last_modified <- NULL
   cfg$version <- NULL
+  cfg$.trait_vocab <- get_trait_vocab()
   json <- jsonlite::toJSON(cfg, auto_unbox = TRUE, digits = NA)
   digest::digest(as.character(json), algo = "xxhash64", serialize = FALSE)
 }
@@ -327,31 +335,9 @@ harmonize_fuzzy_mobility <- function(ontology_traits) {
   max_score <- max(mobility$trait_score, na.rm = TRUE)
   primary <- mobility[mobility$trait_score == max_score, ][1, ]
 
-  # Map ontology modality to MB class
-  modality <- tolower(primary$trait_modality)
-
-  mb_class <- NA_character_
-
-  # MB1: Sessile
-  if (grepl("sessile|attached|fixed", modality)) {
-    mb_class <- "MB1"
-
-  # MB2: Burrower
-  } else if (grepl("burrow|infauna|tube.dwell", modality)) {
-    mb_class <- "MB2"
-
-  # MB3: Crawler/Floater
-  } else if (grepl("crawl|creep|walk|benthic.mobile|floater|drift", modality)) {
-    mb_class <- "MB3"
-
-  # MB4: Limited swimmer
-  } else if (grepl("limited.swim|facultative.swim|weak.swim", modality)) {
-    mb_class <- "MB4"
-
-  # MB5: Swimmer
-  } else if (grepl("swimmer|pelagic|nekt", modality)) {
-    mb_class <- "MB5"
-  }
+  # Map ontology modality to MB class through the shared vocabulary
+  # (TRAIT_VOCAB), so the fuzzy path cannot drift from the live cascade.
+  mb_class <- classify_by_patterns(primary$trait_modality, "mobility")
 
   if (!is.na(mb_class)) {
     result$class <- mb_class
@@ -408,28 +394,10 @@ harmonize_fuzzy_habitat <- function(ontology_traits) {
   max_score <- max(habitat$trait_score, na.rm = TRUE)
   primary <- habitat[habitat$trait_score == max_score, ][1, ]
 
-  # Map ontology modality to EP class
-  modality <- tolower(primary$trait_modality)
-
-  ep_class <- NA_character_
-
-  # EP1: Pelagic
-  if (grepl("pelagic|water.column|planktonic", modality)) {
-    ep_class <- "EP1"
-
-  # EP2: Benthopelagic
-  } else if (grepl("benthopel|demersal|near.bottom", modality)) {
-    ep_class <- "EP2"
-
-  # EP3: Epibenthic (on seabed surface)
-  } else if (grepl("benthic|subtidal|offshore|deep|epibenthic|epifauna", modality) &&
-             !grepl("intertidal|tidal|littoral|infauna|endobenthic", modality)) {
-    ep_class <- "EP3"
-
-  # EP4: Endobenthic/Infaunal (within sediment)
-  } else if (grepl("intertidal|tidal|littoral|eulittoral|infauna|endobenthic|burrowing", modality)) {
-    ep_class <- "EP4"
-  }
+  # Map ontology modality to EP class through the shared vocabulary. Zonation
+  # modalities (intertidal, subtidal) give NA on purpose: they are depth
+  # zones, not a position relative to the substrate (F35, F77).
+  ep_class <- classify_by_patterns(primary$trait_modality, "environmental")
 
   if (!is.na(ep_class)) {
     result$class <- ep_class
@@ -490,23 +458,127 @@ apply_size_adjustment <- function(size_cm) {
 }
 
 
+#' Effective text patterns for one trait (vocabulary defaults + session tuning)
+#'
+#' For mobility / environmental / protection the defaults are
+#' TRAIT_VOCAB$patterns; the session config (get_harm_config()) may override
+#' them key by key. Only keys the vocabulary defines are honoured, so a stale
+#' key from a pre-v2 JSON (e.g. MB2_burrower) can never resurrect the old
+#' meaning, and a value identical to the pre-v2 default of a kept key is
+#' treated as "not customised". Foraging patterns are entirely config-owned.
+#'
+#' @param trait "mobility", "environmental", "protection" or "foraging".
+#' @return Named list key -> regex (keys like "MB1_sessile"), or NULL.
+trait_patterns <- function(trait) {
+  section <- paste0(trait, "_patterns")
+  cfg <- get_harm_config() %||% list()
+  vocab <- get_trait_vocab()
+  defaults <- vocab$patterns[[trait]]
+  if (is.null(defaults)) return(cfg[[section]])
+  user <- cfg[[section]]
+  if (!is.list(user) || length(user) == 0L) return(defaults)
+  legacy <- vocab$legacy_patterns[[trait]] %||% list()
+  keep <- Filter(function(k) {
+    v <- user[[k]]
+    is.character(v) && length(v) == 1L && !is.na(v) && nzchar(v) && !identical(v, legacy[[k]])
+  }, intersect(names(user), names(defaults)))
+  utils::modifyList(defaults, user[keep])
+}
+
+
 #' Get Pattern from Configuration
+#'
+#' Thin wrapper kept for callers of the pre-v2 API.
 #'
 #' @param pattern_name String name (e.g., "MB1_sessile", "FS1_predator")
 #' @param pattern_type Type: "mobility", "foraging", "environmental", "protection"
 #' @return Regular expression pattern string, or NULL if not found
 get_config_pattern <- function(pattern_name, pattern_type = "mobility") {
-  cfg <- get_harm_config()
-  if (is.null(cfg)) return(NULL)
+  if (!pattern_type %in% c("mobility", "foraging", "environmental", "protection")) return(NULL)
+  trait_patterns(pattern_type)[[pattern_name]]
+}
 
-  pattern_list <- switch(pattern_type,
-    "mobility" = cfg$mobility_patterns,
-    "foraging" = cfg$foraging_patterns,
-    "environmental" = cfg$environmental_patterns,
-    "protection" = cfg$protection_patterns,
-    NULL
-  )
-  pattern_list[[pattern_name]]
+
+#' Classify free text into a trait code using the vocabulary patterns
+#'
+#' Lower-cases the text and tests the codes in
+#' get_trait_vocab()$pattern_precedence[[trait]] order; the first match wins.
+#' Each pattern is wrapped as (?<![a-z])(?:<pattern>) (perl): a LEADING
+#' boundary only, so stems keep working ("burrow" matches "burrowing") but
+#' "tidal" no longer matches inside "subtidal" (F77), "pelagic" inside
+#' "benthopelagic" (F35) or "surface" inside "subsurface".
+#'
+#' @param text Character vector (collapsed with spaces); NULL / NA / "" allowed.
+#' @param trait "mobility", "environmental", "protection" or "foraging".
+#' @return The code (e.g. "EP2"), or NA_character_ when nothing matches. An
+#'   invalid pattern warns ("[harmonization] invalid <trait> pattern for
+#'   <code>: ...") and is skipped.
+classify_by_patterns <- function(text, trait) {
+  if (length(text) == 0L) return(NA_character_)
+  text <- as.character(unlist(text))
+  text <- text[!is.na(text)]
+  if (length(text) == 0L) return(NA_character_)
+  txt <- tolower(paste(text, collapse = " "))
+  if (!nzchar(trimws(txt))) return(NA_character_)
+
+  pats <- trait_patterns(trait)
+  if (length(pats) == 0L) return(NA_character_)
+  codes <- sub("_.*$", "", names(pats))
+  precedence <- get_trait_vocab()$pattern_precedence[[trait]] %||% unique(codes)
+  for (code in precedence) {
+    for (key in names(pats)[codes == code]) {
+      hit <- tryCatch(
+        suppressWarnings(grepl(paste0("(?<![a-z])(?:", pats[[key]], ")"), txt, perl = TRUE)),
+        error = function(e) {
+          warning(sprintf("[harmonization] invalid %s pattern for %s: %s",
+                          trait, code, conditionMessage(e)), call. = FALSE)
+          FALSE
+        }
+      )
+      if (isTRUE(hit)) return(code)
+    }
+  }
+  NA_character_
+}
+
+
+#' First taxonomic rule that fires for a taxon
+#'
+#' Rules live in get_trait_vocab()$taxon_rules[[trait]] (ordered). A rule fires
+#' when every `match` field of the taxonomy matches its regex
+#' (case-insensitive), its optional `text` regex matches the trait text, and
+#' at least one of its `flag`s is enabled (is_rule_enabled()). Taxonomy fields
+#' that are NULL, NA or zero-length count as absent, so a WoRMS record with
+#' class = character(0) cannot raise "missing value where TRUE/FALSE needed".
+#'
+#' @param taxonomy List or one-row data frame (phylum, class, order, ...), or NULL.
+#' @param trait "mobility", "environmental_pelagic", "environmental" or "protection".
+#' @param text Optional trait text (for rules with a `text` condition).
+#' @param override_only Only consider rules with override_text = TRUE.
+#' @return The rule's code, or NA_character_.
+apply_taxon_rules <- function(taxonomy, trait, text = NULL, override_only = FALSE) {
+  if (is.null(taxonomy) || !is.list(taxonomy)) return(NA_character_)
+  field <- function(name) {
+    v <- taxonomy[[name]]
+    if (length(v) == 0L) return(NA_character_)
+    v <- as.character(unlist(v))[1]
+    if (is.na(v) || !nzchar(v)) NA_character_ else v
+  }
+  text_lower <- tolower(paste(as.character(unlist(text))[!is.na(unlist(text))], collapse = " "))
+  for (rule in get_trait_vocab()$taxon_rules[[trait]]) {
+    if (override_only && !isTRUE(rule$override_text)) next
+    if (!is.null(rule$flag) && !any(vapply(rule$flag, is_rule_enabled, logical(1)))) next
+    # Same leading word boundary as classify_by_patterns(): "benthopelagic"
+    # must not satisfy a "pelagic" text condition.
+    if (!is.null(rule$text) &&
+        !isTRUE(grepl(paste0("(?<![a-z])(?:", rule$text, ")"), text_lower, perl = TRUE))) next
+    matched <- all(vapply(names(rule$match), function(rank) {
+      v <- field(rank)
+      isTRUE(!is.na(v) && grepl(rule$match[[rank]], v, ignore.case = TRUE))
+    }, logical(1)))
+    if (matched) return(rule$code)
+  }
+  NA_character_
 }
 
 
@@ -645,85 +717,14 @@ harmonize_foraging_strategy <- function(feeding_info = NULL, trophic_level = NUL
 #' @export
 harmonize_mobility <- function(mobility_info = NULL, body_shape = NULL, taxonomic_info = NULL) {
 
-  if (!is.null(mobility_info)) {
-    mobility_lower <- tolower(paste(mobility_info, collapse = " "))
+  # 1. Explicit text, through the shared vocabulary patterns.
+  code <- classify_by_patterns(mobility_info, "mobility")
+  if (!is.na(code)) return(code)
 
-    # Get patterns from configuration
-    pattern_sessile <- get_config_pattern("MB1_sessile", "mobility")
-    pattern_burrower <- get_config_pattern("MB2_burrower", "mobility")
-    pattern_crawler <- get_config_pattern("MB3_crawler", "mobility")
-    pattern_swimmer_limited <- get_config_pattern("MB4_swimmer_limited", "mobility")
-    pattern_swimmer <- get_config_pattern("MB5_swimmer", "mobility")
-
-    if (!is.null(pattern_sessile) && grepl(pattern_sessile, mobility_lower, ignore.case = TRUE)) {
-      return("MB1")  # Sessile
-    }
-
-    if (!is.null(pattern_burrower) && grepl(pattern_burrower, mobility_lower, ignore.case = TRUE)) {
-      return("MB2")  # Burrower
-    }
-
-    if (!is.null(pattern_crawler) && grepl(pattern_crawler, mobility_lower, ignore.case = TRUE)) {
-      return("MB3")  # Crawler
-    }
-
-    if (!is.null(pattern_swimmer_limited) && grepl(pattern_swimmer_limited, mobility_lower, ignore.case = TRUE)) {
-      return("MB4")  # Limited swimmer
-    }
-
-    if (!is.null(pattern_swimmer) && grepl(pattern_swimmer, mobility_lower, ignore.case = TRUE)) {
-      return("MB5")  # Obligate swimmer
-    }
-  }
-
-  # Use taxonomic inference (configurable rules)
-  if (!is.null(taxonomic_info)) {
-    phylum <- taxonomic_info$phylum
-    class <- taxonomic_info$class
-
-    # Fish are typically obligate swimmers (if rule enabled)
-    if (is_rule_enabled("fish_obligate_swimmers")) {
-      if (!is.null(class) && grepl("Actinopteri|Elasmobranchii|Teleostei", class)) {
-        return("MB5")
-      }
-    }
-
-    # Molluscs
-    if (!is.null(phylum) && phylum == "Mollusca") {
-      if (!is.null(class)) {
-        # Bivalves sessile (if rule enabled)
-        if (class == "Bivalvia" && is_rule_enabled("bivalves_sessile")) {
-          return("MB1")
-        }
-        # Cephalopods swimmers (if rule enabled)
-        if (class == "Cephalopoda" && is_rule_enabled("cephalopods_swimmers")) {
-          return("MB5")
-        }
-        if (class == "Gastropoda") return("MB3")  # Snails crawl
-      }
-    }
-
-    # Arthropods
-    if (!is.null(phylum) && phylum == "Arthropoda") {
-      if (!is.null(class)) {
-        if (grepl("Copepoda", class)) return("MB5")  # Copepods swim
-        if (grepl("Malacostraca", class)) return("MB4")  # Crabs/shrimp
-      }
-    }
-
-    # Cnidarians (jellyfish) - sessile if rule enabled
-    if (!is.null(phylum) && phylum == "Cnidaria") {
-      if (is_rule_enabled("cnidarians_sessile")) {
-        return("MB1")
-      }
-      return("MB2")  # Passive floaters
-    }
-
-    # Porifera (sponges)
-    if (!is.null(phylum) && phylum == "Porifera") {
-      return("MB1")  # Sessile
-    }
-  }
+  # 2. Taxonomic rules (TRAIT_VOCAB$taxon_rules$mobility, switchable in the
+  #    harmonization settings).
+  code <- apply_taxon_rules(taxonomic_info, "mobility", text = mobility_info)
+  if (!is.na(code)) return(code)
 
   # Default: facultative swimmer
   return("MB4")
@@ -741,111 +742,31 @@ harmonize_mobility <- function(mobility_info = NULL, body_shape = NULL, taxonomi
 harmonize_environmental_position <- function(depth_min = NULL, depth_max = NULL,
                                             habitat_info = NULL, taxonomic_info = NULL) {
 
-  # Use habitat information if available
-  if (!is.null(habitat_info)) {
-    habitat_lower <- tolower(paste(habitat_info, collapse = " "))
+  # 1. Explicit habitat text, through the shared vocabulary patterns.
+  code <- classify_by_patterns(habitat_info, "environmental")
+  if (!is.na(code)) return(code)
 
-    if (grepl("pelagic|planktonic|surface|midwater", habitat_lower) &&
-        !grepl("benthopelagic|epibenthic", habitat_lower)) {
-      return("EP1")  # Pelagic
-    }
+  # 2. Pelagic taxa (phyto- and zooplankton, medusae). Before the depth rule:
+  #    a copepod caught at 10-20 m is pelagic, not epibenthic (F36).
+  code <- apply_taxon_rules(taxonomic_info, "environmental_pelagic", text = habitat_info)
+  if (!is.na(code)) return(code)
 
-    if (grepl("benthopelagic|demersal|near.bottom", habitat_lower)) {
-      return("EP2")  # Benthopelagic
-    }
-
-    if (grepl("epibenthic|epifauna|benthic surface|bottom", habitat_lower)) {
-      return("EP3")  # Epibenthic
-    }
-
-    if (grepl("infauna|buried|sediment interior|endobenthic", habitat_lower)) {
-      return("EP4")  # Endobenthic/Infaunal
-    }
-  }
-
-  # Use depth range
-  if (!is.null(depth_min) && !is.null(depth_max)) {
-    avg_depth <- (depth_min + depth_max) / 2
-
-    # Very shallow species are likely epibenthic or infaunal
-    if (avg_depth < 50) {
-      # Check if burrowing
-      if (!is.null(habitat_info) && grepl("burrow", tolower(paste(habitat_info, collapse = " ")))) {
-        return("EP4")
-      }
-      return("EP3")
-    }
-
+  # 3. Depth range
+  avg_depth <- suppressWarnings(mean(as.numeric(c(depth_min[1], depth_max[1]))))
+  if (length(depth_min) > 0 && length(depth_max) > 0 && isTRUE(is.finite(avg_depth))) {
+    # Very shallow species are likely epibenthic (burrowers were caught by
+    # the habitat text in step 1)
+    if (avg_depth < 50) return("EP3")
     # Deep species often benthopelagic
-    if (avg_depth > 200) {
-      return("EP2")
-    }
+    if (avg_depth > 200) return("EP2")
   }
 
-  # Taxonomic inference (configurable rules)
-  if (!is.null(taxonomic_info)) {
-    phylum <- taxonomic_info$phylum
-    class <- taxonomic_info$class
-
-    # Phytoplankton (if rule enabled)
-    if (is_rule_enabled("phytoplankton_pelagic")) {
-      if (!is.null(taxonomic_info$feeding_mode) &&
-          grepl("photosyn", tolower(taxonomic_info$feeding_mode))) {
-        return("EP1")  # Pelagic (need light)
-      }
-      # Also check for phytoplankton classes
-      if (!is.null(class) && grepl("Bacillariophyceae|Dinophyceae|Prymnesiophyceae", class)) {
-        return("EP1")
-      }
-    }
-
-    # Zooplankton (if rule enabled)
-    if (is_rule_enabled("zooplankton_pelagic")) {
-      if (!is.null(class) && grepl("Copepoda|Cladocera", class)) {
-        return("EP1")  # Pelagic
-      }
-    }
-
-    # Many molluscs are epibenthic or infaunal
-    if (!is.null(phylum) && phylum == "Mollusca") {
-      if (!is.null(class) && class == "Bivalvia") {
-        # Some bivalves are infaunal (if rule enabled)
-        if (is_rule_enabled("infaunal_bivalves")) {
-          return("EP4")
-        }
-      }
-    }
-
-    # Fish - dispatch by order/family. Defaulting all fish to EP1 (pelagic)
-    # mislabels every flatfish, goby, eel, and sandeel; trait-validator
-    # critic flagged this as the wrong default. Order-level lookup covers
-    # the most common European marine taxa; unknown orders fall back to
-    # benthopelagic (EP2), the safer middle ground.
-    if (!is.null(class) && grepl("Actinopteri|Teleostei", class)) {
-      order <- taxonomic_info$order
-      if (!is.null(order) && nzchar(order)) {
-        # Predominantly bottom-dwelling
-        if (grepl("Pleuronectiformes|Gobiiformes|Anguilliformes|Scorpaeniformes|Lophiiformes|Ophidiiformes",
-                  order, ignore.case = TRUE)) {
-          return("EP3")
-        }
-        # Predominantly pelagic
-        if (grepl("Clupeiformes|Scombriformes|Beloniformes|Carangiformes|Atheriniformes",
-                  order, ignore.case = TRUE)) {
-          return("EP1")
-        }
-        # Demersal / benthopelagic (mobile but bottom-associated)
-        if (grepl("Gadiformes|Perciformes|Aulopiformes|Stomiiformes|Myctophiformes",
-                  order, ignore.case = TRUE)) {
-          return("EP2")
-        }
-      }
-      return("EP2")  # Unknown fish order: benthopelagic, not pelagic
-    }
-  }
+  # 4. Other taxonomic rules (infaunal bivalves, fish by order)
+  code <- apply_taxon_rules(taxonomic_info, "environmental", text = habitat_info)
+  if (!is.na(code)) return(code)
 
   # Default: epibenthic (conservative)
-  return("EP2")
+  return("EP3")
 }
 
 
@@ -855,123 +776,22 @@ harmonize_environmental_position <- function(depth_min = NULL, depth_max = NULL,
 #' @param taxonomic_info Taxonomic classification
 #' @return PR code (PR0-PR8). Pre-PR1b PR1 and PR4 had no branches and
 #'   any matching input silently produced NA; both gaps now closed and
-#'   the labels are sourced from HARMONIZATION_CONFIG$protection_labels.
+#'   the labels come from the trait vocabulary (TRAIT_VOCAB, via
+#'   trait_code_label()).
 #' @export
 harmonize_protection <- function(skeleton_info = NULL, taxonomic_info = NULL) {
 
-  if (!is.null(skeleton_info)) {
-    skeleton_lower <- tolower(paste(skeleton_info, collapse = " "))
+  # 1. Taxon rules that outrank any text (echinoderm ossicles, F38).
+  code <- apply_taxon_rules(taxonomic_info, "protection", text = skeleton_info, override_only = TRUE)
+  if (!is.na(code)) return(code)
 
-    # PR1 must precede PR0's "soft" check so "soft mucus" doesn't fall
-    # through to PR0; mucus implies actual protective coating.
-    if (grepl("mucus|slime|cuticle|cuticular|hagfish", skeleton_lower)) {
-      return("PR1")  # Mucus / cuticle
-    }
+  # 2. Explicit text, through the shared vocabulary patterns.
+  code <- classify_by_patterns(skeleton_info, "protection")
+  if (!is.na(code)) return(code)
 
-    if (grepl("none|soft|naked", skeleton_lower)) {
-      return("PR0")  # No protection
-    }
-
-    if (grepl("tube", skeleton_lower)) {
-      return("PR2")  # Tube
-    }
-
-    if (grepl("burrow", skeleton_lower)) {
-      return("PR3")  # Burrow
-    }
-
-    # PR4 — chitinous / thin exoskeleton, must precede PR8's broader
-    # "exoskeleton" match. Pre-PR1b this branch was missing entirely.
-    if (grepl("chitinous|thin.*exoskeleton|small arthropod|thin.*carapace", skeleton_lower)) {
-      return("PR4")  # Thin exoskeleton
-    }
-
-    if (grepl("thin.*shell|soft.*shell|weak.*shell", skeleton_lower)) {
-      return("PR5")  # Soft shell
-    }
-
-    if (grepl("shell|calcareous|calcium", skeleton_lower)) {
-      return("PR6")  # Hard shell
-    }
-
-    if (grepl("spine|spiny|setae", skeleton_lower)) {
-      return("PR7")  # Few spines
-    }
-
-    if (grepl("armou?r|exoskeleton|carapace|heavily", skeleton_lower)) {
-      return("PR8")  # Armoured (heavy)
-    }
-  }
-
-  # Taxonomic inference (configurable rules)
-  if (!is.null(taxonomic_info)) {
-    phylum <- taxonomic_info$phylum
-    class <- taxonomic_info$class
-
-    # Molluscs
-    if (!is.null(phylum) && phylum == "Mollusca") {
-      if (!is.null(class)) {
-        # Bivalves hard shell (if rule enabled)
-        if (class == "Bivalvia" && is_rule_enabled("bivalves_hard_shell")) {
-          return("PR6")
-        }
-        # Gastropods hard shell (if rule enabled)
-        if (class == "Gastropoda" && is_rule_enabled("gastropods_hard_shell")) {
-          return("PR6")
-        }
-        if (class == "Cephalopoda") return("PR0")  # Soft-bodied
-      }
-      # Default hard shell for molluscs (if any shell rule enabled)
-      if (is_rule_enabled("bivalves_hard_shell") || is_rule_enabled("gastropods_hard_shell")) {
-        return("PR6")
-      }
-    }
-
-    # Arthropods
-    if (!is.null(phylum) && phylum == "Arthropoda") {
-      # Crustaceans exoskeleton (if rule enabled)
-      if (is_rule_enabled("crustaceans_exoskeleton")) {
-        if (!is.null(class) && grepl("Malacostraca", class)) {
-          return("PR8")  # Crabs/lobsters are armoured
-        }
-        return("PR4")  # Exoskeleton for crustaceans
-      }
-      return("PR5")  # Soft exoskeleton for small arthropods
-    }
-
-    # Echinoderms (if rule enabled)
-    if (!is.null(phylum) && phylum == "Echinodermata") {
-      if (is_rule_enabled("echinoderms_calcium_plates")) {
-        return("PR5")  # Calcium plates
-      }
-      return("PR7")  # Spiny
-    }
-
-    # Cnidarians
-    if (!is.null(phylum) && phylum == "Cnidaria") {
-      return("PR0")  # Soft-bodied
-    }
-
-    # Annelids
-    if (!is.null(phylum) && phylum == "Annelida") {
-      # Check if tube-dwelling
-      if (!is.null(taxonomic_info$living_habit) &&
-          grepl("tube", tolower(taxonomic_info$living_habit))) {
-        return("PR2")
-      }
-      return("PR0")  # Soft-bodied
-    }
-
-    # Fish
-    if (!is.null(class) && grepl("Actinopteri|Teleostei", class)) {
-      return("PR0")  # No hard protection
-    }
-
-    # Porifera
-    if (!is.null(phylum) && phylum == "Porifera") {
-      return("PR7")  # Spicules
-    }
-  }
+  # 3. Taxonomic rules (TRAIT_VOCAB$taxon_rules$protection).
+  code <- apply_taxon_rules(taxonomic_info, "protection", text = skeleton_info)
+  if (!is.na(code)) return(code)
 
   # Default: no protection
   return("PR0")
