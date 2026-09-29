@@ -466,3 +466,16 @@ test_that("a batch whose only species fails still renders its table and summary 
     })
   })
 })
+
+# ---------------------------------------------------------------------------
+# Cached envelopes written before these fixes are refreshed
+# ---------------------------------------------------------------------------
+
+test_that("harm_config_hash changes with the lookup revision, so pre-C-6a envelopes are misses", {
+  expect_identical(TRAIT_LOOKUP_REVISION, 2L)
+  old <- TRAIT_LOOKUP_REVISION
+  withr::defer(assign("TRAIT_LOOKUP_REVISION", old, envir = globalenv()))
+  before <- harm_config_hash(HARMONIZATION_CONFIG)
+  assign("TRAIT_LOOKUP_REVISION", old - 1L, envir = globalenv())
+  expect_false(identical(harm_config_hash(HARMONIZATION_CONFIG), before))
+})

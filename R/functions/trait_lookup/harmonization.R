@@ -75,6 +75,16 @@ get_harm_config <- function() {
 }
 
 
+#' Revision of the raw values the trait lookups return
+#'
+#' harm_config_hash() hashes it in. Bump it when a lookup fix changes raw
+#' values that cached envelopes already hold (sizes, weights, taxonomy), so
+#' every cache/taxonomy envelope written before the fix is a miss and is
+#' refreshed on first read instead of serving the old value for 30 days.
+#' 2L: C-6a (WoRMS body-size units, FishBase grams, NA ranks).
+TRAIT_LOOKUP_REVISION <- 2L
+
+
 #' Hash of the effective harmonization config (trait-cache key, F72)
 #'
 #' Harmonized codes in cache/taxonomy/<species>.rds depend on the config that
@@ -90,6 +100,7 @@ get_harm_config <- function() {
 #' trait_vocab_version (or editing a default pattern) turns every envelope
 #' written under the old vocabulary into a miss for every reader and for
 #' phylogenetic imputation, instead of serving old MB codes for 30 days.
+#' TRAIT_LOOKUP_REVISION does the same for fixes to the raw lookup values.
 #'
 #' @param cfg Config list; defaults to this session's config.
 #' @return Character(1) xxhash64 digest, or NULL when no config is loaded.
@@ -98,6 +109,7 @@ harm_config_hash <- function(cfg = get_harm_config()) {
   cfg$last_modified <- NULL
   cfg$version <- NULL
   cfg$.trait_vocab <- get_trait_vocab()
+  cfg$.lookup_revision <- TRAIT_LOOKUP_REVISION
   json <- jsonlite::toJSON(cfg, auto_unbox = TRUE, digits = NA)
   digest::digest(as.character(json), algo = "xxhash64", serialize = FALSE)
 }
