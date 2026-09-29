@@ -1184,7 +1184,9 @@ classify_by_taxonomy <- function(taxonomy) {
                   ifelse(is.null(taxonomy$order), "NA", taxonomy$order)))
 
   # Fish classes
-  if (grepl("actinopterygii|chondrichthyes|myxini|agnatha|osteichthyes|elasmobranchii", class_lower)) {
+  # WoRMS now files ray-finned fishes under Teleostei / Actinopteri (M2).
+  if (grepl("actinopterygii|actinopteri|teleostei|chondrichthyes|myxini|agnatha|osteichthyes|elasmobranchii",
+            class_lower)) {
     message(sprintf("      → classify_by_taxonomy: Matched Fish pattern"))
     return("Fish")
   }

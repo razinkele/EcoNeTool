@@ -553,3 +553,18 @@ test_that("the Ecopath import routes its API result through prefer_specific_hint
   expect_true(any(grepl("prefer_specific_hint(", src, fixed = TRUE)))
   expect_false(any(grepl("api_result$confidence %in% c(\"high\", \"medium\")", src, fixed = TRUE)))
 })
+
+# ---------------------------------------------------------------------------
+# M2 - WoRMS's current fish classes
+# ---------------------------------------------------------------------------
+
+test_that("WoRMS class Teleostei / Actinopteri is Fish at medium, not the default (M2)", {
+  teleost <- function(...) list(aphia_id = 126436L, phylum = "Chordata", class = "Teleostei", order = "Gadiformes")
+  res <- with_mocked_function(globalenv(), "query_fishbase", function(...) NULL,
+    with_mocked_function(globalenv(), "query_worms", teleost,
+      classify_species_api("Gadus morhua", use_cache = FALSE)))
+  expect_identical(res$functional_group, "Fish")
+  expect_identical(res$confidence, "medium")
+  expect_null(attr(classify_by_taxonomy(list(class = "Teleostei")), "default"))
+  expect_null(attr(classify_by_taxonomy(list(class = "Actinopteri")), "default"))
+})
