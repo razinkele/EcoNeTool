@@ -719,13 +719,17 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
           # hint is reported as "Pattern matching", not as the rejected API row.
           report_row <- classification_report_fields(api_result, pattern_hint)
 
-          # Store result (including body mass from FishBase)
+          # Store result (including body mass from FishBase). body_mass_g is
+          # kept only when the API's own group was actually selected above -
+          # an ambiguous, rejected match describes a different species, so
+          # its body mass must not be stored either (see
+          # classification_body_mass_g()).
           classification_results[[i]] <- list(
             species = sp,
             database_source = report_row$database_source,
             confidence = report_row$confidence,
             functional_group = report_row$functional_group,
-            body_mass_g = if(!is.na(api_result$body_mass_g)) api_result$body_mass_g else NA,
+            body_mass_g = classification_body_mass_g(api_result, report_row),
             trophic_level = if(!is.na(api_result$trophic_level)) api_result$trophic_level else NA,
             habitat = if(!is.na(api_result$habitat)) api_result$habitat else NA
           )

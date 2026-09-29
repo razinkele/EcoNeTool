@@ -1285,6 +1285,28 @@ classification_report_fields <- function(api_result, hint) {
   )
 }
 
+#' Body mass to store for one taxonomic report row
+#'
+#' `classify_species_api()` can return an ambiguous, low-confidence
+#' `functional_group` that `classification_report_fields()` rejects in favour
+#' of the name hint - but the FishBase `body_mass_g` in that same
+#' `api_result` describes whatever species FishBase actually matched, which
+#' may not be the hinted one. Store it only when the API's own group was
+#' actually kept (`report_row$database_source` is not the "Pattern matching"
+#' fallback); otherwise the mass is discarded along with the rejected group.
+#'
+#' @param api_result List from classify_species_api(); reads `body_mass_g`.
+#' @param report_row List from classification_report_fields() for the same
+#'   `api_result` / hint pair; reads `database_source`.
+#' @return Numeric body mass in grams, or NA_real_.
+#' @export
+classification_body_mass_g <- function(api_result, report_row) {
+  if (identical(report_row$database_source, "Pattern matching")) return(NA_real_)
+  mass <- api_result$body_mass_g
+  if (is.null(mass) || length(mass) != 1 || is.na(mass)) return(NA_real_)
+  as.numeric(mass)
+}
+
 #' Enhanced Species Classification with API Fallback
 #'
 #' @param species_name Character, species name

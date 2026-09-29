@@ -645,3 +645,36 @@ test_that("a kept hint is reported with the name-pattern source and confidence (
   src <- readLines(file.path(get_app_root(), "R/modules/ecopath_import_server.R"), warn = FALSE)
   expect_true(any(grepl("classification_report_fields(", src, fixed = TRUE)))
 })
+
+# ---------------------------------------------------------------------------
+# CodeRabbit #1 - an ambiguous FishBase match must not store the wrong
+# species' body mass
+# ---------------------------------------------------------------------------
+
+test_that("a rejected API group (hint kept) drops the API's body mass", {
+  # Low-confidence, ambiguous FishBase match: classification_report_fields()
+  # rejects it and keeps the specific hint, so body_mass_g from that same
+  # api_result must not be stored either.
+  api <- list(functional_group = "Fish", confidence = "low", source = "FishBase", body_mass_g = 1234)
+  report_row <- classification_report_fields(api, "Zooplankton")
+  expect_identical(report_row$database_source, "Pattern matching")
+  expect_identical(classification_body_mass_g(api, report_row), NA_real_)
+})
+
+test_that("an accepted API group keeps its body mass", {
+  api <- list(functional_group = "Fish", confidence = "high", source = "FishBase", body_mass_g = 1234)
+  report_row <- classification_report_fields(api, "Zooplankton")
+  expect_identical(report_row$database_source, "FishBase")
+  expect_identical(classification_body_mass_g(api, report_row), 1234)
+})
+
+test_that("a missing body mass is NA either way", {
+  api <- list(functional_group = "Fish", confidence = "high", source = "FishBase", body_mass_g = NA_real_)
+  report_row <- classification_report_fields(api, "Fish")
+  expect_identical(classification_body_mass_g(api, report_row), NA_real_)
+})
+
+test_that("the Ecopath import stores body mass via classification_body_mass_g() (CodeRabbit #1)", {
+  src <- readLines(file.path(get_app_root(), "R/modules/ecopath_import_server.R"), warn = FALSE)
+  expect_true(any(grepl("classification_body_mass_g(", src, fixed = TRUE)))
+})
