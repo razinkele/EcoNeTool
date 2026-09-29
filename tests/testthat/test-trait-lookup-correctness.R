@@ -568,3 +568,19 @@ test_that("WoRMS class Teleostei / Actinopteri is Fish at medium, not the defaul
   expect_null(attr(classify_by_taxonomy(list(class = "Teleostei")), "default"))
   expect_null(attr(classify_by_taxonomy(list(class = "Actinopteri")), "default"))
 })
+
+# ---------------------------------------------------------------------------
+# F-a - AlgaeBase fallback on a tibble without phylum / class
+# ---------------------------------------------------------------------------
+
+test_that("a WoRMS tibble without phylum or class raises no tibble warning (F79)", {
+  skip_if_not_installed("worrms")
+  testthat::local_mocked_bindings(
+    wm_records_name = function(name, ...) tibble::tibble(AphiaID = 1L),
+    .package = "worrms"
+  )
+  expect_no_warning(res <- lookup_algaebase_traits("Obscura obscura"))
+  expect_identical(res$note, "Species found but not classified as algae")
+  expect_false(isTRUE(res$success))
+  expect_null(res$error)
+})

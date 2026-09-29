@@ -253,8 +253,9 @@ lookup_algaebase_traits <- function(species_name) {
     }
 
     # Check if it's algae/phytoplankton
-    phylum <- .scalar_chr(worms_data$phylum[1])
-    class <- .scalar_chr(worms_data$class[1])
+    # [[ ]], not $: a tibble warns on `$` for a missing column.
+    phylum <- .scalar_chr(worms_data[["phylum"]][1])
+    class <- .scalar_chr(worms_data[["class"]][1])
 
     # Comprehensive list of algae/phytoplankton phyla (case-insensitive matching)
     # Must match the routing logic in lookup_traits_for_species()
