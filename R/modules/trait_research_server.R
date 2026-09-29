@@ -404,7 +404,10 @@ trait_research_server <- function(input, output, session, shared_data) {
         # early exit, and all database queries in one pass)
         # Previously this code queried each database individually THEN
         # called lookup_species_traits again — doubling API calls.
-        full_result <- lookup_species_traits(
+        # A species whose lookup throws becomes a warning and an error row;
+        # the rest of the batch continues (F33). The tryCatch around this
+        # loop is only for setup failures.
+        full_result <- lookup_species_traits_safely(
           species,
           biotic_file = biotic_file,
           maredat_file = maredat_file,
@@ -415,6 +418,7 @@ trait_research_server <- function(input, output, session, shared_data) {
         results_list[[i]] <- full_result
         # Build raw_data summary from the orchestrator result
         raw_data <- list(species = species, source = full_result$source)
+        if (!is.null(full_result$error)) raw_data$error <- full_result$error
         raw_list[[species]] <- raw_data
 
         # NOTE: do NOT re-saveRDS() the cache file here. lookup_species_traits()
@@ -467,17 +471,19 @@ trait_research_server <- function(input, output, session, shared_data) {
             is.na(results_df$MB) & is.na(results_df$EP) & is.na(results_df$PR))
       n_missing <- sum(is.na(results_df$MS) & is.na(results_df$FS) &
                        is.na(results_df$MB) & is.na(results_df$EP) & is.na(results_df$PR))
+      n_failed <- if ("error" %in% names(results_df)) sum(!is.na(results_df$error)) else 0L
 
       # Console summary
       cat("\n========================================\n")
       cat("LOOKUP COMPLETE\n")
-      cat(sprintf("Complete: %d | Partial: %d | No data: %d\n", n_complete, n_partial, n_missing))
+      cat(sprintf("Complete: %d | Partial: %d | No data: %d | Failed: %d\n",
+                  n_complete, n_partial, n_missing, n_failed))
       cat("========================================\n\n")
 
       showNotification(
-        HTML(sprintf("<b>Trait lookup complete!</b><br>Complete: %d | Partial: %d | No data: %d",
-                     n_complete, n_partial, n_missing)),
-        type = "message",
+        HTML(sprintf("<b>Trait lookup complete!</b><br>Complete: %d | Partial: %d | No data: %d | Failed: %d",
+                     n_complete, n_partial, n_missing, n_failed)),
+        type = if (n_failed > 0) "warning" else "message",
         duration = 8
       )
 
@@ -719,6 +725,8 @@ trait_research_server <- function(input, output, session, shared_data) {
     if ("confidence" %in% names(df)) display_df$confidence <- df$confidence
     if ("imputation_method" %in% names(df)) display_df$imputation_method <- df$imputation_method
     if ("source" %in% names(df)) display_df$sources <- df$source
+    # A species whose lookup failed (F33) shows why; escaped like `sources`.
+    if ("error" %in% names(df)) display_df$error <- df$error
 
     # Confidence columns (keep numeric for color-coding)
     conf_cols <- c("MS_confidence", "FS_confidence", "MB_confidence",

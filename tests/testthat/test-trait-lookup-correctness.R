@@ -389,3 +389,80 @@ test_that("a name nothing resolves returns NULL (F11)", {
   mock_fishbase_names()
   expect_null(resolve_fishbase_name("Nonexistus fictitious"))
 })
+
+# ---------------------------------------------------------------------------
+# F33 - one failing species does not abort a Trait Research batch
+# ---------------------------------------------------------------------------
+
+test_that("lookup_species_traits_safely turns an error into a warning and an error row (F33)", {
+  boom <- function(species_name, ...) stop("argument is of length zero")
+  expect_warning(
+    row <- with_mocked_function(globalenv(), "lookup_species_traits", boom,
+                                lookup_species_traits_safely("Enoplus brevis")),
+    "\\[trait_research\\] lookup failed for 'Enoplus brevis': argument is of length zero"
+  )
+  expect_identical(row$species, "Enoplus brevis")
+  expect_identical(row$error, "argument is of length zero")
+  for (trait in c("MS", "FS", "MB", "EP", "PR", "RS", "TT", "ST")) {
+    expect_true(is.na(row[[trait]]), info = trait)
+  }
+})
+
+# The Trait Research server as a testServer() app (the pattern of
+# test-rebuild-observer.R), run in a temp working directory because the
+# lookup observer creates ./cache/taxonomy.
+local_trait_research_module <- function(env = parent.frame()) {
+  skip_if_not_installed("plotly")
+  skip_if_not_installed("DT")
+  skip_if_not_installed("bs4Dash")
+  withr::local_package("bs4Dash", .local_envir = env)
+  for (f in c("R/functions/admin_auth.R", "R/functions/offline_db_rebuild.R",
+              "R/modules/trait_research_server.R")) {
+    source(file.path(get_app_root(), f), local = FALSE)
+  }
+  withr::local_dir(withr::local_tempdir(.local_envir = env), .local_envir = env)
+  mod <- trait_research_server
+  formals(mod)$shared_data <- NULL
+  mod
+}
+
+fake_lookup <- function(species_name, ...) {
+  if (grepl("^Bad", species_name)) stop("argument is of length zero")
+  data.frame(species = species_name, MS = "MS4", FS = "FS1", MB = "MB5", EP = "EP2", PR = "PR0",
+             RS = NA_character_, TT = NA_character_, ST = NA_character_, source = "FishBase",
+             stringsAsFactors = FALSE)
+}
+
+test_that("a Trait Research batch survives one species whose lookup throws (F33, testServer)", {
+  mod <- local_trait_research_module()
+  with_mocked_function(globalenv(), "lookup_species_traits", fake_lookup, {
+    shiny::testServer(mod, {
+      session$setInputs(trait_research_input_method = "manual",
+                        trait_research_species_list = "Good one\nBad one\nGood two",
+                        trait_research_databases = "worms")
+      expect_warning(session$setInputs(trait_research_run_lookup = 1),
+                     "\\[trait_research\\] lookup failed for 'Bad one'")
+      res <- rv$trait_results
+      expect_identical(res$species, c("Good one", "Bad one", "Good two"))
+      expect_identical(res$MS, c("MS4", NA, "MS4"))
+      expect_identical(res$error, c(NA, "argument is of length zero", NA))
+      expect_identical(rv$raw_results[["Bad one"]]$error, "argument is of length zero")
+      expect_false(rv$lookup_in_progress)
+    })
+  })
+})
+
+test_that("a batch whose only species fails still renders its table and summary (F33, testServer)", {
+  mod <- local_trait_research_module()
+  with_mocked_function(globalenv(), "lookup_species_traits", fake_lookup, {
+    shiny::testServer(mod, {
+      session$setInputs(trait_research_input_method = "manual",
+                        trait_research_species_list = "Bad only",
+                        trait_research_databases = "worms")
+      expect_warning(session$setInputs(trait_research_run_lookup = 1), "lookup failed for 'Bad only'")
+      expect_identical(nrow(rv$trait_results), 1L)
+      expect_no_error(output$trait_research_table)
+      expect_no_error(output$trait_research_summary)
+    })
+  })
+})
