@@ -291,13 +291,13 @@ load_version_info <- function() {
 
   # Default version info (fallback)
   version_info <- list(
-    VERSION = "1.6.0",
-    VERSION_NAME = "Trait Vocabulary",
+    VERSION = "1.6.1",
+    VERSION_NAME = "Deploy Ships Build Inputs",
     RELEASE_DATE = "2026-09-29",
     STATUS = "stable",
     MAJOR = 1,
     MINOR = 6,
-    PATCH = 0
+    PATCH = 1
   )
 
   # Try to read VERSION file
