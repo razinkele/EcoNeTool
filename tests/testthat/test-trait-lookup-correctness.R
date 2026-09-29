@@ -776,11 +776,21 @@ test_that("trait_research_successful_rows: an all-error frame transfers nothing"
 # local_trait_research_module() strips the shared_data formal entirely
 # (formals(mod)$shared_data <- NULL deletes the list element, it does not
 # give it a NULL default) so the F33 tests above never reference it. These
-# two tests need a real shared_data; testServer() only accepts extra `args`
-# for genuine Shiny modules (an `id` formal), which this server lacks, so
-# give shared_data a real default (a call, not a literal NULL, so the
-# formal survives) instead.
-local_trait_research_module_with_shared_data <- function(env = parent.frame()) {
+# two tests need a real shared_data to assert on. An earlier version of
+# this fixture gave shared_data a *lazy* default (`quote(shiny::reactiveValues())`)
+# on the trait_research_server formal itself: testServer() clones the
+# server's environment via rlang::env_clone() to build the assertion-block
+# data mask before that default promise is ever forced (nothing in the
+# server body touches shared_data - only the observer does, later, on
+# setInputs). Whether the clone shares or duplicates an unforced promise is
+# an rlang implementation detail; on CI's rlang it duplicated it, so the
+# observer's write and the test's read resolved to two different
+# reactiveValues objects and the assertion saw NULL. Passing a
+# concretely-created reactiveValues object through a wrapper closure avoids
+# the lazy default (and the extra `shared_data` formal) entirely: the
+# wrapper still has exactly the (input, output, session) signature the F33
+# tests above rely on.
+local_trait_research_module_with_shared_data <- function(shared, env = parent.frame()) {
   skip_if_not_installed("plotly")
   skip_if_not_installed("DT")
   skip_if_not_installed("bs4Dash")
@@ -790,13 +800,15 @@ local_trait_research_module_with_shared_data <- function(env = parent.frame()) {
     source(file.path(get_app_root(), f), local = FALSE)
   }
   withr::local_dir(withr::local_tempdir(.local_envir = env), .local_envir = env)
-  mod <- trait_research_server
-  formals(mod)$shared_data <- quote(shiny::reactiveValues())
-  mod
+  server_fn <- trait_research_server
+  function(input, output, session) {
+    server_fn(input, output, session, shared_data = shared)
+  }
 }
 
 test_that("the use-in-foodweb observer transfers only successful rows (CodeRabbit #2)", {
-  mod <- local_trait_research_module_with_shared_data()
+  shared <- shiny::reactiveValues()
+  mod <- local_trait_research_module_with_shared_data(shared)
   with_mocked_function(globalenv(), "lookup_species_traits", fake_lookup, {
     shiny::testServer(mod, {
       session$setInputs(trait_research_input_method = "manual",
@@ -805,13 +817,14 @@ test_that("the use-in-foodweb observer transfers only successful rows (CodeRabbi
       expect_warning(session$setInputs(trait_research_run_lookup = 1),
                      "\\[trait_research\\] lookup failed for 'Bad one'")
       session$setInputs(trait_research_use_in_foodweb = 1)
-      expect_identical(shiny::isolate(shared_data$trait_data$species), c("Good one", "Good two"))
     })
   })
+  expect_identical(shiny::isolate(shared$trait_data$species), c("Good one", "Good two"))
 })
 
 test_that("the use-in-foodweb observer transfers nothing when every lookup failed", {
-  mod <- local_trait_research_module_with_shared_data()
+  shared <- shiny::reactiveValues()
+  mod <- local_trait_research_module_with_shared_data(shared)
   with_mocked_function(globalenv(), "lookup_species_traits", fake_lookup, {
     shiny::testServer(mod, {
       session$setInputs(trait_research_input_method = "manual",
@@ -819,7 +832,7 @@ test_that("the use-in-foodweb observer transfers nothing when every lookup faile
                         trait_research_databases = "worms")
       expect_warning(session$setInputs(trait_research_run_lookup = 1), "lookup failed for 'Bad only'")
       session$setInputs(trait_research_use_in_foodweb = 1)
-      expect_null(shiny::isolate(shared_data$trait_data))
     })
   })
+  expect_null(shiny::isolate(shared$trait_data))
 })
