@@ -188,3 +188,204 @@ test_that("an AlgaeBase fallback failure warns and is recorded (F79)", {
   expect_identical(res$error, "(500) Internal Server Error")
   expect_false(res$success)
 })
+
+# rfishbase name-resolution mocks. `common` maps a lower-case query to the
+# rows common_to_sci() returns; `sci` lists names validate_names() accepts;
+# `region_species` are the species whose ecosystems include the Baltic Sea.
+# Returns an environment that records every call.
+mock_fishbase_names <- function(common = list(), sci = character(), region_species = character(),
+                                env = parent.frame()) {
+  calls <- new.env()
+  calls$validate <- character()
+  calls$common <- character()
+  calls$region <- character()
+  testthat::local_mocked_bindings(
+    validate_names = function(species_list, ...) {
+      calls$validate <- c(calls$validate, species_list)
+      if (species_list %in% sci) species_list else NA_character_
+    },
+    common_to_sci = function(x, ...) {
+      calls$common <- c(calls$common, x)
+      rows <- common[[tolower(x)]]
+      if (is.null(rows)) data.frame(Species = character(), ComName = character()) else rows
+    },
+    faoareas = function(species_list, ...) {
+      calls$region <- c(calls$region, species_list)
+      data.frame(Species = species_list, FAO = "Pacific, Northwest")
+    },
+    ecosystem = function(species_list, ...) {
+      data.frame(Species = species_list,
+                 EcosystemName = if (species_list %in% region_species) "Baltic Sea" else "Sea of Okhotsk")
+    },
+    .package = "rfishbase",
+    .env = env
+  )
+  calls
+}
+
+common_rows <- function(species, comname) {
+  data.frame(Species = species, ComName = comname, Language = "English", stringsAsFactors = FALSE)
+}
+
+# ---------------------------------------------------------------------------
+# F9 - a WoRMS classification is "medium"
+# ---------------------------------------------------------------------------
+
+mussel_worms <- function(...) {
+  list(aphia_id = 140480L, scientific_name = "Mytilus edulis", rank = "Species",
+       phylum = "Mollusca", class = "Bivalvia", order = "Mytilida", family = "Mytilidae")
+}
+
+test_that("a WoRMS classification is medium confidence (F9)", {
+  res <- with_mocked_function(globalenv(), "query_worms", mussel_worms,
+    classify_species_api("Mytilus edulis", functional_group_hint = "Benthos", use_cache = FALSE))
+  expect_identical(res$functional_group, "Benthos")
+  expect_identical(res$source, "WoRMS")
+  expect_identical(res$confidence, "medium")
+})
+
+test_that("a name-based override and the unmatched-class default stay low (F9)", {
+  res <- with_mocked_function(globalenv(), "query_worms", mussel_worms,
+    classify_species_api("Mussel worm", functional_group_hint = "Benthos", use_cache = FALSE))
+  expect_identical(res$confidence, "medium")  # "worm" only overrides a Fish verdict
+
+  nematode <- function(...) list(aphia_id = 1L, phylum = "Nematoda", class = "Enoplea")
+  res <- with_mocked_function(globalenv(), "query_worms", nematode,
+    classify_species_api("Enoplus brevis", functional_group_hint = "Benthos", use_cache = FALSE))
+  expect_identical(res$functional_group, "Fish")  # classify_by_taxonomy's fallback, not WoRMS evidence
+  expect_identical(res$confidence, "low")
+
+  cod_as_benthos <- function(...) list(aphia_id = 1L, phylum = "Mollusca", class = "Bivalvia")
+  res <- with_mocked_function(globalenv(), "query_worms", cod_as_benthos,
+    classify_species_api("Baltic cod", functional_group_hint = "Benthos", use_cache = FALSE))
+  expect_identical(res$functional_group, "Fish")
+  expect_identical(res$confidence, "low")
+})
+
+test_that("assign_functional_group_enhanced keeps a WoRMS classification (F9)", {
+  withr::local_dir(withr::local_tempdir())  # classify_species_api caches under ./cache/taxonomy
+  res <- with_mocked_function(globalenv(), "query_fishbase", function(...) NULL,
+    with_mocked_function(globalenv(), "query_worms", mussel_worms,
+      assign_functional_group_enhanced("Xyzzy obscura", use_api = TRUE)))
+  expect_identical(res, "Benthos")
+})
+
+# ---------------------------------------------------------------------------
+# F10 - common names: exact match first, graded confidence, region-keyed cache
+# ---------------------------------------------------------------------------
+
+test_that("an exact common-name match wins and is high confidence (F10)", {
+  skip_if_not_installed("rfishbase")
+  mock_fishbase_names(common = list(
+    "atlantic cod" = common_rows(c("Gadus morhua", "Lepidion lepidion"), c("Atlantic cod", "North Atlantic codling"))
+  ))
+  res <- resolve_fishbase_name("Atlantic cod")
+  expect_identical(res$valid_name, "Gadus morhua")
+  expect_identical(res$match_confidence, "high")
+})
+
+test_that("one species behind several common-name rows is still one candidate (F10)", {
+  skip_if_not_installed("rfishbase")
+  mock_fishbase_names(common = list(
+    "antenna codlet" = common_rows(rep("Bregmaceros atlanticus", 2), c("Antenna codlet", "Antenna Codlet"))
+  ))
+  res <- resolve_fishbase_name("Antenna codlet")
+  expect_identical(res$valid_name, "Bregmaceros atlanticus")
+  expect_identical(res$match_confidence, "high")
+})
+
+test_that("an ambiguous common name is low confidence, deterministic, and warns (F10)", {
+  skip_if_not_installed("rfishbase")
+  mock_fishbase_names(common = list(
+    cod = common_rows(c("Gadus macrocephalus", "Eleginus nawaga"), c("Alaska cod", "Arctic cod"))
+  ))
+  expect_warning(res <- resolve_fishbase_name("cod"), "\\[fishbase\\] 'cod' ambiguous: 2 candidates")
+  expect_identical(res$valid_name, "Eleginus nawaga")  # first by Species sort order
+  expect_identical(res$match_confidence, "low")
+})
+
+test_that("exactly one candidate in the region is medium confidence (F10)", {
+  skip_if_not_installed("rfishbase")
+  mock_fishbase_names(
+    common = list(cod = common_rows(c("Gadus macrocephalus", "Eleginus nawaga", "Gadus morhua"),
+                                    c("Alaska cod", "Arctic cod", "Baltic cod"))),
+    region_species = "Gadus morhua"
+  )
+  res <- resolve_fishbase_name("cod", geographic_region = "Baltic")
+  expect_identical(res$valid_name, "Gadus morhua")
+  expect_identical(res$match_confidence, "medium")
+})
+
+test_that("two candidates in the region stay low (F10)", {
+  skip_if_not_installed("rfishbase")
+  mock_fishbase_names(
+    common = list(cod = common_rows(c("Gadus macrocephalus", "Gadus morhua"), c("Alaska cod", "Baltic cod"))),
+    region_species = c("Gadus macrocephalus", "Gadus morhua")
+  )
+  expect_warning(res <- resolve_fishbase_name("cod", geographic_region = "Baltic"), "ambiguous: 2 candidates")
+  expect_identical(res$match_confidence, "low")
+})
+
+test_that("a broad common name is low without one region query per candidate (F10)", {
+  skip_if_not_installed("rfishbase")
+  species <- sprintf("Genus%02d species", 1:30)
+  calls <- mock_fishbase_names(common = list(cod = common_rows(species, paste(species, "cod"))),
+                               region_species = species[1])
+  expect_warning(res <- resolve_fishbase_name("cod", geographic_region = "Baltic"), "ambiguous: 30 candidates")
+  expect_identical(res$match_confidence, "low")
+  expect_length(calls$region, 0)
+})
+
+test_that("the classification cache key carries the region and FishBase confidence is passed on (F10)", {
+  cache_dir <- withr::local_tempdir()
+  fb <- function(...) {
+    list(avg_weight_g = NA, max_weight_g = NA, trophic_level = NA, habitat = NA,
+         min_depth_m = NA, max_depth_m = NA, match_confidence = "low")
+  }
+  res <- with_mocked_function(globalenv(), "query_fishbase", fb,
+    classify_species_api("Atlantic cod", geographic_region = "Baltic Sea", cache_dir = cache_dir))
+  expect_identical(res$confidence, "low")
+  expect_true(file.exists(file.path(cache_dir, "Atlantic_cod__Baltic_Sea.classify.rds")))
+  with_mocked_function(globalenv(), "query_fishbase", fb,
+    classify_species_api("Atlantic cod", cache_dir = cache_dir))
+  expect_true(file.exists(file.path(cache_dir, "Atlantic_cod__any.classify.rds")))
+})
+
+# ---------------------------------------------------------------------------
+# F11 - the original name first, the singular form only as a fallback
+# ---------------------------------------------------------------------------
+
+test_that("a binomial resolves as itself and is never singularised (F11)", {
+  skip_if_not_installed("rfishbase")
+  calls <- mock_fishbase_names(sci = "Pollachius virens")
+  res <- resolve_fishbase_name("Pollachius virens")
+  expect_identical(res$valid_name, "Pollachius virens")
+  expect_identical(res$match_confidence, "high")
+  expect_identical(calls$validate, "Pollachius virens")
+  expect_false(any(grepl("viren$", c(calls$validate, calls$common))))
+})
+
+test_that("a genus-like name resolves before any singular form is tried (F11)", {
+  skip_if_not_installed("rfishbase")
+  calls <- mock_fishbase_names(common = list(ammodytes = common_rows("Ammodytes tobianus", "Ammodytes")))
+  res <- resolve_fishbase_name("Ammodytes")
+  expect_identical(res$valid_name, "Ammodytes tobianus")
+  expect_false("Ammodyte" %in% c(calls$validate, calls$common))
+})
+
+test_that("an English plural falls back to its singular form (F11)", {
+  skip_if_not_installed("rfishbase")
+  calls <- mock_fishbase_names(common = list(
+    sandeel = common_rows(c("Ammodytes marinus", "Ammodytes tobianus"), c("Lesser sandeel", "Lesser sandeel"))
+  ))
+  expect_warning(res <- resolve_fishbase_name("Sandeels"), "ambiguous: 2 candidates")
+  expect_identical(res$valid_name, "Ammodytes marinus")
+  expect_identical(calls$validate, c("Sandeels", "Sandeel"))
+  expect_identical(calls$common, c("Sandeels", "Sandeel"))
+})
+
+test_that("a name nothing resolves returns NULL (F11)", {
+  skip_if_not_installed("rfishbase")
+  mock_fishbase_names()
+  expect_null(resolve_fishbase_name("Nonexistus fictitious"))
+})
