@@ -1235,6 +1235,32 @@ classify_by_taxonomy <- function(taxonomy) {
   return(structure("Fish", default = TRUE))  # a guess, not a taxonomic match (F9)
 }
 
+#' Choose between an API functional group and the name-pattern hint
+#'
+#' A "high" API group always wins. A "medium" group (a WoRMS class mapping,
+#' or a region-unique FishBase common name) wins only when the hint is the
+#' generic fallback or agrees with it: classify_by_taxonomy() is coarse
+#' (Malacostraca -> Benthos), so a specific hint such as "Mysids" ->
+#' Zooplankton must not be replaced by it. Anything else keeps the hint.
+#'
+#' @param api_group Character, classify_species_api()'s functional_group.
+#' @param api_conf Character, its confidence label.
+#' @param hint Character, the name-pattern hint.
+#' @param hint_is_fallback Logical. assign_functional_group() returns a plain
+#'   "Fish" for its default (no marker survives the vectorised EwE path), so
+#'   by default a "Fish" or missing hint counts as the fallback.
+#' @return Character, the functional group to use.
+prefer_specific_hint <- function(api_group, api_conf, hint,
+                                 hint_is_fallback = is.na(.scalar_chr(hint)) || identical(.scalar_chr(hint), "Fish")) {
+  api_group <- .scalar_chr(api_group)
+  api_conf <- .scalar_chr(api_conf)
+  hint <- .scalar_chr(hint)
+  if (is.na(api_group) || is.na(api_conf)) return(hint)
+  if (api_conf == "high") return(api_group)
+  if (api_conf == "medium" && (isTRUE(hint_is_fallback) || identical(api_group, hint))) return(api_group)
+  hint
+}
+
 #' Enhanced Species Classification with API Fallback
 #'
 #' @param species_name Character, species name
@@ -1264,13 +1290,10 @@ assign_functional_group_enhanced <- function(species_name, use_api = FALSE, pb =
   message(sprintf("    → Checking taxonomic databases for: %s", species_name))
   api_result <- classify_species_api(species_name)
 
-  if (!is.na(api_result$functional_group) && api_result$confidence %in% c("high", "medium")) {
-    message(sprintf("    ✓ API classification: %s → %s (source: %s, confidence: %s)",
-                    species_name, api_result$functional_group, api_result$source, api_result$confidence))
-    return(api_result$functional_group)
-  }
-
-  # Fall back to pattern result
-  message(sprintf("    ✓ Using pattern match: %s → %s (API uncertain)", species_name, pattern_result))
-  return(pattern_result)
+  # pattern_result is always the "Fish" fallback here (see the early return),
+  # so the helper only keeps both call sites on one rule (I1).
+  chosen <- prefer_specific_hint(api_result$functional_group, api_result$confidence, pattern_result)
+  message(sprintf("    ✓ Classification: %s → %s (API: %s, source: %s, confidence: %s)",
+                  species_name, chosen, api_result$functional_group, api_result$source, api_result$confidence))
+  chosen
 }

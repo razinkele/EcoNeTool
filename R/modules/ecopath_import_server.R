@@ -714,12 +714,9 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
             detail = paste(result_detail_lines[!sapply(result_detail_lines, is.null)], collapse = "\n")
           )
 
-          # Use API result if available and confident
-          if (!is.na(api_result$functional_group) && api_result$confidence %in% c("high", "medium")) {
-            final_fg <- api_result$functional_group
-          } else {
-            final_fg <- pattern_hint
-          }
+          # Use the API result if confident; a "medium" one only replaces the
+          # generic "Fish" fallback or agrees with the name hint (I1).
+          final_fg <- prefer_specific_hint(api_result$functional_group, api_result$confidence, pattern_hint)
 
           # Store result (including body mass from FishBase)
           classification_results[[i]] <- list(

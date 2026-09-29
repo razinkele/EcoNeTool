@@ -509,3 +509,47 @@ test_that("shallow and deep fish keep the depth rule before their order rules", 
   expect_identical(harmonize_environmental_position(depth_min = 150, depth_max = 600, taxonomic_info = herring), "EP2")
   expect_identical(harmonize_environmental_position(taxonomic_info = herring), "EP1")
 })
+
+# ---------------------------------------------------------------------------
+# Final fix wave: a medium WoRMS group never beats a specific name hint (I1)
+# ---------------------------------------------------------------------------
+
+mysid_worms <- function(...) {
+  list(aphia_id = 1L, scientific_name = "Mysida", phylum = "Arthropoda", class = "Malacostraca", order = "Mysida")
+}
+
+test_that("a medium WoRMS group does not override a specific name hint (I1a, Mysids)", {
+  expect_identical(assign_functional_group("Mysids"), "Zooplankton")
+  api <- with_mocked_function(globalenv(), "query_worms", mysid_worms,
+    classify_species_api("Mysids", functional_group_hint = "Zooplankton", use_cache = FALSE))
+  expect_identical(api$functional_group, "Benthos")  # classify_by_taxonomy is coarse
+  expect_identical(api$confidence, "medium")
+  expect_identical(prefer_specific_hint(api$functional_group, api$confidence, "Zooplankton"), "Zooplankton")
+})
+
+test_that("a medium WoRMS group replaces the generic Fish fallback (I1b, Limecola)", {
+  expect_identical(assign_functional_group("Limecola balthica"), "Fish")  # the default fallback
+  expect_identical(prefer_specific_hint("Benthos", "medium", "Fish"), "Benthos")
+  expect_identical(prefer_specific_hint("Benthos", "medium", NA_character_), "Benthos")
+})
+
+test_that("a medium WoRMS group that agrees with the hint is kept (I1c)", {
+  expect_identical(prefer_specific_hint("Benthos", "medium", "Benthos"), "Benthos")
+  # an explicit fallback flag lets the API group win over any hint
+  expect_identical(prefer_specific_hint("Benthos", "medium", "Zooplankton", hint_is_fallback = TRUE), "Benthos")
+  # "high" behaves as before: the API group wins
+  expect_identical(prefer_specific_hint("Fish", "high", "Zooplankton"), "Fish")
+})
+
+test_that("a low-confidence or missing API group is still rejected (I1d)", {
+  expect_identical(prefer_specific_hint("Fish", "low", "Zooplankton"), "Zooplankton")
+  expect_identical(prefer_specific_hint("Fish", "low", "Fish"), "Fish")
+  expect_identical(prefer_specific_hint(NA, "none", "Benthos"), "Benthos")
+  expect_identical(prefer_specific_hint("Benthos", NA, "Zooplankton"), "Zooplankton")
+})
+
+test_that("the Ecopath import routes its API result through prefer_specific_hint (I1)", {
+  src <- readLines(file.path(get_app_root(), "R/modules/ecopath_import_server.R"), warn = FALSE)
+  expect_true(any(grepl("prefer_specific_hint(", src, fixed = TRUE)))
+  expect_false(any(grepl("api_result$confidence %in% c(\"high\", \"medium\")", src, fixed = TRUE)))
+})
