@@ -22,6 +22,41 @@
   if (length(aid) == 1 && !is.na(aid) && aid > 0) aid else NA_real_
 }
 
+#' Which rows of a trait-results frame are failed lookups
+#'
+#' lookup_species_traits_safely() marks a failed lookup with a non-NA
+#' `error` column and every trait code NA; a frame without an `error`
+#' column at all (e.g. before any lookup ran) has no failed rows.
+#'
+#' @param df Trait-results data.frame (rv$trait_results).
+#' @return Logical vector, length `nrow(df)`.
+#' @keywords internal
+.trait_research_error_mask <- function(df) {
+  if (is.null(df) || !"error" %in% names(df)) return(rep(FALSE, NROW(df)))
+  !is.na(df$error)
+}
+
+#' Complete / partial / no-data / failed counts for the lookup summary
+#'
+#' A failed row (see `.trait_research_error_mask()`) has every trait code
+#' NA, so counting it under both "No data" and "Failed" double-counted it.
+#' Failed rows are excluded from "No data" here; they were already excluded
+#' from "Partial" (an all-NA row was never partial).
+#'
+#' @param results_df Trait-results data.frame.
+#' @return `list(n_complete, n_partial, n_missing, n_failed)`.
+#' @keywords internal
+trait_research_summary_counts <- function(results_df) {
+  trait_cols <- c("MS", "FS", "MB", "EP", "PR")
+  has_error <- .trait_research_error_mask(results_df)
+  all_na <- Reduce(`&`, lapply(trait_cols, function(cn) is.na(results_df[[cn]])))
+  n_complete <- sum(complete.cases(results_df[, trait_cols, drop = FALSE]))
+  n_failed <- sum(has_error)
+  n_missing <- sum(all_na & !has_error)
+  n_partial <- nrow(results_df) - n_complete - sum(all_na)
+  list(n_complete = n_complete, n_partial = n_partial, n_missing = n_missing, n_failed = n_failed)
+}
+
 # =============================================================================
 # TRAIT TABLE RENDERING HELPERS
 # =============================================================================
@@ -464,14 +499,13 @@ trait_research_server <- function(input, output, session, shared_data) {
         choices = results_df$species
       )
 
-      # Summary stats
-      n_complete <- sum(complete.cases(results_df[, c("MS", "FS", "MB", "EP", "PR")]))
-      n_partial <- nrow(results_df) - n_complete -
-        sum(is.na(results_df$MS) & is.na(results_df$FS) &
-            is.na(results_df$MB) & is.na(results_df$EP) & is.na(results_df$PR))
-      n_missing <- sum(is.na(results_df$MS) & is.na(results_df$FS) &
-                       is.na(results_df$MB) & is.na(results_df$EP) & is.na(results_df$PR))
-      n_failed <- if ("error" %in% names(results_df)) sum(!is.na(results_df$error)) else 0L
+      # Summary stats (a failed row is excluded from "No data" - see
+      # trait_research_summary_counts())
+      counts <- trait_research_summary_counts(results_df)
+      n_complete <- counts$n_complete
+      n_partial <- counts$n_partial
+      n_missing <- counts$n_missing
+      n_failed <- counts$n_failed
 
       # Console summary
       cat("\n========================================\n")

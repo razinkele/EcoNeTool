@@ -710,3 +710,46 @@ test_that("the Ecopath import stores body mass via classification_body_mass_g() 
   src <- readLines(file.path(get_app_root(), "R/modules/ecopath_import_server.R"), warn = FALSE)
   expect_true(any(grepl("classification_body_mass_g(", src, fixed = TRUE)))
 })
+
+# ---------------------------------------------------------------------------
+# CodeRabbit #3 - Trait Research: a failed lookup row must not be counted
+# both as "No data" and as "Failed"
+# ---------------------------------------------------------------------------
+
+source_trait_research_module_file <- function() {
+  source(file.path(get_app_root(), "R/modules/trait_research_server.R"), local = FALSE)
+}
+source_trait_research_module_file()
+
+trait_results_fixture <- function() {
+  data.frame(
+    species = c("Complete", "Partial", "NoData", "Failed"),
+    MS = c("MS4", "MS4", NA_character_, NA_character_),
+    FS = c("FS1", NA_character_, NA_character_, NA_character_),
+    MB = c("MB5", NA_character_, NA_character_, NA_character_),
+    EP = c("EP2", NA_character_, NA_character_, NA_character_),
+    PR = c("PR0", NA_character_, NA_character_, NA_character_),
+    error = c(NA_character_, NA_character_, NA_character_, "boom"),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("a failed row is 'Failed', not also 'No data' (CodeRabbit #3)", {
+  df <- trait_results_fixture()
+  counts <- trait_research_summary_counts(df)
+  expect_identical(counts$n_complete, 1L)
+  expect_identical(counts$n_partial, 1L)
+  expect_identical(counts$n_missing, 1L)
+  expect_identical(counts$n_failed, 1L)
+  expect_identical(counts$n_complete + counts$n_partial + counts$n_missing + counts$n_failed,
+                    nrow(df))
+})
+
+test_that("trait_research_summary_counts works without an error column", {
+  df <- trait_results_fixture()[, setdiff(names(trait_results_fixture()), "error")]
+  counts <- trait_research_summary_counts(df)
+  expect_identical(counts$n_failed, 0L)
+  expect_identical(counts$n_complete, 1L)
+  expect_identical(counts$n_missing, 2L)
+})
+
