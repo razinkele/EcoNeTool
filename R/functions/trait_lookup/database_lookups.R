@@ -82,10 +82,11 @@ lookup_fishbase_traits <- function(species_name, timeout = 20) {
       safe_get(species_data, "LengthFemale")
     )
 
-    # Weight (convert kg to g)
-    weight_kg <- safe_get(species_data, "Weight")
-    if (is_valid_value(weight_kg)) {
-      traits$max_weight_g <- weight_kg * 1000
+    # Weight. FishBase's species.Weight is already in grams (cod: 96000 g);
+    # the old "* 1000" recorded a 96 t cod (F78).
+    weight_g <- safe_get(species_data, "Weight")
+    if (is_valid_value(weight_g)) {
+      traits$max_weight_g <- weight_g
     }
 
     # Trophic level
@@ -244,14 +245,17 @@ lookup_algaebase_traits <- function(species_name) {
     # Use WoRMS to confirm it's an algae species
     worms_data <- worrms::wm_records_name(species_name, marine_only = FALSE)
 
-    if (is.null(worms_data) || length(worms_data) == 0) {
+    # wm_records_name() returns a tibble: length() counts its columns and
+    # [[1]] is its first column, so read rows and columns explicitly (F79).
+    if (is.null(worms_data) || NROW(worms_data) == 0) {
       result$note <- "Species not found in WoRMS (AlgaeBase fallback)"
       return(result)
     }
 
     # Check if it's algae/phytoplankton
-    phylum <- worms_data[[1]]$phylum
-    class <- worms_data[[1]]$class
+    # [[ ]], not $: a tibble warns on `$` for a missing column.
+    phylum <- .scalar_chr(worms_data[["phylum"]][1])
+    class <- .scalar_chr(worms_data[["class"]][1])
 
     # Comprehensive list of algae/phytoplankton phyla (case-insensitive matching)
     # Must match the routing logic in lookup_traits_for_species()
@@ -260,7 +264,7 @@ lookup_algaebase_traits <- function(species_name) {
                      "Cryptophyta", "Cyanobacteria", "Euglenozoa", "Charophyta",
                      "Myzozoa", "Miozoa")  # Myzozoa/Miozoa includes dinoflagellates
 
-    if (tolower(phylum) %in% tolower(algae_phyla) || grepl("phyceae", class, ignore.case = TRUE)) {
+    if (isTRUE(tolower(phylum) %in% tolower(algae_phyla)) || isTRUE(grepl("phyceae", class, ignore.case = TRUE))) {
       traits <- list(
         phylum = phylum,
         class = class,
@@ -276,6 +280,8 @@ lookup_algaebase_traits <- function(species_name) {
     }
 
   }, error = function(e) {
+    warning(sprintf("[algaebase] WoRMS fallback failed for '%s': %s",
+                    species_name, conditionMessage(e)), call. = FALSE)
     # <<- so the error surfaces on the returned result; `<-` would only
     # mutate the closure-local copy and silently drop the failure.
     result$error <<- conditionMessage(e)
@@ -806,6 +812,107 @@ worms_records_by_name_http <- function(name, fuzzy = FALSE, marine_only = FALSE,
   res
 }
 
+#' Convert a length to centimetres
+#'
+#' @param value Numeric (or numeric text) length(s).
+#' @param unit Unit string(s): "mm", "cm", "m", "um" / micro sign + "m".
+#'   Case and surrounding space are ignored.
+#' @return Numeric cm; NA for a unit that is not a length (e.g. "kg", which
+#'   WoRMS body-size rows also use for weights) or a missing unit.
+#' @export
+to_cm <- function(value, unit) {
+  value <- suppressWarnings(as.numeric(value))
+  u <- tolower(trimws(as.character(unit)))
+  u <- gsub(paste0("[", intToUtf8(c(0xB5, 0x3BC)), "]"), "u", u)  # micro sign, Greek mu
+  factor <- c(um = 1e-4, micrometre = 1e-4, micrometer = 1e-4, mm = 0.1, cm = 1, m = 100)[u]
+  unname(value * factor)
+}
+
+#' Maximum body length (cm) from WoRMS Traits Portal attributes (F32)
+#'
+#' Every "Body size" row carries its unit as a child record
+#' (`children[[i]]`, measurementType "Unit"). Rows are converted with
+#' [to_cm()]; rows whose unit is not a length (weights in kg) are skipped.
+#' A row without a unit child takes the unit from the "Body size
+#' (qualitative)" text, then from the class (fish, mammals, reptiles and
+#' birds report cm, everything else mm), with a warning.
+#'
+#' @param attributes Tibble from `worrms::wm_attr_data()`, or NULL.
+#' @param class_name WoRMS class (scalar, may be NA).
+#' @param species_name For the warning.
+#' @return NULL when no body-size row converts, else
+#'   `list(max_length_cm, size_unit_source)` where the source is "child",
+#'   "qualitative" or "class_heuristic" (the row that gave the maximum).
+#' @export
+worms_body_size_cm <- function(attributes, class_name = NA_character_, species_name = "") {
+  if (NROW(attributes) == 0 || !all(c("measurementType", "measurementValue") %in% names(attributes))) {
+    return(NULL)
+  }
+  type <- as.character(attributes$measurementType)
+  size_rows <- which(grepl("body size", type, ignore.case = TRUE) &
+                       !grepl("qualitative", type, ignore.case = TRUE))
+  if (length(size_rows) == 0) return(NULL)
+
+  child_unit <- function(i) {
+    if (!"children" %in% names(attributes)) return(NA_character_)
+    ch <- attributes$children[[i]]
+    if (NROW(ch) == 0 || !all(c("measurementType", "measurementValue") %in% names(ch))) {
+      return(NA_character_)
+    }
+    .scalar_chr(ch$measurementValue[ch$measurementType == "Unit"])
+  }
+
+  values <- suppressWarnings(as.numeric(attributes$measurementValue[size_rows]))
+  units <- vapply(size_rows, child_unit, character(1))
+  sources <- ifelse(is.na(units), NA_character_, "child")
+
+  no_unit <- !is.na(values) & is.na(units)
+  if (any(no_unit)) {
+    fallback <- NA_character_
+    fallback_source <- "qualitative"
+    qual <- attributes$measurementValue[grepl("body size \\(qualitative\\)", type, ignore.case = TRUE)]
+    if (length(qual) > 0) {
+      q <- tolower(qual[1])
+      # Boundaries that ignore digits: a unit written right after the number
+      # ("5mm", "12cm") has no \\b between digit and letter, so \\bcm\\b /
+      # \\bmm\\b / \\bm\\b never matched it and this fell through to the
+      # class heuristic. Order stays cm, mm, m so "mm" is never matched by
+      # the "m" check.
+      if (grepl("(?<![a-z])cm(?![a-z])", q, perl = TRUE)) {
+        fallback <- "cm"
+      } else if (grepl("(?<![a-z])mm(?![a-z])", q, perl = TRUE)) {
+        fallback <- "mm"
+      } else if (grepl("(?<![a-z])m(?![a-z])", q, perl = TRUE)) {
+        fallback <- "m"
+      }
+    }
+    if (is.na(fallback)) {
+      # Vertebrate classes whose WoRMS body sizes are conventionally in cm.
+      # Bony fish span Actinopterygii / Actinopteri / Teleostei depending on
+      # the classification level; mammals (seals, whales), reptiles and birds
+      # too - without them a 186 cm seal records as 18.6 cm.
+      cm_reporting_classes <- c(
+        "actinopterygii", "actinopteri", "teleostei",
+        "elasmobranchii", "holocephali", "chondrichthyes",
+        "sarcopterygii", "myxini", "petromyzonti",
+        "mammalia", "reptilia", "aves"
+      )
+      fallback <- if (isTRUE(tolower(class_name) %in% cm_reporting_classes)) "cm" else "mm"
+      fallback_source <- "class_heuristic"
+      warning(sprintf("[worms] no unit for '%s' body size; assuming %s from class",
+                      species_name, fallback), call. = FALSE)
+    }
+    units[no_unit] <- fallback
+    sources[no_unit] <- fallback_source
+  }
+
+  cm <- to_cm(values, units)
+  ok <- !is.na(cm)
+  if (!any(ok)) return(NULL)
+  best <- which(ok)[which.max(cm[ok])]
+  list(max_length_cm = cm[best], size_unit_source = sources[best])
+}
+
 #' Use WoRMS for taxonomic information and basic traits
 #'
 #' @param species_name Scientific name
@@ -946,20 +1053,16 @@ lookup_worms_traits <- function(species_name, timeout = 10) {
 
     traits <- list()
 
-    # Taxonomic information
+    # Taxonomic information. A rank WoRMS does not report comes back as
+    # character(0); .scalar_chr() makes it NA (and keeps the first of
+    # several), so no guard downstream meets a zero-length value (F33).
     if (!is.null(classification) && nrow(classification) > 0) {
-      traits$phylum <- classification$scientificname[classification$rank == "Phylum"]
-      traits$class <- classification$scientificname[classification$rank == "Class"]
-      traits$order <- classification$scientificname[classification$rank == "Order"]
-      traits$family <- classification$scientificname[classification$rank == "Family"]
-      traits$genus <- classification$scientificname[classification$rank == "Genus"]
-
-      # Handle multiple matches
-      if (length(traits$phylum) > 1) traits$phylum <- traits$phylum[1]
-      if (length(traits$class) > 1) traits$class <- traits$class[1]
-      if (length(traits$order) > 1) traits$order <- traits$order[1]
-      if (length(traits$family) > 1) traits$family <- traits$family[1]
-      if (length(traits$genus) > 1) traits$genus <- traits$genus[1]
+      rank_name <- function(rank) .scalar_chr(classification$scientificname[classification$rank == rank])
+      traits$phylum <- rank_name("Phylum")
+      traits$class <- rank_name("Class")
+      traits$order <- rank_name("Order")
+      traits$family <- rank_name("Family")
+      traits$genus <- rank_name("Genus")
     }
 
     # Marine/brackish/freshwater (handle data.frame structure)
@@ -991,53 +1094,13 @@ lookup_worms_traits <- function(species_name, timeout = 10) {
     if (!is.null(attributes) && nrow(attributes) > 0) {
       # Extract specific traits from WoRMS Traits Portal
 
-      # 1. Body size - Extract all body size measurements
-      body_size_rows <- attributes[grepl("body size", attributes$measurementType, ignore.case = TRUE), ]
-      if (nrow(body_size_rows) > 0) {
-        # Get numeric body size values
-        sizes <- suppressWarnings(as.numeric(body_size_rows$measurementValue))
-        sizes <- sizes[!is.na(sizes)]
-
-        if (length(sizes) > 0) {
-          # Take maximum body size
-          traits$max_length_mm <- max(sizes)
-
-          # Detect length unit from the qualitative body-size string; WoRMS
-          # embeds the unit in the value text, not as a separate field.
-          qual_size <- attributes$measurementValue[grepl("body size \\(qualitative\\)",
-                                                         attributes$measurementType,
-                                                         ignore.case = TRUE)]
-          unit <- NA_character_
-          if (length(qual_size) > 0) {
-            q <- tolower(qual_size[1])
-            if      (grepl("\\bcm\\b", q)) unit <- "cm"
-            else if (grepl("\\bmm\\b", q)) unit <- "mm"
-            else if (grepl("\\bm\\b",  q)) unit <- "m"
-          }
-
-          if (is.na(unit)) {
-            # Vertebrate classes whose WoRMS body-size measurements are
-            # conventionally reported in cm. Bony fish span Actinopterygii /
-            # Actinopteri / Teleostei depending on classification level; the
-            # cartilaginous & jawless fish classes round out the fish list;
-            # mammals (incl. cetaceans/pinnipeds, returned at class level as
-            # Mammalia), reptiles, and birds also report cm — without them
-            # a 200 cm seal silently records as 20 cm.
-            cm_reporting_classes <- c(
-              "actinopterygii", "actinopteri", "teleostei",
-              "elasmobranchii", "holocephali", "chondrichthyes",
-              "sarcopterygii", "myxini", "petromyzonti",
-              "mammalia", "reptilia", "aves"
-            )
-            unit <- if (!is.null(traits$class) &&
-                        tolower(traits$class) %in% cm_reporting_classes) "cm" else "mm"
-          }
-
-          traits$max_length_cm <- switch(unit,
-                                         cm = traits$max_length_mm,
-                                         mm = traits$max_length_mm / 10,
-                                         m  = traits$max_length_mm * 100)
-        }
+      # 1. Body size in the unit WoRMS gives with each row (F32); weights
+      #    (kg rows) are skipped. The raw value used to be divided by 10 for
+      #    every non-vertebrate, so a 20 cm mussel recorded as 2 cm.
+      body_size <- worms_body_size_cm(attributes, traits$class, species_name)
+      if (!is.null(body_size)) {
+        traits$max_length_cm <- body_size$max_length_cm
+        traits$size_unit_source <- body_size$size_unit_source
       }
 
       # 2. Functional group - Extract for habitat/environmental position

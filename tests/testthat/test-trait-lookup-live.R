@@ -36,6 +36,32 @@ test_that("WoRMS returns taxonomy for Mytilus edulis (live)", {
   expect_equal(tolower(result$traits$phylum), "mollusca")
 })
 
+test_that("WoRMS body size for Mytilus edulis is in cm from its unit record (live, F32)", {
+  skip_if_no_live_tests()
+  skip_if_offline("www.marinespecies.org")
+  skip_if_no_package("worrms")
+
+  result <- with_timeout(lookup_worms_traits("Mytilus edulis"), timeout = 90)
+  skip_if(is.null(result), "WoRMS lookup for Mytilus edulis timed out")
+  expect_true(result$success)
+  expect_gte(result$traits$max_length_cm, 10)
+  expect_identical(result$traits$size_unit_source, "child")
+})
+
+test_that("WoRMS still reports Copepoda at class rank (live drift check for the taxon rules)", {
+  # TRAIT_VOCAB's copepod rules match `class`; WoRMS has placed Copepoda as a
+  # subclass of Hexanauplia in the past. If this fails, the rules need a
+  # vocabulary change (a subclass rank), not a private regex.
+  skip_if_no_live_tests()
+  skip_if_offline("www.marinespecies.org")
+  skip_if_no_package("worrms")
+
+  result <- with_timeout(lookup_worms_traits("Acartia clausi"), timeout = 90)
+  skip_if(is.null(result), "WoRMS lookup for Acartia clausi timed out")
+  expect_true(result$success)
+  expect_identical(result$traits$class, "Copepoda")
+})
+
 test_that("WoRMS handles non-existent species gracefully (live)", {
   skip_if_no_live_tests()
   skip_if_offline("www.marinespecies.org")
@@ -81,6 +107,27 @@ test_that("FishBase returns data for Gadus morhua (live)", {
 
   expect_gt(result$traits$max_length_cm, 50)
   expect_lt(result$traits$max_length_cm, 250)
+})
+
+test_that("FishBase cod weight is in grams (live, F78)", {
+  skip_if_no_live_tests()
+  skip_if_no_package("rfishbase")
+
+  result <- with_timeout(lookup_fishbase_traits("Gadus morhua", timeout = 90), timeout = 120)
+  skip_if(is.null(result) || is.null(result$traits$max_weight_g),
+          "FishBase returned no weight for Gadus morhua (timeout or no data)")
+  expect_lt(result$traits$max_weight_g, 1e6)
+  expect_gt(result$traits$max_weight_g, 1e4)
+})
+
+test_that("FishBase resolves Pollachius virens as itself, not 'Pollachius viren' (live, F11)", {
+  skip_if_no_live_tests()
+  skip_if_no_package("rfishbase")
+
+  result <- with_timeout(resolve_fishbase_name("Pollachius virens"), timeout = 120)
+  skip_if(is.null(result), "FishBase name resolution timed out")
+  expect_identical(result$valid_name, "Pollachius virens")
+  expect_identical(result$match_confidence, "high")
 })
 
 test_that("FishBase returns data for Clupea harengus (live)", {

@@ -139,6 +139,23 @@ safe_get <- function(data, key, default = NULL) {
   if (is_valid_value(value)) value else default
 }
 
+#' First value of a lookup field as a character scalar
+#'
+#' A taxonomic rank that a database does not report comes back as
+#' `character(0)` (e.g. a WoRMS classification without a Class rank), and a
+#' zero-length value makes `!is.na(x) && grepl(...)` or `if (x == ...)` error
+#' (F33). Normalise every such field once, where it is read.
+#'
+#' @param x Any value: NULL, a vector, a length-1 list.
+#' @return `NA_character_` for NULL, zero-length, NA or "" input; otherwise
+#'   the first element as character.
+#' @export
+.scalar_chr <- function(x) {
+  if (length(x) == 0L) return(NA_character_)
+  v <- as.character(unlist(x))[1]
+  if (is.na(v) || !nzchar(v)) NA_character_ else v
+}
+
 #' Coalesce Multiple Values
 #'
 #' Returns the first non-NULL, non-NA value from the arguments.

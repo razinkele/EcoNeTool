@@ -714,20 +714,22 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
             detail = paste(result_detail_lines[!sapply(result_detail_lines, is.null)], collapse = "\n")
           )
 
-          # Use API result if available and confident
-          if (!is.na(api_result$functional_group) && api_result$confidence %in% c("high", "medium")) {
-            final_fg <- api_result$functional_group
-          } else {
-            final_fg <- pattern_hint
-          }
+          # Use the API result if confident; a "medium" one only replaces the
+          # generic "Fish" fallback or agrees with the name hint (I1). A kept
+          # hint is reported as "Pattern matching", not as the rejected API row.
+          report_row <- classification_report_fields(api_result, pattern_hint)
 
-          # Store result (including body mass from FishBase)
+          # Store result (including body mass from FishBase). body_mass_g is
+          # kept only when the API's own group was actually selected above -
+          # an ambiguous, rejected match describes a different species, so
+          # its body mass must not be stored either (see
+          # classification_body_mass_g()).
           classification_results[[i]] <- list(
             species = sp,
-            database_source = if(!is.na(api_result$source)) api_result$source else "Pattern matching",
-            confidence = api_result$confidence,
-            functional_group = final_fg,
-            body_mass_g = if(!is.na(api_result$body_mass_g)) api_result$body_mass_g else NA,
+            database_source = report_row$database_source,
+            confidence = report_row$confidence,
+            functional_group = report_row$functional_group,
+            body_mass_g = classification_body_mass_g(api_result, report_row),
             trophic_level = if(!is.na(api_result$trophic_level)) api_result$trophic_level else NA,
             habitat = if(!is.na(api_result$habitat)) api_result$habitat else NA
           )

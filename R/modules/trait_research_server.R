@@ -22,6 +22,59 @@
   if (length(aid) == 1 && !is.na(aid) && aid > 0) aid else NA_real_
 }
 
+#' Which rows of a trait-results frame are failed lookups
+#'
+#' lookup_species_traits_safely() marks a failed lookup with a non-NA
+#' `error` column and every trait code NA; a frame without an `error`
+#' column at all (e.g. before any lookup ran) has no failed rows.
+#'
+#' @param df Trait-results data.frame (rv$trait_results).
+#' @return Logical vector, length `nrow(df)`.
+#' @keywords internal
+.trait_research_error_mask <- function(df) {
+  if (is.null(df) || !"error" %in% names(df)) return(rep(FALSE, NROW(df)))
+  !is.na(df$error)
+}
+
+#' Complete / partial / no-data / failed counts for the lookup summary
+#'
+#' A failed row (see `.trait_research_error_mask()`) has every trait code
+#' NA, so counting it under both "No data" and "Failed" double-counted it.
+#' Failed rows are excluded from "No data" here; they were already excluded
+#' from "Partial" (an all-NA row was never partial).
+#'
+#' @param results_df Trait-results data.frame.
+#' @return `list(n_complete, n_partial, n_missing, n_failed)`.
+#' @keywords internal
+trait_research_summary_counts <- function(results_df) {
+  trait_cols <- c("MS", "FS", "MB", "EP", "PR")
+  has_error <- .trait_research_error_mask(results_df)
+  all_na <- Reduce(`&`, lapply(trait_cols, function(cn) is.na(results_df[[cn]])))
+  n_complete <- sum(complete.cases(results_df[, trait_cols, drop = FALSE]))
+  n_failed <- sum(has_error)
+  n_missing <- sum(all_na & !has_error)
+  n_partial <- nrow(results_df) - n_complete - sum(all_na)
+  list(n_complete = n_complete, n_partial = n_partial, n_missing = n_missing, n_failed = n_failed)
+}
+
+#' Split a trait-results frame into successful rows to transfer, and a count
+#'
+#' A failed lookup row (see `.trait_research_error_mask()`) carries no trait
+#' data and must not be sent to Food Web Construction.
+#'
+#' @param results_df Trait-results data.frame.
+#' @return `list(data, n_transferred, n_skipped)`. `data` keeps only the
+#'   successful rows (all columns, unfiltered).
+#' @keywords internal
+trait_research_successful_rows <- function(results_df) {
+  has_error <- .trait_research_error_mask(results_df)
+  list(
+    data = results_df[!has_error, , drop = FALSE],
+    n_transferred = sum(!has_error),
+    n_skipped = sum(has_error)
+  )
+}
+
 # =============================================================================
 # TRAIT TABLE RENDERING HELPERS
 # =============================================================================
@@ -404,7 +457,10 @@ trait_research_server <- function(input, output, session, shared_data) {
         # early exit, and all database queries in one pass)
         # Previously this code queried each database individually THEN
         # called lookup_species_traits again — doubling API calls.
-        full_result <- lookup_species_traits(
+        # A species whose lookup throws becomes a warning and an error row;
+        # the rest of the batch continues (F33). The tryCatch around this
+        # loop is only for setup failures.
+        full_result <- lookup_species_traits_safely(
           species,
           biotic_file = biotic_file,
           maredat_file = maredat_file,
@@ -415,6 +471,7 @@ trait_research_server <- function(input, output, session, shared_data) {
         results_list[[i]] <- full_result
         # Build raw_data summary from the orchestrator result
         raw_data <- list(species = species, source = full_result$source)
+        if (!is.null(full_result$error)) raw_data$error <- full_result$error
         raw_list[[species]] <- raw_data
 
         # NOTE: do NOT re-saveRDS() the cache file here. lookup_species_traits()
@@ -460,24 +517,25 @@ trait_research_server <- function(input, output, session, shared_data) {
         choices = results_df$species
       )
 
-      # Summary stats
-      n_complete <- sum(complete.cases(results_df[, c("MS", "FS", "MB", "EP", "PR")]))
-      n_partial <- nrow(results_df) - n_complete -
-        sum(is.na(results_df$MS) & is.na(results_df$FS) &
-            is.na(results_df$MB) & is.na(results_df$EP) & is.na(results_df$PR))
-      n_missing <- sum(is.na(results_df$MS) & is.na(results_df$FS) &
-                       is.na(results_df$MB) & is.na(results_df$EP) & is.na(results_df$PR))
+      # Summary stats (a failed row is excluded from "No data" - see
+      # trait_research_summary_counts())
+      counts <- trait_research_summary_counts(results_df)
+      n_complete <- counts$n_complete
+      n_partial <- counts$n_partial
+      n_missing <- counts$n_missing
+      n_failed <- counts$n_failed
 
       # Console summary
       cat("\n========================================\n")
       cat("LOOKUP COMPLETE\n")
-      cat(sprintf("Complete: %d | Partial: %d | No data: %d\n", n_complete, n_partial, n_missing))
+      cat(sprintf("Complete: %d | Partial: %d | No data: %d | Failed: %d\n",
+                  n_complete, n_partial, n_missing, n_failed))
       cat("========================================\n\n")
 
       showNotification(
-        HTML(sprintf("<b>Trait lookup complete!</b><br>Complete: %d | Partial: %d | No data: %d",
-                     n_complete, n_partial, n_missing)),
-        type = "message",
+        HTML(sprintf("<b>Trait lookup complete!</b><br>Complete: %d | Partial: %d | No data: %d | Failed: %d",
+                     n_complete, n_partial, n_missing, n_failed)),
+        type = if (n_failed > 0) "warning" else "message",
         duration = 8
       )
 
@@ -513,12 +571,30 @@ trait_research_server <- function(input, output, session, shared_data) {
   observeEvent(input$trait_research_use_in_foodweb, {
     req(rv$trait_results)
 
-    # Transfer to shared data for Food Web Construction module
-    shared_data$trait_data <- rv$trait_results[, c("species", "MS", "FS", "MB", "EP", "PR")]
+    # Failed lookup rows (lookup_species_traits_safely()'s error rows) carry
+    # no trait data and must not be transferred (CodeRabbit #2).
+    transfer <- trait_research_successful_rows(rv$trait_results)
 
+    if (transfer$n_transferred == 0) {
+      showNotification(
+        "No species transferred - every trait lookup failed.",
+        type = "warning",
+        duration = 8
+      )
+      return()
+    }
+
+    # Transfer to shared data for Food Web Construction module
+    shared_data$trait_data <- transfer$data[, c("species", "MS", "FS", "MB", "EP", "PR")]
+
+    skipped_note <- if (transfer$n_skipped > 0) {
+      sprintf("<br>%d skipped (failed lookup)", transfer$n_skipped)
+    } else {
+      ""
+    }
     showNotification(
-      HTML(sprintf("<b>%d species transferred to Food Web Construction!</b><br>Navigate to 'Food Web Construction' in the sidebar to continue.",
-                   nrow(rv$trait_results))),
+      HTML(sprintf("<b>%d species transferred to Food Web Construction!</b>%s<br>Navigate to 'Food Web Construction' in the sidebar to continue.",
+                   transfer$n_transferred, skipped_note)),
       type = "message",
       duration = 5
     )
@@ -719,6 +795,8 @@ trait_research_server <- function(input, output, session, shared_data) {
     if ("confidence" %in% names(df)) display_df$confidence <- df$confidence
     if ("imputation_method" %in% names(df)) display_df$imputation_method <- df$imputation_method
     if ("source" %in% names(df)) display_df$sources <- df$source
+    # A species whose lookup failed (F33) shows why; escaped like `sources`.
+    if ("error" %in% names(df)) display_df$error <- df$error
 
     # Confidence columns (keep numeric for color-coding)
     conf_cols <- c("MS_confidence", "FS_confidence", "MB_confidence",

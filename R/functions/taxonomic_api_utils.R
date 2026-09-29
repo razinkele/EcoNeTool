@@ -282,6 +282,150 @@ query_worms <- function(species_name, fuzzy = TRUE, try_vernacular = TRUE) {
   })
 }
 
+#' Singular form of an English common name (FishBase names are singular)
+#'
+#' Only a fallback: resolve_fishbase_name() tries the name as given first, so
+#' a binomial ("Pollachius virens", "Ammodytes") is never cut down (F11).
+#'
+#' @param name Character(1).
+#' @return Character(1), `name` itself when no plural pattern applies.
+#' @export
+singularize_common_name <- function(name) {
+  if (grepl("gobies$", name, ignore.case = TRUE)) {
+    return(sub("gobies$", "goby", name, ignore.case = TRUE))
+  }
+  if (grepl("([^aeiouy])ies$", name, ignore.case = TRUE)) {
+    # herries -> herry, guppies -> guppy
+    return(sub("([^aeiouy])ies$", "\\1y", name, ignore.case = TRUE))
+  }
+  if (grepl("(ss|sh|ch|x|z)es$", name, ignore.case = TRUE)) {
+    # basses -> bass, fishes -> fish
+    return(sub("(ss|sh|ch|x|z)es$", "\\1", name, ignore.case = TRUE))
+  }
+  if (grepl("([aeiou]y)s$", name, ignore.case = TRUE)) {
+    # rays -> ray (keep the 'y')
+    return(sub("s$", "", name))
+  }
+  if (grepl("s$", name, ignore.case = TRUE) && !grepl("(us|is|ss)$", name, ignore.case = TRUE)) {
+    # eels -> eel, cods -> cod, but NOT (nautilus, analysis, bass)
+    return(sub("s$", "", name))
+  }
+  name
+}
+
+#' Does FishBase place a species in a region?
+#'
+#' rfishbase 5 has no `distribution()` (the old region filter called it and
+#' always failed); the FAO areas (`faoareas()$FAO`, e.g. "Atlantic,
+#' Northeast") and ecosystems (`ecosystem()$EcosystemName`, e.g. "Baltic
+#' Sea", "North Sea") carry the region names.
+#'
+#' @param species Scientific name.
+#' @param region Free-text region ("Baltic", "North Sea"), matched as a
+#'   fixed, case-insensitive substring.
+#' @return TRUE / FALSE; a failed query warns and counts as no match.
+#' @export
+fishbase_species_in_region <- function(species, region) {
+  column <- function(fn, col) {
+    rows <- tryCatch(
+      getExportedValue("rfishbase", fn)(species),
+      error = function(e) {
+        warning(sprintf("[fishbase] %s() failed for '%s': %s", fn, species, conditionMessage(e)),
+                call. = FALSE)
+        NULL
+      }
+    )
+    if (NROW(rows) == 0 || !col %in% names(rows)) character() else as.character(rows[[col]])
+  }
+  places <- tolower(c(column("faoareas", "FAO"), column("ecosystem", "EcosystemName")))
+  any(grepl(tolower(region), places, fixed = TRUE))
+}
+
+#' Resolve a species or common name to one FishBase species (F10, F11)
+#'
+#' Lookup order (spec C2.7): the name as given, first as a scientific name
+#' (`rfishbase::validate_names`), then as a common name; only if both find
+#' nothing, the singular form, in the same order. A scientific-name hit is
+#' "high". For a common name (spec C2.6), `common_to_sci()` matches
+#' substrings, so rows whose ComName equals the query (case-insensitive) are
+#' the candidates when there are any, else all rows; candidates are distinct
+#' species:
+#' - one species: "high";
+#' - several, exactly one of them in `geographic_region`: "medium";
+#' - otherwise the first by `Species` sort order: "low", with a warning.
+#' At most `max_region_checks` candidates are checked against the region
+#' (a `faoareas()` and an `ecosystem()` query each); a broad name ("cod": 286 species) is
+#' "low" without querying them all.
+#'
+#' @param species_name Character(1).
+#' @param geographic_region Character(1) or NULL.
+#' @param update_progress Function(msg) for progress lines.
+#' @param max_region_checks Integer, cap on candidates checked against the region.
+#' @return NULL, or `list(valid_name, match_confidence)`.
+#' @export
+resolve_fishbase_name <- function(species_name, geographic_region = NULL,
+                                  update_progress = function(msg) invisible(NULL),
+                                  max_region_checks = 25L) {
+  region <- .scalar_chr(geographic_region)
+
+  from_common_name <- function(name) {
+    rows <- tryCatch(
+      rfishbase::common_to_sci(name, Language = "English"),
+      error = function(e) {
+        warning(sprintf("[fishbase] common_to_sci failed for '%s': %s", name, conditionMessage(e)),
+                call. = FALSE)
+        NULL
+      }
+    )
+    if (NROW(rows) == 0) return(NULL)
+    exact <- rows[tolower(trimws(rows$ComName)) == tolower(trimws(name)), , drop = FALSE]
+    candidates <- if (nrow(exact) > 0) exact else rows
+    species <- sort(unique(as.character(candidates$Species)))
+    species <- species[!is.na(species) & nzchar(species)]
+    if (length(species) == 0) return(NULL)
+    if (length(species) == 1) {
+      update_progress(sprintf("      → FishBase: Common name '%s' → '%s'", name, species))
+      return(list(valid_name = species, match_confidence = "high"))
+    }
+    update_progress(sprintf("      → FishBase: '%s' matches %d species", name, length(species)))
+    if (!is.na(region) && length(species) <= max_region_checks) {
+      in_region <- character()
+      for (sp in species) {
+        if (fishbase_species_in_region(sp, region)) in_region <- c(in_region, sp)
+        if (length(in_region) > 1) break
+      }
+      if (length(in_region) == 1) {
+        update_progress(sprintf("      ✓ FishBase: '%s' is the only candidate in %s", in_region, region))
+        return(list(valid_name = in_region, match_confidence = "medium"))
+      }
+    }
+    warning(sprintf("[fishbase] '%s' ambiguous: %d candidates", name, length(species)), call. = FALSE)
+    list(valid_name = species[1], match_confidence = "low")
+  }
+
+  for (name in unique(c(species_name, singularize_common_name(species_name)))) {
+    if (!identical(name, species_name)) {
+      update_progress(sprintf("      → FishBase: Singularized '%s' → '%s'", species_name, name))
+    }
+    sci <- tryCatch(
+      suppressWarnings(rfishbase::validate_names(name)),
+      error = function(e) {
+        warning(sprintf("[fishbase] validate_names failed for '%s': %s", name, conditionMessage(e)),
+                call. = FALSE)
+        NULL
+      }
+    )
+    sci <- as.character(sci)[!is.na(sci)]
+    if (length(sci) > 0) {
+      update_progress(sprintf("      → FishBase: Validated as scientific name '%s'", sci[1]))
+      return(list(valid_name = sci[1], match_confidence = "high"))
+    }
+    hit <- from_common_name(name)
+    if (!is.null(hit)) return(hit)
+  }
+  NULL
+}
+
 #' Query FishBase API for Fish Species Data
 #'
 #' @param species_name Character, species name to query
@@ -319,138 +463,15 @@ query_fishbase <- function(species_name, geographic_region = NULL, progress_call
   }
 
   tryCatch({
-    # Singularize common plural forms (FishBase uses singular common names)
-    singular_name <- species_name
-
-    # Handle common fish plural patterns
-    if (grepl("gobies$", species_name, ignore.case = TRUE)) {
-      singular_name <- sub("gobies$", "goby", species_name, ignore.case = TRUE)
-    } else if (grepl("([^aeiouy])ies$", species_name, ignore.case = TRUE)) {
-      # herries → herry, guppies → guppy
-      singular_name <- sub("([^aeiouy])ies$", "\\1y", species_name, ignore.case = TRUE)
-    } else if (grepl("(ss|sh|ch|x|z)es$", species_name, ignore.case = TRUE)) {
-      # basses → bass, fishes → fish
-      singular_name <- sub("(ss|sh|ch|x|z)es$", "\\1", species_name, ignore.case = TRUE)
-    } else if (grepl("([aeiou]y)s$", species_name, ignore.case = TRUE)) {
-      # rays → ray (keep the 'y')
-      singular_name <- sub("s$", "", species_name)
-    } else if (grepl("s$", species_name, ignore.case = TRUE) &&
-               !grepl("(us|is|ss)$", species_name, ignore.case = TRUE)) {
-      # eels → eel, cods → cod, but NOT (nautilus, analysis, bass)
-      singular_name <- sub("s$", "", species_name)
+    # Name resolution (spec C2.6, C2.7): the name as given first, as a
+    # scientific then a common name; the singular form only as a fallback;
+    # graded confidence for common-name matches.
+    resolved <- resolve_fishbase_name(species_name, geographic_region, update_progress)
+    if (is.null(resolved)) {
+      update_progress(sprintf("      ✗ FishBase: '%s' not found", species_name))
+      return(NULL)
     }
-
-    if (singular_name != species_name) {
-      update_progress(sprintf("      → FishBase: Singularized '%s' → '%s'", species_name, singular_name))
-    }
-
-    update_progress(sprintf("      → FishBase: Searching for '%s'...", singular_name))
-
-    validated <- NULL
-
-    # STRATEGY 1: Try as COMMON NAME first (most ECOPATH models use common names)
-    update_progress("      → FishBase: Querying common name database...")
-    common_result <- tryCatch({
-      rfishbase::common_to_sci(singular_name, Language = "English")
-    }, error = function(e) {
-      update_progress(sprintf("      ⚠ FishBase: common_to_sci error: %s", conditionMessage(e)))
-      NULL
-    })
-
-    if (!is.null(common_result) && nrow(common_result) > 0) {
-      # If multiple matches, try geographic filtering
-      if (nrow(common_result) > 1) {
-        update_progress(sprintf("      → FishBase: Found %d matches", nrow(common_result)))
-
-        if (!is.null(geographic_region) && geographic_region != "") {
-          update_progress(sprintf("      → FishBase: Filtering by region '%s'...", geographic_region))
-
-          # Try to filter by geographic distribution
-          geographic_match <- NULL
-          region_lower <- tolower(geographic_region)
-
-          for (i in 1:nrow(common_result)) {
-            species_to_check <- common_result$Species[i]
-
-            # Query distribution data. warning() so a silent fallback to
-            # "no region match" can be diagnosed; pre-PR6 the geographic
-            # filter was bypassed invisibly when rfishbase failed.
-            dist_data <- tryCatch({
-              rfishbase::distribution(species_to_check)
-            }, error = function(e) {
-              warning(sprintf(
-                "[taxonomic_api_utils] rfishbase::distribution failed for '%s': %s",
-                species_to_check, conditionMessage(e)), call. = FALSE)
-              NULL
-            })
-
-            if (!is.null(dist_data) && nrow(dist_data) > 0) {
-              # Check if species found in the specified region
-              # FishBase distribution has: C_Code (country), FAOAreas, Ecosystem
-              countries <- if ("C_Code" %in% names(dist_data)) {
-                paste(tolower(dist_data$C_Code), collapse = " ")
-              } else ""
-
-              fao_areas <- if ("FAOAreas" %in% names(dist_data)) {
-                paste(tolower(dist_data$FAOAreas), collapse = " ")
-              } else ""
-
-              ecosystems <- if ("Ecosystem" %in% names(dist_data)) {
-                paste(tolower(dist_data$Ecosystem), collapse = " ")
-              } else ""
-
-              # Check if region matches any of the distribution data
-              # Common region keywords: Baltic, Mediterranean, Atlantic, Pacific, North Sea, etc.
-              if (grepl(region_lower, countries) ||
-                  grepl(region_lower, fao_areas) ||
-                  grepl(region_lower, ecosystems)) {
-                geographic_match <- i
-                update_progress(sprintf("      ✓ FishBase: Geographic match found - '%s' occurs in %s",
-                                        species_to_check, geographic_region))
-                break
-              }
-            }
-          }
-
-          if (!is.null(geographic_match)) {
-            validated <- common_result$Species[geographic_match]
-            update_progress(sprintf("      → FishBase: Using geographically-filtered match: '%s' (SpecCode: %s)",
-                                    validated, common_result$SpecCode[geographic_match]))
-          } else {
-            validated <- common_result$Species[1]
-            update_progress(sprintf("      ⚠ FishBase: No geographic match found, using first: '%s' (SpecCode: %s)",
-                                    validated, common_result$SpecCode[1]))
-          }
-        } else {
-          # No geographic region specified - use first match
-          validated <- common_result$Species[1]
-          update_progress(sprintf("      ⚠ FishBase: Multiple matches (%d), using first: '%s' (SpecCode: %s)",
-                                  nrow(common_result), validated, common_result$SpecCode[1]))
-        }
-      } else {
-        # Single match
-        validated <- common_result$Species[1]
-        update_progress(sprintf("      → FishBase: Common name '%s' → '%s' (SpecCode: %s)",
-                                singular_name, validated, common_result$SpecCode[1]))
-      }
-    }
-
-    # STRATEGY 2: If common name failed, try as SCIENTIFIC NAME
-    if (is.null(validated)) {
-      update_progress("      → FishBase: Trying scientific name validation...")
-      validated <- rfishbase::validate_names(singular_name)
-
-      if (!is.null(validated) && length(validated) > 0 && !is.na(validated[1])) {
-        validated <- validated[1]
-        update_progress(sprintf("      → FishBase: Validated as scientific name '%s'", validated))
-      } else {
-        update_progress(sprintf("      ✗ FishBase: '%s' not found", singular_name))
-        return(NULL)
-      }
-    }
-
-    # Use validated name for queries
-    valid_name <- validated
+    valid_name <- resolved$valid_name
 
     # Get taxonomic hierarchy from load_taxa()
     update_progress("      → FishBase: Loading taxonomic data...")
@@ -632,7 +653,8 @@ query_fishbase <- function(species_name, geographic_region = NULL, progress_call
       habitat = habitat,
       min_depth_m = min_depth,
       max_depth_m = max_depth,
-      functional_group = "Fish"
+      functional_group = "Fish",
+      match_confidence = resolved$match_confidence  # how sure the name match is (F10)
     )
 
     update_progress(sprintf("      ✓ FishBase: SUCCESS - %s (%s, %s)",
@@ -642,6 +664,8 @@ query_fishbase <- function(species_name, geographic_region = NULL, progress_call
 
     return(result)
   }, error = function(e) {
+    warning(sprintf("[fishbase] query failed for '%s': %s", species_name, conditionMessage(e)),
+            call. = FALSE)
     update_progress(sprintf("      ✗ FishBase query error: %s", conditionMessage(e)))
     return(NULL)
   })
@@ -977,7 +1001,12 @@ classify_species_api <- function(species_name, functional_group_hint = NA, geogr
   # namespaces this API-classification cache away from the orchestrator's trait
   # cache, which writes `<name>.rds` in the same dir with an incompatible
   # `list(traits=...)` shape - sharing the filename corrupted both (#4).
-  cache_file <- file.path(cache_dir, paste0(gsub("[^a-zA-Z0-9]", "_", clean_name), ".classify.rds"))
+  # The region is part of the key: it can pick a different FishBase species
+  # for the same common name (F10).
+  region <- .scalar_chr(geographic_region)
+  region_key <- if (is.na(region)) "any" else gsub("[^a-zA-Z0-9]", "_", region)
+  cache_file <- file.path(cache_dir, paste0(gsub("[^a-zA-Z0-9]", "_", clean_name), "__", region_key,
+                                            ".classify.rds"))
   if (use_cache && file.exists(cache_file)) {
     cached <- readRDS(cache_file)
     # Check if cache is less than 30 days old
@@ -1030,7 +1059,8 @@ classify_species_api <- function(species_name, functional_group_hint = NA, geogr
       result$min_depth_m <- fishbase_result$min_depth_m
       result$max_depth_m <- fishbase_result$max_depth_m
       result$source <- "FishBase"
-      result$confidence <- "high"
+      # "high" only for a scientific name or a unique common name (F10)
+      result$confidence <- fishbase_result$match_confidence %||% "high"
       result$taxonomy <- fishbase_result
 
       # Cache result
@@ -1039,9 +1069,10 @@ classify_species_api <- function(species_name, functional_group_hint = NA, geogr
         message(sprintf("      → Cached result for '%s'", clean_name))
       }
 
-      message(sprintf("    └─ ✓ SUCCESS: FishBase → %s (habitat: %s, confidence: high)",
+      message(sprintf("    └─ ✓ SUCCESS: FishBase → %s (habitat: %s, confidence: %s)",
                       result$functional_group,
-                      ifelse(is.na(result$habitat), "NA", result$habitat)))
+                      ifelse(is.na(result$habitat), "NA", result$habitat),
+                      result$confidence))
       return(result)
     }
   }
@@ -1049,8 +1080,13 @@ classify_species_api <- function(species_name, functional_group_hint = NA, geogr
   # Try WoRMS (comprehensive marine taxonomy)
   worms_result <- query_worms(clean_name)
   if (!is.null(worms_result)) {
-    # Classify based on WoRMS taxonomic class
+    # Classify based on WoRMS taxonomic class. A WoRMS-derived group is
+    # "medium" (F9; "high" is kept for curated sources). The overrides below
+    # and classify_by_taxonomy()'s no-match "Fish" default are pattern
+    # guesses, not WoRMS evidence, so they stay "low".
     worms_classification <- classify_by_taxonomy(worms_result)
+    result$confidence <- if (isTRUE(attr(worms_classification, "default"))) "low" else confidence_to_label(0.66)
+    worms_classification <- as.vector(worms_classification)
 
     # CRITICAL: Sanity check against common name to catch mismatches
     # WoRMS may return wrong species if name is ambiguous
@@ -1084,7 +1120,6 @@ classify_species_api <- function(species_name, functional_group_hint = NA, geogr
 
     result$functional_group <- worms_classification
     result$source <- "WoRMS"
-    if (is.null(result$confidence)) result$confidence <- "medium"
     result$taxonomy <- worms_result
 
     # Note: OBIS doesn't provide aggregated depth/habitat data
@@ -1115,7 +1150,9 @@ classify_species_api <- function(species_name, functional_group_hint = NA, geogr
 #' Classify Species by Taxonomic Class
 #'
 #' @param taxonomy List with taxonomic information
-#' @return Character, functional group
+#' @return Character, functional group. The "Fish" returned when no class
+#'   matched (or there is no class) carries `attr(, "default") = TRUE`, so
+#'   callers can tell a guess from a taxonomic match.
 #'
 #' @details
 #' Maps taxonomic class to functional groups:
@@ -1137,7 +1174,7 @@ classify_by_taxonomy <- function(taxonomy) {
                       ifelse(is.null(taxonomy$family), "NA", taxonomy$family)))
     }
     message(sprintf("      → classify_by_taxonomy: Defaulting to Fish (no class)"))
-    return("Fish")  # Default
+    return(structure("Fish", default = TRUE))  # a guess, not a taxonomic match (F9)
   }
 
   class_lower <- tolower(taxonomy$class)
@@ -1147,7 +1184,9 @@ classify_by_taxonomy <- function(taxonomy) {
                   ifelse(is.null(taxonomy$order), "NA", taxonomy$order)))
 
   # Fish classes
-  if (grepl("actinopterygii|chondrichthyes|myxini|agnatha|osteichthyes|elasmobranchii", class_lower)) {
+  # WoRMS now files ray-finned fishes under Teleostei / Actinopteri (M2).
+  if (grepl("actinopterygii|actinopteri|teleostei|chondrichthyes|myxini|agnatha|osteichthyes|elasmobranchii",
+            class_lower)) {
     message(sprintf("      → classify_by_taxonomy: Matched Fish pattern"))
     return("Fish")
   }
@@ -1195,7 +1234,77 @@ classify_by_taxonomy <- function(taxonomy) {
   message(sprintf("      ⚠ WARNING: No pattern matched for class '%s' (phylum: %s) - defaulting to Fish",
                   taxonomy$class,
                   ifelse(is.null(taxonomy$phylum), "NA", taxonomy$phylum)))
-  return("Fish")
+  return(structure("Fish", default = TRUE))  # a guess, not a taxonomic match (F9)
+}
+
+#' Choose between an API functional group and the name-pattern hint
+#'
+#' A "high" API group always wins. A "medium" group (a WoRMS class mapping,
+#' or a region-unique FishBase common name) wins only when the hint is the
+#' generic fallback or agrees with it: classify_by_taxonomy() is coarse
+#' (Malacostraca -> Benthos), so a specific hint such as "Mysids" ->
+#' Zooplankton must not be replaced by it. Anything else keeps the hint.
+#'
+#' @param api_group Character, classify_species_api()'s functional_group.
+#' @param api_conf Character, its confidence label.
+#' @param hint Character, the name-pattern hint.
+#' @param hint_is_fallback Logical. assign_functional_group() returns a plain
+#'   "Fish" for its default (no marker survives the vectorised EwE path), so
+#'   by default a "Fish" or missing hint counts as the fallback.
+#' @return Character, the functional group to use.
+prefer_specific_hint <- function(api_group, api_conf, hint,
+                                 hint_is_fallback = is.na(.scalar_chr(hint)) || identical(.scalar_chr(hint), "Fish")) {
+  api_group <- .scalar_chr(api_group)
+  api_conf <- .scalar_chr(api_conf)
+  hint <- .scalar_chr(hint)
+  if (is.na(api_group) || is.na(api_conf)) return(hint)
+  if (api_conf == "high") return(api_group)
+  if (api_conf == "medium" && (isTRUE(hint_is_fallback) || identical(api_group, hint))) return(api_group)
+  hint
+}
+
+#' Functional group, source and confidence for one taxonomic report row
+#'
+#' When prefer_specific_hint() keeps the name hint, the row names the
+#' name-pattern path ("Pattern matching", confidence "none") - the labels the
+#' Ecopath import already uses when no database matched - instead of the
+#' rejected API source and confidence.
+#'
+#' @param api_result List from classify_species_api().
+#' @param hint Character, the name-pattern hint.
+#' @return `list(functional_group, database_source, confidence)`.
+classification_report_fields <- function(api_result, hint) {
+  api_group <- .scalar_chr(api_result$functional_group)
+  api_conf <- .scalar_chr(api_result$confidence)
+  chosen <- prefer_specific_hint(api_group, api_conf, hint)
+  from_api <- isTRUE(api_conf %in% c("high", "medium")) && identical(chosen, api_group)
+  list(
+    functional_group = chosen,
+    database_source = if (from_api) .scalar_chr(api_result$source) else "Pattern matching",
+    confidence = if (from_api) api_conf else "none"
+  )
+}
+
+#' Body mass to store for one taxonomic report row
+#'
+#' `classify_species_api()` can return an ambiguous, low-confidence
+#' `functional_group` that `classification_report_fields()` rejects in favour
+#' of the name hint - but the FishBase `body_mass_g` in that same
+#' `api_result` describes whatever species FishBase actually matched, which
+#' may not be the hinted one. Store it only when the API's own group was
+#' actually kept (`report_row$database_source` is not the "Pattern matching"
+#' fallback); otherwise the mass is discarded along with the rejected group.
+#'
+#' @param api_result List from classify_species_api(); reads `body_mass_g`.
+#' @param report_row List from classification_report_fields() for the same
+#'   `api_result` / hint pair; reads `database_source`.
+#' @return Numeric body mass in grams, or NA_real_.
+#' @export
+classification_body_mass_g <- function(api_result, report_row) {
+  if (identical(report_row$database_source, "Pattern matching")) return(NA_real_)
+  mass <- api_result$body_mass_g
+  if (is.null(mass) || length(mass) != 1 || is.na(mass)) return(NA_real_)
+  as.numeric(mass)
 }
 
 #' Enhanced Species Classification with API Fallback
@@ -1227,13 +1336,10 @@ assign_functional_group_enhanced <- function(species_name, use_api = FALSE, pb =
   message(sprintf("    → Checking taxonomic databases for: %s", species_name))
   api_result <- classify_species_api(species_name)
 
-  if (!is.na(api_result$functional_group) && api_result$confidence %in% c("high", "medium")) {
-    message(sprintf("    ✓ API classification: %s → %s (source: %s, confidence: %s)",
-                    species_name, api_result$functional_group, api_result$source, api_result$confidence))
-    return(api_result$functional_group)
-  }
-
-  # Fall back to pattern result
-  message(sprintf("    ✓ Using pattern match: %s → %s (API uncertain)", species_name, pattern_result))
-  return(pattern_result)
+  # pattern_result is always the "Fish" fallback here (see the early return),
+  # so the helper only keeps both call sites on one rule (I1).
+  chosen <- prefer_specific_hint(api_result$functional_group, api_result$confidence, pattern_result)
+  message(sprintf("    ✓ Classification: %s → %s (API: %s, source: %s, confidence: %s)",
+                  species_name, chosen, api_result$functional_group, api_result$source, api_result$confidence))
+  chosen
 }

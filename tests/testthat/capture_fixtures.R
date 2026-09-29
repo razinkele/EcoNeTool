@@ -5,8 +5,11 @@
 # Run this ONCE with internet access to capture real API responses as RDS files.
 # These fixtures are then used by unit tests for fast, offline testing.
 #
-# Usage:
-#   Rscript tests/testthat/capture_fixtures.R
+# Usage (it calls live APIs, so only with RUN_LIVE_TESTS=true):
+#   RUN_LIVE_TESTS=true Rscript tests/testthat/capture_fixtures.R
+#   RUN_LIVE_TESTS=true Rscript tests/testthat/capture_fixtures.R worms fishbase
+# With arguments, only the named sections (ecobase, worms, fishbase,
+# sealifebase, traits) are captured; the other fixtures stay untouched.
 #
 # Run from the EcoNeTool project root directory.
 # =============================================================================
@@ -17,6 +20,21 @@ cat("=== Fixture Capture Script ===\n\n")
 if (!file.exists("R/functions/ecobase_connection.R")) {
   stop("Please run from the EcoNeTool root directory")
 }
+
+if (!identical(Sys.getenv("RUN_LIVE_TESTS"), "true")) {
+  stop("capture_fixtures.R calls live APIs; run it with RUN_LIVE_TESTS=true")
+}
+
+all_sections <- c("ecobase", "worms", "fishbase", "sealifebase", "traits")
+sections <- tolower(commandArgs(trailingOnly = TRUE))
+if (length(sections) == 0) sections <- all_sections
+unknown <- setdiff(sections, all_sections)
+if (length(unknown) > 0) {
+  stop("Unknown section(s): ", paste(unknown, collapse = ", "),
+       ". Choose from: ", paste(all_sections, collapse = ", "))
+}
+want <- function(section) section %in% sections
+cat("Sections:", paste(sections, collapse = ", "), "\n")
 
 # Source dependencies
 source("R/functions/validation_utils.R")
@@ -51,7 +69,7 @@ save_fix <- function(obj, name) {
 # =========================================================================
 cat("\n[1/5] Capturing EcoBase fixtures...\n")
 
-tryCatch({
+if (want("ecobase")) tryCatch({
   models <- get_ecobase_models()
   save_fix(models, "ecobase_models")
 
@@ -83,12 +101,13 @@ tryCatch({
 # =========================================================================
 cat("\n[2/5] Capturing WoRMS fixtures...\n")
 
-test_species_worms <- c(
+test_species_worms <- if (want("worms")) c(
   "Gadus morhua",      # Atlantic cod (fish)
   "Clupea harengus",   # Herring (fish)
   "Mytilus edulis",     # Blue mussel (invertebrate)
-  "Carcinus maenas"    # Shore crab (invertebrate)
-)
+  "Carcinus maenas",   # Shore crab (invertebrate)
+  "Phoca vitulina"     # Harbour seal (cm lengths next to kg weights)
+) else character()
 
 for (sp in test_species_worms) {
   tryCatch({
@@ -114,7 +133,7 @@ for (sp in test_species_worms) {
 # boundary.
 cat("\n[3/5] Capturing FishBase fixtures...\n")
 
-test_species_fishbase <- c("Gadus morhua", "Clupea harengus")
+test_species_fishbase <- if (want("fishbase")) c("Gadus morhua", "Clupea harengus") else character()
 fishbase_timeout <- 90  # seconds; FishBase CDN is occasionally slow
 
 for (sp in test_species_fishbase) {
@@ -135,7 +154,7 @@ for (sp in test_species_fishbase) {
 # halt risk.
 cat("\n[4/5] Capturing SeaLifeBase fixtures...\n")
 
-test_species_slb <- c("Mytilus edulis", "Carcinus maenas")
+test_species_slb <- if (want("sealifebase")) c("Mytilus edulis", "Carcinus maenas") else character()
 sealifebase_timeout <- 90
 
 for (sp in test_species_slb) {
@@ -153,11 +172,11 @@ for (sp in test_species_slb) {
 # =========================================================================
 cat("\n[5/5] Capturing full trait lookup fixtures...\n")
 
-test_species_traits <- c(
+test_species_traits <- if (want("traits")) c(
   "Gadus morhua",
   "Mytilus edulis",
   "Clupea harengus"
-)
+) else character()
 
 for (sp in test_species_traits) {
   tryCatch({

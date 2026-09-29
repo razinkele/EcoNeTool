@@ -1823,11 +1823,41 @@ combine_trait_results <- function(results_list) {
   results_df
 }
 
+#' Look up one species without letting its failure abort a batch (F33)
+#'
+#' Runs lookup_species_traits(). An error (one taxon with an unexpected
+#' database response used to abort a whole Trait Research run) becomes a
+#' warning and a row with every trait code NA and the message in `error`.
+#'
+#' @param species_name Scientific name.
+#' @param ... Passed to lookup_species_traits().
+#' @return The lookup's data frame, or the one-row error frame.
+#' @export
+lookup_species_traits_safely <- function(species_name, ...) {
+  tryCatch(
+    lookup_species_traits(species_name, ...),
+    error = function(e) {
+      msg <- conditionMessage(e)
+      warning(sprintf("[trait_research] lookup failed for '%s': %s", species_name, msg), call. = FALSE)
+      data.frame(
+        species = species_name,
+        MS = NA_character_, FS = NA_character_, MB = NA_character_,
+        EP = NA_character_, PR = NA_character_,
+        RS = NA_character_, TT = NA_character_, ST = NA_character_,
+        source = NA_character_, confidence = "none",
+        error = msg,
+        stringsAsFactors = FALSE
+      )
+    }
+  )
+}
+
 #' Batch lookup traits for multiple species
 #'
 #' @param species_list Character vector of species names
 #' @param ... Additional arguments passed to lookup_species_traits
-#' @return Data frame with all species traits
+#' @return Data frame with all species traits (a failed species is a row with
+#'   NA codes and its `error`)
 #' @export
 batch_lookup_traits <- function(species_list, ...) {
 
@@ -1836,7 +1866,7 @@ batch_lookup_traits <- function(species_list, ...) {
   for (i in seq_along(species_list)) {
     message("\n[", i, "/", length(species_list), "] Processing ", species_list[i])
 
-    result <- lookup_species_traits(species_list[i], ...)
+    result <- lookup_species_traits_safely(species_list[i], ...)
     results_list[[i]] <- result
 
     # Rate limiting handled by api_rate_limiter.R
