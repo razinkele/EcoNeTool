@@ -584,3 +584,20 @@ test_that("a WoRMS tibble without phylum or class raises no tibble warning (F79)
   expect_false(isTRUE(res$success))
   expect_null(res$error)
 })
+
+# ---------------------------------------------------------------------------
+# F-b - mixed-unit WoRMS sizes: the maximum after conversion wins
+# ---------------------------------------------------------------------------
+
+test_that("mixed-unit WoRMS sizes keep the maximum after conversion, with its source (F32)", {
+  # The smaller row comes first, so a first-row-wins rule would give 20.
+  size <- worms_body_size_cm(worms_attr(rep("Body size", 2), c(20, 500), c("cm", "mm")),
+                             "Bivalvia", "Mytilus edulis")
+  expect_equal(size$max_length_cm, 50)
+  expect_identical(size$size_unit_source, "child")
+
+  expect_warning(size <- worms_body_size_cm(worms_attr(rep("Body size", 2), c(20, 300), c("cm", NA)),
+                                            "Bivalvia", "Mytilus edulis"), "no unit")
+  expect_equal(size$max_length_cm, 30)
+  expect_identical(size$size_unit_source, "class_heuristic")
+})
