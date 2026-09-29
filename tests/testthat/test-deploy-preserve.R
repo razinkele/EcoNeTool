@@ -340,6 +340,29 @@ test_that("deploy-windows.ps1 leaves data/ out unless -IncludeData is given", {
               info = paste(data_lines, collapse = " | "))
 })
 
+# The in-app Rebuild Database button and console rebuilds run
+# scripts/initialization/build_offline_trait_db.R on the server. Until 1.6.1
+# the deploy shipped neither the script nor the tracked trait inputs it reads,
+# so laguna kept a stale March build script (no B3 lock, no C-5 vocab stamp)
+# and built without BIOTIC/MAREDAT/PTDB. Derive the inputs from the script so a
+# new source cannot silently go missing again.
+test_that("deploy-windows.ps1 ships the offline-DB build script and every data file it reads", {
+  items <- script_array(code_lines(deploy_file("deploy-windows.ps1")), "DEPLOY_ITEMS")
+  expect_true("scripts/initialization/build_offline_trait_db.R" %in% items)
+  build <- readLines(deploy_file("scripts/initialization/build_offline_trait_db.R"), warn = FALSE)
+  calls <- unlist(regmatches(build, gregexpr('file\\.path\\(project_root, "data"(, "[^"]+")+\\)', build)))
+  parts <- lapply(regmatches(calls, gregexpr('"[^"]+"', calls)), function(p) gsub('"', "", p, fixed = TRUE))
+  inputs <- unique(vapply(parts, function(p) paste(p, collapse = "/"), character(1)))
+  expect_gt(length(inputs), 5L)
+  # data/external_traits/*.csv are covered by shipping the directory
+  shipped <- vapply(inputs, function(f) {
+    f %in% items || any(endsWith(items, "/") & startsWith(f, items))
+  }, logical(1))
+  expect_true(all(shipped), info = paste("not shipped:", paste(inputs[!shipped], collapse = ", ")))
+  # never the whole data/ tree (it is ~3 GB and managed on the server)
+  expect_false("data/" %in% items)
+})
+
 test_that("deploy-windows.ps1 Get-FilesToDeploy adds data/ only with -IncludeData", {
   pwsh <- Sys.which("pwsh")
   skip_if(!nzchar(pwsh), "pwsh (PowerShell 7) not on PATH")
