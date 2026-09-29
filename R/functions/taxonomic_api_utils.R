@@ -1263,6 +1263,28 @@ prefer_specific_hint <- function(api_group, api_conf, hint,
   hint
 }
 
+#' Functional group, source and confidence for one taxonomic report row
+#'
+#' When prefer_specific_hint() keeps the name hint, the row names the
+#' name-pattern path ("Pattern matching", confidence "none") - the labels the
+#' Ecopath import already uses when no database matched - instead of the
+#' rejected API source and confidence.
+#'
+#' @param api_result List from classify_species_api().
+#' @param hint Character, the name-pattern hint.
+#' @return `list(functional_group, database_source, confidence)`.
+classification_report_fields <- function(api_result, hint) {
+  api_group <- .scalar_chr(api_result$functional_group)
+  api_conf <- .scalar_chr(api_result$confidence)
+  chosen <- prefer_specific_hint(api_group, api_conf, hint)
+  from_api <- isTRUE(api_conf %in% c("high", "medium")) && identical(chosen, api_group)
+  list(
+    functional_group = chosen,
+    database_source = if (from_api) .scalar_chr(api_result$source) else "Pattern matching",
+    confidence = if (from_api) api_conf else "none"
+  )
+}
+
 #' Enhanced Species Classification with API Fallback
 #'
 #' @param species_name Character, species name

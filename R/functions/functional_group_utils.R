@@ -106,7 +106,8 @@ assign_functional_group <- function(sp_name, pb = NA, indegree = NA, outdegree =
 
   # Check zooplankton (after benthos check)
   # Use ^zoo or \\bzoo to match word boundaries
-  if (grepl("^zoo|\\bzooplankton|mesozoo|copepod|acartia|pseudo|mysid|cladocer|rotifer|calanus|oithona", sp_lower)) {
+  if (grepl("^zoo|\\bzooplankton|mesozoo|copepod|acartia|pseudo|mysid|cladocer|rotifer|calanus|oithona|krill|euphausi",
+            sp_lower)) {
     return("Zooplankton")
   }
 

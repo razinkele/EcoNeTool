@@ -715,15 +715,16 @@ ecopath_import_server <- function(input, output, session, net_reactive, info_rea
           )
 
           # Use the API result if confident; a "medium" one only replaces the
-          # generic "Fish" fallback or agrees with the name hint (I1).
-          final_fg <- prefer_specific_hint(api_result$functional_group, api_result$confidence, pattern_hint)
+          # generic "Fish" fallback or agrees with the name hint (I1). A kept
+          # hint is reported as "Pattern matching", not as the rejected API row.
+          report_row <- classification_report_fields(api_result, pattern_hint)
 
           # Store result (including body mass from FishBase)
           classification_results[[i]] <- list(
             species = sp,
-            database_source = if(!is.na(api_result$source)) api_result$source else "Pattern matching",
-            confidence = api_result$confidence,
-            functional_group = final_fg,
+            database_source = report_row$database_source,
+            confidence = report_row$confidence,
+            functional_group = report_row$functional_group,
             body_mass_g = if(!is.na(api_result$body_mass_g)) api_result$body_mass_g else NA,
             trophic_level = if(!is.na(api_result$trophic_level)) api_result$trophic_level else NA,
             habitat = if(!is.na(api_result$habitat)) api_result$habitat else NA

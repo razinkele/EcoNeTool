@@ -550,7 +550,9 @@ test_that("a low-confidence or missing API group is still rejected (I1d)", {
 
 test_that("the Ecopath import routes its API result through prefer_specific_hint (I1)", {
   src <- readLines(file.path(get_app_root(), "R/modules/ecopath_import_server.R"), warn = FALSE)
-  expect_true(any(grepl("prefer_specific_hint(", src, fixed = TRUE)))
+  # via classification_report_fields(), which calls prefer_specific_hint()
+  expect_true(any(grepl("classification_report_fields(", src, fixed = TRUE)))
+  expect_true(any(grepl("prefer_specific_hint(", deparse(classification_report_fields), fixed = TRUE)))
   expect_false(any(grepl("api_result$confidence %in% c(\"high\", \"medium\")", src, fixed = TRUE)))
 })
 
@@ -600,4 +602,46 @@ test_that("mixed-unit WoRMS sizes keep the maximum after conversion, with its so
                                             "Bivalvia", "Mytilus edulis"), "no unit")
   expect_equal(size$max_length_cm, 30)
   expect_identical(size$size_unit_source, "class_heuristic")
+})
+
+# ---------------------------------------------------------------------------
+# Follow-ups: krill is zooplankton; a kept hint is reported as the source
+# ---------------------------------------------------------------------------
+
+krill_worms <- function(...) {
+  list(aphia_id = 1L, phylum = "Arthropoda", class = "Malacostraca", order = "Euphausiacea")
+}
+
+test_that("krill groups keep the Zooplankton hint over a medium WoRMS Benthos", {
+  for (nm in c("Krill", "Euphausia superba")) {
+    hint <- assign_functional_group(nm)
+    expect_identical(hint, "Zooplankton", info = nm)
+    # FishBase is mocked too: a "Fish" hint (the pre-fix fallback) would query it.
+    api <- with_mocked_function(globalenv(), "query_fishbase", function(...) NULL,
+      with_mocked_function(globalenv(), "query_worms", krill_worms,
+        classify_species_api(nm, functional_group_hint = hint, use_cache = FALSE)))
+    expect_identical(api$functional_group, "Benthos", info = nm)
+    expect_identical(api$confidence, "medium", info = nm)
+    expect_identical(classification_report_fields(api, hint)$functional_group, "Zooplankton", info = nm)
+  }
+})
+
+test_that("a kept hint is reported with the name-pattern source and confidence (Mysids)", {
+  api <- with_mocked_function(globalenv(), "query_worms", mysid_worms,
+    classify_species_api("Mysids", functional_group_hint = "Zooplankton", use_cache = FALSE))
+  row <- classification_report_fields(api, "Zooplankton")
+  expect_identical(row$functional_group, "Zooplankton")
+  expect_identical(row$database_source, "Pattern matching")
+  expect_identical(row$confidence, "none")
+
+  # an accepted API group keeps its own source and confidence
+  row <- classification_report_fields(list(functional_group = "Benthos", confidence = "medium", source = "WoRMS"),
+                                      "Fish")
+  expect_identical(row, list(functional_group = "Benthos", database_source = "WoRMS", confidence = "medium"))
+  # no API result: the pattern path, unchanged
+  row <- classification_report_fields(list(functional_group = NA, confidence = "none", source = NA), "Benthos")
+  expect_identical(row, list(functional_group = "Benthos", database_source = "Pattern matching", confidence = "none"))
+
+  src <- readLines(file.path(get_app_root(), "R/modules/ecopath_import_server.R"), warn = FALSE)
+  expect_true(any(grepl("classification_report_fields(", src, fixed = TRUE)))
 })
