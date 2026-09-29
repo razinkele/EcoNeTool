@@ -291,13 +291,13 @@ load_version_info <- function() {
 
   # Default version info (fallback)
   version_info <- list(
-    VERSION = "1.5.3",
-    VERSION_NAME = "Security and Admin Gating",
-    RELEASE_DATE = "2026-09-28",
+    VERSION = "1.6.0",
+    VERSION_NAME = "Trait Vocabulary",
+    RELEASE_DATE = "2026-09-29",
     STATUS = "stable",
     MAJOR = 1,
-    MINOR = 5,
-    PATCH = 3
+    MINOR = 6,
+    PATCH = 0
   )
 
   # Try to read VERSION file
