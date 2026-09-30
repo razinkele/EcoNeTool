@@ -359,13 +359,17 @@ test_that("format validation summarises SHARK4R::check_fields() issues (F12)", {
   skip_if_not_installed("SHARK4R", "1.2.0")
   source_shark()
   seen <- NULL
-  local_mocked_bindings(check_fields = function(data, datatype, ...) {
+  seen_level <- NULL
+  local_mocked_bindings(check_fields = function(data, datatype, level = "error", ...) {
     seen <<- datatype
+    seen_level <<- level
     tibble::tibble(level = c("error", "error", "warning"), field = c("a", "a", "b"), row = NA_integer_,
                    message = c("Required field a is missing", "Required field a is missing", "b is empty"))
   }, .package = "SHARK4R")
   v <- validate_shark_data(data.frame(x = 1), "Physical and Chemical")
   expect_equal(seen, "PhysicalChemical")
+  # M1: level = "warning" so warning rows exist in the result, not just errors.
+  expect_equal(seen_level, "warning")
   expect_false(v$valid)
   expect_equal(v$n_errors, 2L)
   expect_equal(v$errors, "Required field a is missing")

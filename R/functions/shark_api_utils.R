@@ -472,7 +472,7 @@ validate_shark_data <- function(data_frame, datatype) {
 
   failure <- NULL
   issues <- tryCatch(
-    SHARK4R::check_fields(data_frame, SHARK4R::translate_shark_datatype(datatype), level = "error"),
+    SHARK4R::check_fields(data_frame, SHARK4R::translate_shark_datatype(datatype), level = "warning"),
     error = function(e) {
       failure <<- conditionMessage(e)
       warning(sprintf("[shark] format validation failed: %s", failure), call. = FALSE)
