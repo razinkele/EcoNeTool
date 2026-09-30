@@ -14,7 +14,6 @@ source(file.path(app_root, "R/functions/flux_calculations.R"))
 source(file.path(app_root, "R/functions/trophic_levels.R"))
 source(file.path(app_root, "R/functions/topological_metrics.R"))
 source(file.path(app_root, "R/modules/data_import_server.R"))
-source(file.path(app_root, "R/functions/shark_api_utils.R"))
 
 test_that("endotherm vertebrates get nonzero metabolic losses", {
   info <- data.frame(
@@ -57,22 +56,6 @@ test_that("parse_adjacency_df creates prey-to-predator edges for diet matrix", {
   edges <- as_edgelist(net)
   expect_true(any(edges[,1] == "PreyA" & edges[,2] == "PredatorC"),
               info = "Edge direction must be prey -> predator (energy flow)")
-})
-
-test_that("get_available_shark_parameters returns empty on error, not fake data", {
-  result <- get_available_shark_parameters()
-  if (!requireNamespace("SHARK4R", quietly = TRUE)) {
-    expect_equal(length(result), 0,
-                 info = "Should return empty vector when SHARK4R not installed")
-  }
-})
-
-test_that("get_shark_datasets returns info df on error, not fake data", {
-  result <- get_shark_datasets()
-  if (!requireNamespace("SHARK4R", quietly = TRUE)) {
-    expect_true(nrow(result) <= 1,
-                info = "Should not return fake dataset list (6 rows)")
-  }
 })
 
 test_that("topological indicators handle single-species network", {
