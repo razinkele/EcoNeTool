@@ -110,7 +110,12 @@ shark_taxonomy_source_choices <- function() {
 # ==============================================================================
 
 .shark_cache_file <- function(cache_dir, prefix, name) {
-  file.path(cache_dir, paste0(prefix, "_", gsub("[^a-zA-Z0-9]", "_", name), ".rds"))
+  # The sanitised name alone can collide ("Gadus morhua" and "Gadus_morhua"
+  # both become "Gadus_morhua"), so a short hash of the exact, unsanitised
+  # key (mode + raw name, via `prefix`) disambiguates them; the sanitised
+  # part stays only for readability.
+  key_hash <- digest::digest(paste0(prefix, "|", name), algo = "xxhash64")
+  file.path(cache_dir, paste0(prefix, "_", gsub("[^a-zA-Z0-9]", "_", name), "_", key_hash, ".rds"))
 }
 
 .shark_cache_read <- function(file) {

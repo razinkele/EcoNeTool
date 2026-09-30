@@ -225,6 +225,31 @@ test_that("Dyntaxa caches fuzzy and exact queries separately (M2)", {
   expect_equal(calls, 2)
 })
 
+test_that(".shark_cache_file() gives names that sanitise identically distinct files", {
+  source(file.path(app_root, "R/functions/shark_api_utils.R"), local = FALSE)
+  dir <- withr::local_tempdir()
+  a <- .shark_cache_file(dir, "shark_worms_fz", "Gadus morhua")
+  b <- .shark_cache_file(dir, "shark_worms_fz", "Gadus_morhua")
+  expect_false(identical(a, b))
+})
+
+test_that("names that sanitise identically get separate cached results (CodeRabbit)", {
+  skip_if_not_installed("SHARK4R", "1.2.0")
+  source_shark()
+  dir <- withr::local_tempdir()
+  calls <- 0
+  local_mocked_bindings(match_worms_taxa = function(taxa_names, ...) {
+    calls <<- calls + 1
+    worms_row(taxa_names)
+  }, .package = "SHARK4R")
+  query_shark_worms("Gadus morhua", cache_dir = dir)
+  # "Gadus morhua" and "Gadus_morhua" sanitise to the same [A-Za-z0-9_]
+  # string; the second lookup must not read the first's cache and must
+  # call match_worms_taxa() again.
+  query_shark_worms("Gadus_morhua", cache_dir = dir)
+  expect_equal(calls, 2)
+})
+
 test_that("Dyntaxa without DYNTAXA_KEY is no_key and makes no call", {
   skip_if_not_installed("SHARK4R", "1.2.0")
   source_shark()
