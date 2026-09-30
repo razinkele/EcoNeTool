@@ -679,3 +679,20 @@ test_that("missing lat/lon columns surface the coordinate check message in the w
   expect_match(html_of(shark_qc_warnings_ui(qc)), "No sample_latitude_dd / sample_longitude_dd columns",
                fixed = TRUE)
 })
+
+test_that("outlier detection that could not check any parameter still warns, with a non-green status (M6)", {
+  skip_if_not_installed("SHARK4R", "1.2.0")
+  source_shark()
+  # Real check_outliers() offline: "No such parameter" has no SHARK threshold
+  # for Zoobenthos, so nothing gets checked.
+  d <- data.frame(station_name = "S1", sample_date = as.Date("2022-06-01"),
+                  parameter = "No such parameter", value = 5, stringsAsFactors = FALSE)
+  qc <- run_shark_qc(d, "outliers", "Zoobenthos")
+  expect_equal(length(qc$outliers$checked), 0)
+
+  items <- shark_qc_warning_items(qc)
+  expect_true(any(grepl("checked parameters", items, fixed = TRUE)))
+
+  status_html <- html_of(shark_qc_status_ui(qc))
+  expect_false(grepl("alert-success", status_html, fixed = TRUE))
+})

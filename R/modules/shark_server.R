@@ -122,9 +122,16 @@ shark_occurrence_popup <- function(d) {
   anyNA(flags) || isTRUE(sum(flags, na.rm = TRUE) > 0)
 }
 
+# M6: outlier detection selected but unable to check any parameter (no SHARK
+# threshold for any of them, or a per-parameter failure) is itself worth a
+# warning and a non-green status, not silence.
+.shark_outliers_unchecked <- function(o) {
+  !is.null(o) && length(o$checked) == 0
+}
+
 #' Items for the QC warnings panel: a failed format validation (its message
 #' and every check_fields() error), a passing validation's warnings, outliers
-#' and coordinate problems.
+#' (found, or nothing could be checked) and coordinate problems.
 #'
 #' @param qc A non-NULL, non-error run_shark_qc() result.
 #' @return Character vector (possibly empty).
@@ -137,8 +144,10 @@ shark_qc_warning_items <- function(qc) {
   } else {
     character(0)
   }
+  show_outliers <- !is.null(qc$outliers) &&
+    (NROW(qc$outliers$outliers) > 0 || .shark_outliers_unchecked(qc$outliers))
   c(validation_items,
-    if (NROW(qc$outliers$outliers) > 0) qc$outliers$message,
+    if (show_outliers) qc$outliers$message,
     if (.shark_show_coordinates(qc$coordinates)) qc$coordinates$message)
 }
 
@@ -166,6 +175,10 @@ shark_qc_status_ui <- function(qc) {
   if (!is.null(v) && isFALSE(v$valid)) {
     return(tags$div(class = "alert alert-danger", icon("exclamation-triangle"),
                     paste(" Quality control found problems:", .shark_value(v$message))))
+  }
+  if (.shark_outliers_unchecked(qc$outliers)) {
+    return(tags$div(class = "alert alert-warning", icon("exclamation-triangle"),
+                    paste(" Quality control found problems:", .shark_value(qc$outliers$message))))
   }
   tags$div(class = "alert alert-success", icon("check-circle"),
            sprintf(" Quality control completed - %d rows, %d columns analyzed",
