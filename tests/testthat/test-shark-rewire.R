@@ -165,6 +165,45 @@ test_that("only found WoRMS results are cached", {
   expect_equal(calls, 3)
 })
 
+test_that("WoRMS caches fuzzy and exact queries separately (M2)", {
+  skip_if_not_installed("SHARK4R", "1.2.0")
+  source_shark()
+  dir <- withr::local_tempdir()
+  calls <- 0
+  local_mocked_bindings(match_worms_taxa = function(taxa_names, ...) {
+    calls <<- calls + 1
+    worms_row(taxa_names)
+  }, .package = "SHARK4R")
+  query_shark_worms("Gadus morhua", fuzzy = TRUE, cache_dir = dir)
+  query_shark_worms("Gadus morhua", fuzzy = TRUE, cache_dir = dir)
+  expect_equal(calls, 1)
+  # An exact query must not read the fuzzy query's cached result.
+  query_shark_worms("Gadus morhua", fuzzy = FALSE, cache_dir = dir)
+  expect_equal(calls, 2)
+  query_shark_worms("Gadus morhua", fuzzy = FALSE, cache_dir = dir)
+  expect_equal(calls, 2)
+})
+
+test_that("Dyntaxa caches fuzzy and exact queries separately (M2)", {
+  skip_if_not_installed("SHARK4R", "1.2.0")
+  source_shark()
+  withr::local_envvar(DYNTAXA_KEY = "k")
+  dir <- withr::local_tempdir()
+  calls <- 0
+  local_mocked_bindings(match_dyntaxa_taxa = function(taxon_names, ...) {
+    calls <<- calls + 1
+    tibble::tibble(search_pattern = taxon_names, taxon_id = 206199L, best_match = "torsk",
+                   author = NA_character_, valid_name = "Gadus morhua")
+  }, .package = "SHARK4R")
+  query_dyntaxa("torsk", fuzzy = TRUE, cache_dir = dir)
+  query_dyntaxa("torsk", fuzzy = TRUE, cache_dir = dir)
+  expect_equal(calls, 1)
+  query_dyntaxa("torsk", fuzzy = FALSE, cache_dir = dir)
+  expect_equal(calls, 2)
+  query_dyntaxa("torsk", fuzzy = FALSE, cache_dir = dir)
+  expect_equal(calls, 2)
+})
+
 test_that("Dyntaxa without DYNTAXA_KEY is no_key and makes no call", {
   skip_if_not_installed("SHARK4R", "1.2.0")
   source_shark()

@@ -140,7 +140,10 @@ query_shark_worms <- function(species_name, fuzzy = TRUE, use_cache = TRUE,
   base <- list(source = "WoRMS (SHARK4R)", query = species_name, status = "error")
   if (!check_shark4r_available()) return(utils::modifyList(base, list(message = SHARK4R_MISSING_MESSAGE)))
 
-  cache_file <- .shark_cache_file(cache_dir, "shark_worms", species_name)
+  # M2: a fuzzy and an exact query for the same name can disagree, so they
+  # must not share a cache file.
+  cache_file <- .shark_cache_file(cache_dir, paste0("shark_worms_", if (isTRUE(fuzzy)) "fz" else "ex"),
+                                  species_name)
   if (use_cache) {
     hit <- .shark_cache_read(cache_file)
     if (!is.null(hit)) return(hit)
@@ -197,7 +200,10 @@ query_dyntaxa <- function(species_name, fuzzy = TRUE, use_cache = TRUE,
     )))
   }
 
-  cache_file <- .shark_cache_file(cache_dir, "dyntaxa", species_name)
+  # M2: a fuzzy and an exact query for the same name can disagree, so they
+  # must not share a cache file.
+  cache_file <- .shark_cache_file(cache_dir, paste0("dyntaxa_", if (isTRUE(fuzzy)) "fz" else "ex"),
+                                  species_name)
   if (use_cache) {
     hit <- .shark_cache_read(cache_file)
     if (!is.null(hit)) return(hit)
