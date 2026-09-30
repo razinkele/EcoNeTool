@@ -64,7 +64,12 @@ shark4r_installed <- function() {
 #'   SHARK4R_FUNCTIONS.
 check_shark4r_available <- function() {
   if (!shark4r_installed()) return(FALSE)
-  missing <- setdiff(SHARK4R_FUNCTIONS, getNamespaceExports("SHARK4R"))
+  exports <- tryCatch(getNamespaceExports("SHARK4R"), error = function(e) {
+    warning(sprintf("[shark] could not read SHARK4R's namespace exports: %s", conditionMessage(e)), call. = FALSE)
+    NULL
+  })
+  if (is.null(exports)) return(FALSE)
+  missing <- setdiff(SHARK4R_FUNCTIONS, exports)
   if (length(missing) > 0) {
     warning(sprintf("[shark] SHARK4R %s lacks: %s", as.character(utils::packageVersion("SHARK4R")),
                     paste(missing, collapse = ", ")), call. = FALSE)
@@ -120,8 +125,14 @@ shark_taxonomy_source_choices <- function() {
 }
 
 .shark_cache_write <- function(file, data) {
-  dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
-  saveRDS(list(data = data, timestamp = Sys.time()), file)
+  tryCatch({
+    dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+    saveRDS(list(data = data, timestamp = Sys.time()), file)
+  }, error = function(e) {
+    warning(sprintf("[shark] could not write cache file '%s': %s", file, conditionMessage(e)), call. = FALSE)
+    NULL
+  })
+  invisible(NULL)
 }
 
 # ==============================================================================

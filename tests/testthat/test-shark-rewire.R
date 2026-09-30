@@ -86,6 +86,27 @@ test_that("SHARK4R exports every function the app calls (F12)", {
   expect_true(shark4r_installed())
 })
 
+test_that("check_shark4r_available() returns FALSE with a warning when reading exports fails (M4)", {
+  skip_if_not_installed("SHARK4R", "1.2.0")
+  source(file.path(app_root, "R/functions/shark_api_utils.R"), local = FALSE)
+  local_global_mock("getNamespaceExports", function(...) stop("namespace not found"))
+  expect_warning(result <- check_shark4r_available(), "[shark] could not read SHARK4R's namespace exports",
+                 fixed = TRUE)
+  expect_false(result)
+})
+
+test_that("a failing cache write warns but does not lose the result (M4)", {
+  skip_if_not_installed("SHARK4R", "1.2.0")
+  source_shark()
+  local_mocked_bindings(match_worms_taxa = function(taxa_names, ...) worms_row(taxa_names), .package = "SHARK4R")
+  dir <- withr::local_tempdir()
+  local_global_mock("saveRDS", function(...) stop("disk full"))
+  expect_warning(r <- query_shark_worms("Gadus morhua", cache_dir = dir),
+                 "[shark] could not write cache file", fixed = TRUE)
+  expect_equal(r$status, "found")
+  expect_identical(r$aphia_id, 126436L)
+})
+
 test_that("no SHARK handler reports failures with message() (F12)", {
   for (f in c("R/functions/shark_api_utils.R", "R/modules/shark_server.R")) {
     code <- readLines(file.path(app_root, f), warn = FALSE)
