@@ -264,6 +264,14 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   and an error row instead of aborting the batch. When a lookup fix changes
   values the cache already holds, bump `TRAIT_LOOKUP_REVISION`
   (`harmonization.R`).
+- **List every `SHARK4R::` call in `SHARK4R_FUNCTIONS`**
+  (`R/functions/shark_api_utils.R`). SHARK4R 1.2.0 dropped every function
+  the SHARK tab called, and nothing noticed until production.
+  `test-shark-rewire.R` now fails when a `SHARK4R::` call is missing from
+  the list or from `getNamespaceExports("SHARK4R")`, and CI installs
+  SHARK4R so the test runs. The SHARK wrappers return a status (`found` /
+  `not_found` / `no_key` / `error`, or `ok` / `empty` / `error`) instead
+  of NULL, so the tab can say why nothing came back.
 
 ## Commit Messages
 
