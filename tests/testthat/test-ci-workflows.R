@@ -65,7 +65,7 @@ test_that("ci.yml runs the offline testthat suite and CI Status depends on it", 
   wf <- read_workflow("ci.yml")
   job <- wf$jobs[["testthat-offline"]]
   expect_false(is.null(job), info = "no testthat-offline job in ci.yml")
-  expect_equal(job[["timeout-minutes"]], 20L)
+  expect_equal(job[["timeout-minutes"]], 45L)
   expect_null(job$env$RUN_LIVE_TESTS)
 
   runs <- paste(
