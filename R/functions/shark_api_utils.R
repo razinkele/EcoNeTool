@@ -110,7 +110,10 @@ shark_taxonomy_source_choices <- function() {
 
 .shark_cache_read <- function(file) {
   if (!file.exists(file)) return(NULL)
-  cached <- tryCatch(readRDS(file), error = function(e) NULL)
+  cached <- tryCatch(readRDS(file), error = function(e) {
+    warning(sprintf("[shark] could not read cache file '%s': %s", file, conditionMessage(e)), call. = FALSE)
+    NULL
+  })
   if (!is.list(cached) || !is.list(cached$data) || !identical(cached$data$status, "found")) return(NULL)
   if (difftime(Sys.time(), cached$timestamp, units = "days") >= 30) return(NULL)
   cached$data

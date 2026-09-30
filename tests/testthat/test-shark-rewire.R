@@ -281,6 +281,15 @@ test_that("the taxonomy sources offered follow the subscription keys", {
   expect_equal(unname(shark_taxonomy_source_choices()), c("dyntaxa", "worms", "algaebase"))
 })
 
+test_that(".shark_cache_read warns and returns NULL for a corrupt cache file (M3)", {
+  source(file.path(app_root, "R/functions/shark_api_utils.R"), local = FALSE)
+  dir <- withr::local_tempdir()
+  bad <- file.path(dir, "bad.rds")
+  writeLines("not an rds file", bad)
+  expect_warning(result <- .shark_cache_read(bad), "[shark] could not read cache file", fixed = TRUE)
+  expect_null(result)
+})
+
 # ---------------------------------------------------------------------------
 # SHARK data
 # ---------------------------------------------------------------------------
