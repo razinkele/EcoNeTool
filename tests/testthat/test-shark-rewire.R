@@ -441,3 +441,95 @@ test_that("run_shark_qc runs only the selected checks, and the report lists them
   expect_false(any(grepl("COMPLETENESS", report, fixed = TRUE)))
   expect_true("COORDINATES" %in% report)
 })
+
+# ---------------------------------------------------------------------------
+# Rendering (B3: third-party text only through tag builders or escaped)
+# ---------------------------------------------------------------------------
+
+test_that("taxonomy cards escape third-party text and show why a lookup gave nothing", {
+  source_shark()
+  evil <- list(status = "found", scientific_name = "<script>alert(1)</script>", aphia_id = "1 onmouseover=x",
+               authority = NA, taxon_status = "accepted", class = "<b>x</b>", family = NA)
+  html <- html_of(shark_taxonomy_card("worms", evil))
+  expect_false(grepl("<script>", html, fixed = TRUE))
+  expect_true(grepl("&lt;script&gt;", html, fixed = TRUE))
+  expect_false(grepl("href", html, fixed = TRUE))  # a non-integer AphiaID gets no link
+
+  good <- html_of(shark_taxonomy_card("worms", list(status = "found", aphia_id = 126436L)))
+  expect_true(grepl("taxdetails&amp;id=126436", good, fixed = TRUE))
+  expect_match(html_of(shark_taxonomy_card("dyntaxa", list(status = "no_key", message = "needs DYNTAXA_KEY"))),
+               "needs DYNTAXA_KEY", fixed = TRUE)
+  expect_match(html_of(shark_taxonomy_card("worms", list(status = "not_found"))), "No results found", fixed = TRUE)
+  expect_match(html_of(shark_taxonomy_card("worms", list(status = "error", message = "<i>503</i>"))),
+               "Lookup failed: &lt;i&gt;503", fixed = TRUE)
+})
+
+test_that("occurrence popups escape every field", {
+  source_shark()
+  d <- data.frame(Species = "<img src=x onerror=alert(1)>", Date = "2022-06-13", Parameter = "Abundance",
+                  Value = 5, Unit = "ind/m2", stringsAsFactors = FALSE)
+  popup <- shark_occurrence_popup(d)
+  expect_false(grepl("<img", popup, fixed = TRUE))
+  expect_true(grepl("&lt;img", popup, fixed = TRUE))
+})
+
+test_that("query status lines distinguish idle, ok, empty and error", {
+  source_shark()
+  expect_match(html_of(shark_query_status(NULL, "Nothing yet")), "Nothing yet", fixed = TRUE)
+  expect_match(html_of(shark_query_status(list(status = "ok", message = "Retrieved 3 records"), "")),
+               "alert-success", fixed = TRUE)
+  expect_match(html_of(shark_query_status(list(status = "empty", message = "none"), "")), "alert-warning",
+               fixed = TRUE)
+  expect_match(html_of(shark_query_status(list(status = "error", message = "<b>x</b>"), "")),
+               "&lt;b&gt;x", fixed = TRUE)
+})
+
+# ---------------------------------------------------------------------------
+# UI and server wiring
+# ---------------------------------------------------------------------------
+
+test_that("the SHARK UI offers exact SHARK parameters, the key-gated sources and a QC data type", {
+  skip_if_not_installed("SHARK4R", "1.2.0")
+  source_shark()
+  withr::local_envvar(DYNTAXA_KEY = "", ALGAEBASE_KEY = "")
+  html <- html_of(shark_ui())
+  expect_true(grepl('value="Temperature CTD"', html, fixed = TRUE))
+  expect_false(grepl('value="temperature"', html, fixed = TRUE))
+  expect_true(grepl('id="shark_qc_datatype"', html, fixed = TRUE))
+  expect_true(grepl('value="worms"', html, fixed = TRUE))
+  expect_false(grepl('value="dyntaxa"', html, fixed = TRUE))
+  expect_true(grepl("Not configured on this server (no subscription key): Dyntaxa (DYNTAXA_KEY)", html,
+                    fixed = TRUE))
+})
+
+test_that("without SHARK4R >= 1.2.0 the tab shows installation help and the server does nothing", {
+  source_shark()
+  local_global_mock("shark4r_installed", function() FALSE)
+  html <- html_of(shark_ui())
+  expect_true(grepl("not available on this server", html, fixed = TRUE))
+  expect_false(grepl("shark_tabs", html, fixed = TRUE))
+  expect_null(shark_server(NULL, NULL, NULL))
+})
+
+test_that("the server runs a taxonomy search and an environmental query end to end (testServer)", {
+  skip_if_not_installed("SHARK4R", "1.2.0")
+  source_shark()
+  local_mocked_bindings(
+    match_worms_taxa = function(taxa_names, ...) worms_row(taxa_names),
+    get_shark_data = function(...) shark_rows(),
+    .package = "SHARK4R"
+  )
+  cache_root <- withr::local_tempdir()  # the default cache_dir must not land in the repo
+  local_global_mock("app_path", function(...) file.path(cache_root, ...))
+  shiny::testServer(shark_server, {
+    session$setInputs(shark_species_name = "Gadus morhua", shark_taxonomy_sources = "worms",
+                      shark_fuzzy_search = TRUE, shark_search_taxonomy = 1)
+    expect_match(as.character(output$shark_taxonomy_results$html), "126436", fixed = TRUE)
+
+    session$setInputs(shark_date_range = as.Date(c("2024-01-01", "2024-12-31")),
+                      shark_parameters = "Temperature CTD", shark_max_env_records = 5000,
+                      shark_query_environmental = 1)
+    expect_equal(shark_data$environmental$status, "ok")
+    expect_match(as.character(output$shark_environmental_status$html), "Retrieved 3 records", fixed = TRUE)
+  })
+})
