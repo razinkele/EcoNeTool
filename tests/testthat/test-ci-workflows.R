@@ -65,7 +65,7 @@ test_that("ci.yml runs the offline testthat suite and CI Status depends on it", 
   wf <- read_workflow("ci.yml")
   job <- wf$jobs[["testthat-offline"]]
   expect_false(is.null(job), info = "no testthat-offline job in ci.yml")
-  expect_equal(job[["timeout-minutes"]], 20L)
+  expect_equal(job[["timeout-minutes"]], 45L)
   expect_null(job$env$RUN_LIVE_TESTS)
 
   runs <- paste(
@@ -151,4 +151,14 @@ test_that("the nightly live job installs every package the offline job installs"
   nightly_apt <- job_apt_packages("nightly-live-tests.yml", "live-tests")
   expect_gt(length(offline_apt), 0L)
   expect_equal(setdiff(offline_apt, nightly_apt), character(0))
+})
+
+# test-shark-rewire.R checks that SHARK4R exports every function the SHARK tab
+# calls, and mocks SHARK4R for the rest. Without SHARK4R on the runner those
+# tests skip, and an API change could break the tab again unnoticed (C-6b, F12:
+# SHARK4R 1.2.0 had removed all 12 functions the tab called).
+test_that("both test jobs install SHARK4R, whose exports the SHARK tab relies on", {
+  skip_if_not_installed("yaml")
+  expect_true("SHARK4R" %in% job_r_packages("ci.yml", "testthat-offline"))
+  expect_true("SHARK4R" %in% job_r_packages("nightly-live-tests.yml", "live-tests"))
 })

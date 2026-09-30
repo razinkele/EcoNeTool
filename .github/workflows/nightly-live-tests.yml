@@ -108,6 +108,7 @@ jobs:
             any::processx
             any::htmltools
             any::writexl
+            any::SHARK4R
 
       - name: Run live testthat suite (fail on any test failure)
         run: |

@@ -6,11 +6,30 @@
 #'
 #' @details
 #' Provides 4 sub-tabs:
-#' 1. Taxonomy - Query Dyntaxa, WoRMS, AlgaeBase
+#' 1. Taxonomy - Query WoRMS; Dyntaxa and AlgaeBase when their keys are set
 #' 2. Environmental Data - Retrieve oceanographic measurements
-#' 3. Species Occurrence - Download biological observations
+#' 3. Species Occurrence - SHARK records of one taxon
 #' 4. Quality Control - Validate SHARK format data
+#' Without SHARK4R >= 1.2.0 the tab shows installation instructions only.
 shark_ui <- function() {
+  if (!shark4r_installed()) return(shark_unavailable_ui())
+
+  taxonomy_choices <- shark_taxonomy_source_choices()
+  keyless_sources <- c("Dyntaxa (DYNTAXA_KEY)", "AlgaeBase (ALGAEBASE_KEY)")
+  keyless_sources <- keyless_sources[!c("dyntaxa", "algaebase") %in% taxonomy_choices]
+
+  # A previous-calendar-year default so the query never goes stale, and a
+  # small default bounding box (Kattegat) so the first query a session runs
+  # does not scan all Swedish waters for three years (I1: SHARK queries are
+  # synchronous and block the app for every user for up to 90 s).
+  shark_default_year <- as.integer(format(Sys.Date(), "%Y")) - 1
+  shark_default_start <- as.Date(sprintf("%d-01-01", shark_default_year))
+  shark_default_end <- as.Date(sprintf("%d-12-31", shark_default_year))
+  shark_slow_query_notice <- tags$small(
+    class = "text-muted",
+    "SHARK queries take 25-90 s and pause the app for all users; keep the area and year range small."
+  )
+
   # ========================================================================
   # SHARK DATA TAB
   # ========================================================================
@@ -30,15 +49,15 @@ shark_ui <- function() {
           monitoring data, maintained by SMHI (Swedish Meteorological and Hydrological Institute).</p>
           <p>This interface provides access to:</p>
           <ul>
-            <li><strong>Taxonomy:</strong> Dyntaxa (Swedish species), WoRMS, AlgaeBase</li>
+            <li><strong>Taxonomy:</strong> WoRMS; Dyntaxa (Swedish species) and AlgaeBase need subscription keys</li>
             <li><strong>Environmental Data:</strong> Temperature, salinity, nutrients, oxygen from 1900s-present</li>
-            <li><strong>Species Occurrence:</strong> Biological observations (phytoplankton, zooplankton, fish)</li>
+            <li><strong>Species Occurrence:</strong> Biological records (plankton, benthos, seals)</li>
             <li><strong>Quality Control:</strong> Validate SHARK format data files</li>
           </ul>
           <p style='margin-top: 10px;'>
             <strong>Documentation:</strong>
             <a href='https://sharksmhi.github.io/SHARK4R/' target='_blank'>SHARK4R Package</a> |
-            <a href='https://www.smhi.se/data/oceanografi/ladda-ner-oceanografiska-observationer' target='_blank'>SHARK Database</a>
+            <a href='https://shark.smhi.se/en' target='_blank'>SHARK Database</a>
           </p>
         ")
       )
@@ -74,17 +93,18 @@ shark_ui <- function() {
 
                   textInput("shark_species_name",
                            "Species Name:",
-                           placeholder = "e.g., 'torsk', 'Gadus morhua', 'sill'"),
+                           placeholder = "e.g., 'Gadus morhua', 'Macoma balthica'"),
 
                   checkboxGroupInput("shark_taxonomy_sources",
                     "Data Sources:",
-                    choices = c(
-                      "Dyntaxa (Swedish Taxonomy)" = "dyntaxa",
-                      "WoRMS (World Register)" = "worms",
-                      "AlgaeBase (Algae Database)" = "algaebase"
-                    ),
-                    selected = c("dyntaxa", "worms")
+                    choices = taxonomy_choices,
+                    selected = unname(taxonomy_choices)
                   ),
+
+                  if (length(keyless_sources) > 0) {
+                    tags$small(paste("Not configured on this server (no subscription key):",
+                                     paste(keyless_sources, collapse = ", ")))
+                  },
 
                   checkboxInput("shark_fuzzy_search",
                                "Fuzzy matching",
@@ -97,8 +117,8 @@ shark_ui <- function() {
 
                   br(),
                   tags$small(HTML("
-                    <strong>Tip:</strong> Try Swedish names like 'torsk' (cod),
-                    'sill' (herring), or scientific names for best results.
+                    <strong>Tip:</strong> Use scientific names. Dyntaxa also accepts Swedish names
+                    such as 'torsk' (cod) or 'sill' (herring).
                   "))
                 )
               ),
@@ -138,41 +158,32 @@ shark_ui <- function() {
 
                   dateRangeInput("shark_date_range",
                                "Date Range:",
-                               start = Sys.Date() - 365,
-                               end = Sys.Date(),
+                               start = shark_default_start,
+                               end = shark_default_end,
                                min = "1900-01-01",
                                max = Sys.Date()),
 
                   selectInput("shark_parameters",
                             "Parameters:",
-                            choices = c(
-                              "Temperature" = "temperature",
-                              "Salinity" = "salinity",
-                              "Oxygen" = "oxygen",
-                              "pH" = "ph",
-                              "Phosphate" = "phosphate",
-                              "Nitrate" = "nitrate",
-                              "Chlorophyll-a" = "chlorophyll",
-                              "Secchi depth" = "secchi"
-                            ),
+                            choices = SHARK_ENV_PARAMETERS,
                             multiple = TRUE,
-                            selected = c("temperature", "salinity")),
+                            selected = c("Temperature CTD", "Salinity CTD")),
 
                   tags$hr(),
                   tags$h5("Bounding Box (Optional)"),
-                  tags$small("Leave blank for all Swedish waters"),
+                  tags$small("Fill in all four fields, or leave all four blank for all Swedish waters"),
 
                   fluidRow(
                     column(6,
                       numericInput("shark_bbox_north",
                                  "North (Lat):",
-                                 value = NULL,
+                                 value = 58,
                                  min = 54, max = 66, step = 0.1)
                     ),
                     column(6,
                       numericInput("shark_bbox_south",
                                  "South (Lat):",
-                                 value = NULL,
+                                 value = 57,
                                  min = 54, max = 66, step = 0.1)
                     )
                   ),
@@ -181,13 +192,13 @@ shark_ui <- function() {
                     column(6,
                       numericInput("shark_bbox_east",
                                  "East (Lon):",
-                                 value = NULL,
+                                 value = 12,
                                  min = 10, max = 25, step = 0.1)
                     ),
                     column(6,
                       numericInput("shark_bbox_west",
                                  "West (Lon):",
-                                 value = NULL,
+                                 value = 11,
                                  min = 10, max = 25, step = 0.1)
                     )
                   ),
@@ -200,7 +211,8 @@ shark_ui <- function() {
                   actionButton("shark_query_environmental",
                              "Query Data",
                              icon = icon("download"),
-                             class = "btn-success btn-block")
+                             class = "btn-success btn-block"),
+                  shark_slow_query_notice
                 )
               ),
 
@@ -238,18 +250,18 @@ shark_ui <- function() {
               # Left column: Query panel
               column(4,
                 box(
-                  title = "Query Species Occurrences",
+                  title = "Query Species Records",
                   status = "info",
                   solidHeader = TRUE,
                   width = 12,
 
                   textInput("shark_occurrence_species",
-                           "Species Name:",
-                           placeholder = "e.g., 'Gadus morhua', 'torsk'"),
+                            "Scientific Name:",
+                            placeholder = "e.g., 'Macoma balthica', 'Temora longicornis'"),
 
                   dateRangeInput("shark_occurrence_dates",
                                "Date Range:",
-                               start = Sys.Date() - 365*5,  # 5 years
+                               start = Sys.Date() - 365 * 5,  # 5 years
                                end = Sys.Date(),
                                min = "1900-01-01",
                                max = Sys.Date()),
@@ -260,14 +272,16 @@ shark_ui <- function() {
                              min = 100, max = 10000, step = 500),
 
                   actionButton("shark_query_occurrence",
-                             "Get Occurrences",
+                             "Get Records",
                              icon = icon("search"),
                              class = "btn-primary btn-block"),
+                  shark_slow_query_notice,
 
                   br(),
                   tags$small(HTML("
-                    <strong>Note:</strong> Results will be displayed on the map
-                    and in the table. Use scientific names for best results.
+                    <strong>Note:</strong> SHARK matches the exact scientific name. It holds plankton,
+                    benthos and seal records; most fish are not in SHARK. Each row is one measured
+                    parameter (count, abundance, weight).
                   "))
                 )
               ),
@@ -275,7 +289,7 @@ shark_ui <- function() {
               # Right column: Results + Map
               column(8,
                 box(
-                  title = "Occurrence Records",
+                  title = "Species Records",
                   status = "success",
                   solidHeader = TRUE,
                   width = 12,
@@ -324,11 +338,16 @@ shark_ui <- function() {
                           placeholder = "Select SHARK format file"),
 
                   tags$small(HTML("
-                    <strong>Accepted formats:</strong> CSV, TXT, TSV<br>
+                    <strong>Accepted formats:</strong> CSV, or tab-separated TXT/TSV<br>
                     <strong>Expected structure:</strong> SHARK standard format
                   ")),
 
                   br(), br(),
+
+                  selectInput("shark_qc_datatype",
+                              "Data Type:",
+                              choices = c("Auto (from delivery_datatype column)" = "auto", SHARK_QC_DATATYPES),
+                              selected = "auto"),
 
                   actionButton("shark_run_qc",
                              "Run Quality Control",
@@ -379,57 +398,78 @@ shark_ui <- function() {
       )  # End main box
     ),  # End main fluidRow
 
-    # Requirements and Installation box (collapsible)
-    fluidRow(
-      box(
-        title = "Requirements & Installation",
-        status = "info",
-        solidHeader = TRUE,
-        width = 12,
-        collapsible = TRUE,
-        collapsed = TRUE,
-
-        HTML("
-          <h5>Required R Package</h5>
-          <p>This module requires the SHARK4R package:</p>
-          <pre style='background: #f8f9fa; padding: 10px; border-left: 3px solid #007bff;'>
-install.packages('SHARK4R')</pre>
-
-          <h5>Package Information</h5>
-          <ul>
-            <li><strong>Version:</strong> 1.0.2+</li>
-            <li><strong>License:</strong> MIT</li>
-            <li><strong>Maintainer:</strong> SMHI (Swedish Meteorological and Hydrological Institute)</li>
-          </ul>
-
-          <h5>Documentation & Resources</h5>
-          <ul>
-            <li><a href='https://sharksmhi.github.io/SHARK4R/' target='_blank'>
-                SHARK4R Package Documentation</a></li>
-            <li><a href='https://www.smhi.se/data/oceanografi/ladda-ner-oceanografiska-observationer' target='_blank'>
-                SHARK Database (SMHI)</a></li>
-            <li><a href='https://www.artdatabanken.se/vara-datavaror/dyntaxa/' target='_blank'>
-                Dyntaxa - Swedish Taxonomic Database</a></li>
-          </ul>
-
-          <h5>Typical Use Cases</h5>
-          <ol>
-            <li><strong>Taxonomy Validation:</strong> Verify Swedish species names using Dyntaxa</li>
-            <li><strong>Environmental Context:</strong> Retrieve historical oceanographic data for model regions</li>
-            <li><strong>Model Validation:</strong> Compare ECOPATH species with SHARK occurrence records</li>
-            <li><strong>Data Quality:</strong> Validate monitoring data before analysis</li>
-          </ol>
-
-          <h5>Data Coverage</h5>
-          <ul>
-            <li><strong>Temporal:</strong> 1900s - present (varies by parameter)</li>
-            <li><strong>Spatial:</strong> Swedish waters (Baltic Sea, Skagerrak, Kattegat)</li>
-            <li><strong>Parameters:</strong> 100+ environmental and biological variables</li>
-          </ul>
-        ")
-      )
-    )
+    shark_requirements_box()
 
   )  # End tabItem
   # ========================================================================
+}
+
+#' Requirements and installation box (collapsible)
+shark_requirements_box <- function(collapsed = TRUE) {
+  fluidRow(
+    box(
+      title = "Requirements & Installation",
+      status = "info",
+      solidHeader = TRUE,
+      width = 12,
+      collapsible = TRUE,
+      collapsed = collapsed,
+
+      HTML("
+        <h5>Required R Package</h5>
+        <p>This module requires the SHARK4R package, version 1.2.0 or newer:</p>
+        <pre style='background: #f8f9fa; padding: 10px; border-left: 3px solid #007bff;'>
+install.packages('SHARK4R')</pre>
+
+        <h5>Optional subscription keys</h5>
+        <ul>
+          <li><strong>DYNTAXA_KEY</strong> enables Dyntaxa (SLU Artdatabanken API).</li>
+          <li><strong>ALGAEBASE_KEY</strong> enables AlgaeBase (AlgaeBase API subscription).</li>
+        </ul>
+        <p>Set them in the server's <code>.Renviron</code> and restart the app.</p>
+
+        <h5>Package Information</h5>
+        <ul>
+          <li><strong>Version:</strong> 1.2.0+</li>
+          <li><strong>License:</strong> MIT</li>
+          <li><strong>Maintainer:</strong> SMHI (Swedish Meteorological and Hydrological Institute)</li>
+        </ul>
+
+        <h5>Documentation & Resources</h5>
+        <ul>
+          <li><a href='https://sharksmhi.github.io/SHARK4R/' target='_blank'>
+              SHARK4R Package Documentation</a></li>
+          <li><a href='https://shark.smhi.se/en' target='_blank'>
+              SHARK Database (SMHI)</a></li>
+          <li><a href='https://www.artdatabanken.se/vara-datavaror/dyntaxa/' target='_blank'>
+              Dyntaxa - Swedish Taxonomic Database</a></li>
+        </ul>
+
+        <h5>Data Coverage</h5>
+        <ul>
+          <li><strong>Temporal:</strong> 1900s - present (varies by parameter)</li>
+          <li><strong>Spatial:</strong> Swedish waters (Baltic Sea, Skagerrak, Kattegat)</li>
+          <li><strong>Parameters:</strong> 100+ environmental and biological variables</li>
+        </ul>
+      ")
+    )
+  )
+}
+
+#' The SHARK tab when SHARK4R >= 1.2.0 is not installed
+shark_unavailable_ui <- function() {
+  tabItem(
+    tabName = "shark",
+    fluidRow(
+      box(
+        title = "SHARK Data is not available on this server",
+        status = "warning",
+        solidHeader = TRUE,
+        width = 12,
+        tags$p(icon("exclamation-triangle"),
+               " The SHARK Data tab needs the SHARK4R package, version 1.2.0 or newer.")
+      )
+    ),
+    shark_requirements_box(collapsed = FALSE)
+  )
 }
