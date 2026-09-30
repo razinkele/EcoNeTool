@@ -44,7 +44,7 @@ source("R/config/harmonization_config.R")  # Harmonization configuration for tra
 # validation_utils.R and admin_auth.R are sourced above, before R/config.R
 
 # =============================================================================
-# CURRENT VERSION: v1.6.2 (2026-09-29)
+# CURRENT VERSION: v1.6.3 (2026-09-30)
 # =============================================================================
 # LATEST: Local Databases Integration (v1.4.2)
 # - BVOL phytoplankton database: 3,846 species
