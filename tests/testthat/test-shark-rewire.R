@@ -466,11 +466,14 @@ test_that("taxonomy cards escape third-party text and show why a lookup gave not
 
 test_that("occurrence popups escape every field", {
   source_shark()
-  d <- data.frame(Species = "<img src=x onerror=alert(1)>", Date = "2022-06-13", Parameter = "Abundance",
-                  Value = 5, Unit = "ind/m2", stringsAsFactors = FALSE)
+  payload <- "<img src=x onerror=alert(1)>"
+  d <- data.frame(Species = payload, Date = payload, Parameter = payload, Value = payload, Unit = payload,
+                  stringsAsFactors = FALSE)
   popup <- shark_occurrence_popup(d)
   expect_false(grepl("<img", popup, fixed = TRUE))
-  expect_true(grepl("&lt;img", popup, fixed = TRUE))
+  matches <- gregexpr("&lt;img", popup, fixed = TRUE)[[1]]
+  expect_equal(length(matches), 5)
+  expect_true(all(matches > 0))
 })
 
 test_that("query status lines distinguish idle, ok, empty and error", {
@@ -532,4 +535,56 @@ test_that("the server runs a taxonomy search and an environmental query end to e
     expect_equal(shark_data$environmental$status, "ok")
     expect_match(as.character(output$shark_environmental_status$html), "Retrieved 3 records", fixed = TRUE)
   })
+})
+
+# ---------------------------------------------------------------------------
+# Fix round 1: the QC warnings/status panel must not show a green "completed"
+# when format validation failed, and must surface the coordinate check's
+# message when the lat/lon columns are missing.
+# ---------------------------------------------------------------------------
+
+test_that("QC status and warnings surface a failed format validation, not a green 'completed'", {
+  skip_if_not_installed("SHARK4R", "1.2.0")
+  source_shark()
+  qc <- run_shark_qc(data.frame(x = 1), "format", NA_character_)
+  expect_false(qc$validation$valid)
+  expect_equal(qc$validation$message, SHARK_QC_NO_DATATYPE)
+
+  status_html <- html_of(shark_qc_status_ui(qc))
+  expect_false(grepl("alert-success", status_html, fixed = TRUE))
+  expect_match(status_html, SHARK_QC_NO_DATATYPE, fixed = TRUE)
+
+  warn_html <- html_of(shark_qc_warnings_ui(qc))
+  expect_match(warn_html, SHARK_QC_NO_DATATYPE, fixed = TRUE)
+})
+
+test_that("a check_fields result with errors shows those errors in the warnings panel", {
+  skip_if_not_installed("SHARK4R", "1.2.0")
+  source_shark()
+  local_mocked_bindings(check_fields = function(data, datatype, ...) {
+    tibble::tibble(level = "error", field = "a", row = NA_integer_, message = "Required field a is missing")
+  }, .package = "SHARK4R")
+  qc <- run_shark_qc(data.frame(delivery_datatype = "Zoobenthos"), "format", "Zoobenthos")
+  expect_false(qc$validation$valid)
+
+  warn_html <- html_of(shark_qc_warnings_ui(qc))
+  expect_match(warn_html, "Required field a is missing", fixed = TRUE)
+  expect_false(grepl("alert-success", html_of(shark_qc_status_ui(qc)), fixed = TRUE))
+})
+
+test_that("a clean QC result still shows 'No warnings detected'", {
+  skip_if_not_installed("SHARK4R", "1.2.0")
+  source_shark()
+  qc <- run_shark_qc(data.frame(sample_latitude_dd = 57, sample_longitude_dd = 11), "coordinates", NA_character_)
+  expect_match(html_of(shark_qc_warnings_ui(qc)), "No warnings detected", fixed = TRUE)
+  expect_match(html_of(shark_qc_status_ui(qc)), "alert-success", fixed = TRUE)
+})
+
+test_that("missing lat/lon columns surface the coordinate check message in the warnings panel", {
+  skip_if_not_installed("SHARK4R", "1.2.0")
+  source_shark()
+  qc <- run_shark_qc(data.frame(x = 1), "coordinates", NA_character_)
+  expect_true(is.na(qc$coordinates$missing))
+  expect_match(html_of(shark_qc_warnings_ui(qc)), "No sample_latitude_dd / sample_longitude_dd columns",
+               fixed = TRUE)
 })

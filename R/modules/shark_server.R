@@ -20,7 +20,7 @@ SHARK_SOURCE_CLASSES <- c(worms = "alert alert-info", dyntaxa = "alert alert-suc
 
 .shark_value <- function(x) {
   v <- .scalar_chr(x)
-  if (is.na(v)) "—" else v
+  if (is.na(v)) "\u2014" else v
 }
 
 .shark_row <- function(label, value) {
@@ -29,7 +29,7 @@ SHARK_SOURCE_CLASSES <- c(worms = "alert alert-info", dyntaxa = "alert alert-suc
 
 .shark_aphia_link <- function(aphia_id) {
   id <- suppressWarnings(as.integer(.scalar_chr(aphia_id)))
-  if (is.na(id)) return("—")
+  if (is.na(id)) return("\u2014")
   tags$a(href = paste0("https://www.marinespecies.org/aphia.php?p=taxdetails&id=", id),
          target = "_blank", rel = "noopener noreferrer", as.character(id))
 }
@@ -110,6 +110,66 @@ shark_occurrence_popup <- function(d) {
   paste0("<strong>", esc(d$Species), "</strong><br>",
          "Date: ", esc(d$Date), "<br>",
          esc(d$Parameter), ": ", esc(d$Value), " ", esc(d$Unit))
+}
+
+# Should the coordinate check's message reach the warnings panel? Yes when it
+# found a zero or out-of-range coordinate, and also when the check could not
+# run at all (check_shark_coordinates() returns zero/out_of_range as NA when
+# the lat/lon columns are missing) - that NA must not be silently dropped.
+.shark_show_coordinates <- function(co) {
+  if (is.null(co)) return(FALSE)
+  flags <- c(co$zero, co$out_of_range)
+  anyNA(flags) || isTRUE(sum(flags, na.rm = TRUE) > 0)
+}
+
+#' Items for the QC warnings panel: a failed format validation (its message
+#' and every check_fields() error), a passing validation's warnings, outliers
+#' and coordinate problems.
+#'
+#' @param qc A non-NULL, non-error run_shark_qc() result.
+#' @return Character vector (possibly empty).
+shark_qc_warning_items <- function(qc) {
+  v <- qc$validation
+  validation_items <- if (!is.null(v) && isFALSE(v$valid)) {
+    c(.shark_value(v$message), v$errors)
+  } else if (!is.null(v)) {
+    v$warnings
+  } else {
+    character(0)
+  }
+  c(validation_items,
+    if (NROW(qc$outliers$outliers) > 0) qc$outliers$message,
+    if (.shark_show_coordinates(qc$coordinates)) qc$coordinates$message)
+}
+
+#' Render the QC warnings panel
+#'
+#' @param qc A non-NULL, non-error run_shark_qc() result.
+#' @return A shiny tag.
+shark_qc_warnings_ui <- function(qc) {
+  items <- shark_qc_warning_items(qc)
+  if (length(items) == 0) {
+    return(tags$div(class = "alert alert-success", icon("check"), " No warnings detected"))
+  }
+  tags$div(class = "alert alert-warning",
+           tags$h5(icon("exclamation-triangle"), " Warnings:"),
+           tags$ul(lapply(items, tags$li)))
+}
+
+#' Render the QC status line: a failed format validation must not show a
+#' green "completed" (C-6b fix round 1).
+#'
+#' @param qc A non-NULL, non-error run_shark_qc() result.
+#' @return A shiny tag.
+shark_qc_status_ui <- function(qc) {
+  v <- qc$validation
+  if (!is.null(v) && isFALSE(v$valid)) {
+    return(tags$div(class = "alert alert-danger", icon("exclamation-triangle"),
+                    paste(" Quality control found problems:", .shark_value(v$message))))
+  }
+  tags$div(class = "alert alert-success", icon("check-circle"),
+           sprintf(" Quality control completed - %d rows, %d columns analyzed",
+                   qc$data_summary$rows, qc$data_summary$columns))
 }
 
 #' SHARK4R Server Module
@@ -291,9 +351,7 @@ shark_server <- function(input, output, session) {
     if (isTRUE(qc$error)) {
       return(tags$div(class = "alert alert-danger", icon("exclamation-triangle"), paste(" Error:", qc$message)))
     }
-    tags$div(class = "alert alert-success", icon("check-circle"),
-             sprintf(" Quality control completed - %d rows, %d columns analyzed",
-                     qc$data_summary$rows, qc$data_summary$columns))
+    shark_qc_status_ui(qc)
   })
 
   output$shark_qc_results <- renderPrint({
@@ -305,15 +363,7 @@ shark_server <- function(input, output, session) {
   output$shark_qc_warnings <- renderUI({
     qc <- shark_data$qc_results
     req(qc, !isTRUE(qc$error))
-    items <- c(qc$validation$warnings,
-               if (NROW(qc$outliers$outliers) > 0) qc$outliers$message,
-               if (isTRUE(qc$coordinates$zero + qc$coordinates$out_of_range > 0)) qc$coordinates$message)
-    if (length(items) == 0) {
-      return(tags$div(class = "alert alert-success", icon("check"), " No warnings detected"))
-    }
-    tags$div(class = "alert alert-warning",
-             tags$h5(icon("exclamation-triangle"), " Warnings:"),
-             tags$ul(lapply(items, tags$li)))
+    shark_qc_warnings_ui(qc)
   })
 
   output$shark_qc_summary <- renderUI({
