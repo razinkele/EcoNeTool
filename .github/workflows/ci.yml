@@ -257,6 +257,7 @@ jobs:
             any::processx
             any::htmltools
             any::writexl
+            any::SHARK4R
 
       - name: Run offline testthat suite (fail on any test failure)
         run: |
