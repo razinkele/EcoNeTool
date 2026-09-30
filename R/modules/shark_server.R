@@ -185,6 +185,31 @@ shark_qc_status_ui <- function(qc) {
                    qc$data_summary$rows, qc$data_summary$columns))
 }
 
+#' A mockable alias for Sys.Date()
+#'
+#' shark_server() has the (input, output, session) signature app.R (and
+#' shiny::testServer()'s non-module server support) requires, so "today"
+#' cannot be an extra formal argument. Tests inject a later date the same
+#' way they already mock shark4r_installed()/app_path(): reassign this
+#' global binding with local_global_mock().
+shark_today <- Sys.Date
+
+#' The previous complete calendar year's [Jan 1, Dec 31] date range
+#'
+#' shark_ui() bakes a copy of this into the date-range input's default, but
+#' that UI is built once when the app starts (a static tabItem inside
+#' dashboardPage()), not per session - so on a long-running server that
+#' default freezes at the year the app was last restarted. shark_server()
+#' calls this again at the start of every session and pushes a fresh value
+#' with updateDateRangeInput().
+#'
+#' @param today Function returning "today" as a Date (injectable for tests).
+#' @return list(start = Date, end = Date).
+shark_previous_year_range <- function(today = Sys.Date) {
+  year <- as.integer(format(today(), "%Y")) - 1
+  list(start = as.Date(sprintf("%d-01-01", year)), end = as.Date(sprintf("%d-12-31", year)))
+}
+
 #' SHARK4R Server Module
 #'
 #' @param input Shiny input object
@@ -193,6 +218,11 @@ shark_qc_status_ui <- function(qc) {
 shark_server <- function(input, output, session) {
   # shark_ui() shows only an installation hint without a usable SHARK4R.
   if (!shark4r_installed()) return(invisible(NULL))
+
+  # Refresh the date-range default to the previous complete calendar year as
+  # of right now, once per session (see shark_previous_year_range()).
+  shark_year_range <- shark_previous_year_range(shark_today)
+  updateDateRangeInput(session, "shark_date_range", start = shark_year_range$start, end = shark_year_range$end)
 
   shark_data <- reactiveValues(
     taxonomy_results = NULL,

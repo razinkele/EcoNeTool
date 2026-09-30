@@ -596,6 +596,45 @@ test_that("the environmental query defaults to a small area and one recent year,
   expect_true(all(matches > 0))
 })
 
+test_that("shark_previous_year_range() computes the previous complete calendar year; 'today' is injectable", {
+  source_shark()
+  expect_equal(shark_previous_year_range(today = function() as.Date("2027-02-01")),
+               list(start = as.Date("2026-01-01"), end = as.Date("2026-12-31")))
+  expect_equal(shark_previous_year_range(today = function() as.Date("2024-12-31")),
+               list(start = as.Date("2023-01-01"), end = as.Date("2023-12-31")))
+})
+
+test_that("the date-range default refreshes to the previous complete year at session start, not frozen at build time", {
+  skip_if_not_installed("SHARK4R", "1.2.0")
+  source_shark()
+  # shark_server() keeps the (input, output, session) signature app.R relies
+  # on, so "today" is injected the same way shark4r_installed()/app_path()
+  # already are in this file: a mockable global alias. updateDateRangeInput()
+  # is mocked too: MockShinySession's sendInputMessage() (what every
+  # update*Input() funnels through) is a hard no-op, so testServer() cannot
+  # observe the update via input$shark_date_range - the call is captured
+  # directly instead.
+  local_global_mock("shark_today", function() as.Date("2027-02-01"))
+  seen <- NULL
+  local_global_mock("updateDateRangeInput", function(session, inputId, ..., start = NULL, end = NULL) {
+    seen <<- list(inputId = inputId, start = start, end = end)
+  })
+  shiny::testServer(shark_server, {
+    NULL
+  })
+  expect_equal(seen$inputId, "shark_date_range")
+  expect_equal(seen$start, as.Date("2026-01-01"))
+  expect_equal(seen$end, as.Date("2026-12-31"))
+})
+
+test_that("shark_server() wires the session-start refresh through the injectable helper (source guard)", {
+  code <- readLines(file.path(app_root, "R/modules/shark_server.R"), warn = FALSE)
+  code <- code[!startsWith(trimws(code), "#")]
+  body_text <- paste(code, collapse = "\n")
+  expect_match(body_text, "updateDateRangeInput(session, \"shark_date_range\"", fixed = TRUE)
+  expect_match(body_text, "shark_previous_year_range(shark_today)", fixed = TRUE)
+})
+
 test_that("without SHARK4R >= 1.2.0 the tab shows installation help and the server does nothing", {
   source_shark()
   local_global_mock("shark4r_installed", function() FALSE)
