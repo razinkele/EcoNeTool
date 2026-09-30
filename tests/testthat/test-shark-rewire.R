@@ -505,6 +505,24 @@ test_that("the SHARK UI offers exact SHARK parameters, the key-gated sources and
                     fixed = TRUE))
 })
 
+test_that("the environmental query defaults to a small area and one recent year, with a slow-query notice (I1)", {
+  skip_if_not_installed("SHARK4R", "1.2.0")
+  source_shark()
+  html <- html_of(shark_ui())
+  prev_year <- as.integer(format(Sys.Date(), "%Y")) - 1
+  expect_true(grepl(sprintf('data-initial-date="%d-01-01"', prev_year), html, fixed = TRUE))
+  expect_true(grepl(sprintf('data-initial-date="%d-12-31"', prev_year), html, fixed = TRUE))
+  expect_true(grepl('id="shark_bbox_north"', html, fixed = TRUE))
+  expect_match(html, 'id="shark_bbox_north"[^/]*value="58"')
+  expect_match(html, 'id="shark_bbox_south"[^/]*value="57"')
+  expect_match(html, 'id="shark_bbox_east"[^/]*value="12"')
+  expect_match(html, 'id="shark_bbox_west"[^/]*value="11"')
+  notice <- "SHARK queries take 25-90 s and pause the app for all users; keep the area and year range small."
+  matches <- gregexpr(notice, html, fixed = TRUE)[[1]]
+  expect_equal(length(matches), 2)
+  expect_true(all(matches > 0))
+})
+
 test_that("without SHARK4R >= 1.2.0 the tab shows installation help and the server does nothing", {
   source_shark()
   local_global_mock("shark4r_installed", function() FALSE)

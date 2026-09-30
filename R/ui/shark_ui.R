@@ -15,8 +15,20 @@ shark_ui <- function() {
   if (!shark4r_installed()) return(shark_unavailable_ui())
 
   taxonomy_choices <- shark_taxonomy_source_choices()
-  keyless_sources <- c("Dyntaxa (DYNTAXA_KEY)", "AlgaeBase (ALGAEBASE_KEY)")[
-    !c("dyntaxa", "algaebase") %in% taxonomy_choices]
+  keyless_sources <- c("Dyntaxa (DYNTAXA_KEY)", "AlgaeBase (ALGAEBASE_KEY)")
+  keyless_sources <- keyless_sources[!c("dyntaxa", "algaebase") %in% taxonomy_choices]
+
+  # A previous-calendar-year default so the query never goes stale, and a
+  # small default bounding box (Kattegat) so the first query a session runs
+  # does not scan all Swedish waters for three years (I1: SHARK queries are
+  # synchronous and block the app for every user for up to 90 s).
+  shark_default_year <- as.integer(format(Sys.Date(), "%Y")) - 1
+  shark_default_start <- as.Date(sprintf("%d-01-01", shark_default_year))
+  shark_default_end <- as.Date(sprintf("%d-12-31", shark_default_year))
+  shark_slow_query_notice <- tags$small(
+    class = "text-muted",
+    "SHARK queries take 25-90 s and pause the app for all users; keep the area and year range small."
+  )
 
   # ========================================================================
   # SHARK DATA TAB
@@ -146,8 +158,8 @@ shark_ui <- function() {
 
                   dateRangeInput("shark_date_range",
                                "Date Range:",
-                               start = Sys.Date() - 3 * 365,
-                               end = Sys.Date(),
+                               start = shark_default_start,
+                               end = shark_default_end,
                                min = "1900-01-01",
                                max = Sys.Date()),
 
@@ -165,13 +177,13 @@ shark_ui <- function() {
                     column(6,
                       numericInput("shark_bbox_north",
                                  "North (Lat):",
-                                 value = NULL,
+                                 value = 58,
                                  min = 54, max = 66, step = 0.1)
                     ),
                     column(6,
                       numericInput("shark_bbox_south",
                                  "South (Lat):",
-                                 value = NULL,
+                                 value = 57,
                                  min = 54, max = 66, step = 0.1)
                     )
                   ),
@@ -180,13 +192,13 @@ shark_ui <- function() {
                     column(6,
                       numericInput("shark_bbox_east",
                                  "East (Lon):",
-                                 value = NULL,
+                                 value = 12,
                                  min = 10, max = 25, step = 0.1)
                     ),
                     column(6,
                       numericInput("shark_bbox_west",
                                  "West (Lon):",
-                                 value = NULL,
+                                 value = 11,
                                  min = 10, max = 25, step = 0.1)
                     )
                   ),
@@ -199,7 +211,8 @@ shark_ui <- function() {
                   actionButton("shark_query_environmental",
                              "Query Data",
                              icon = icon("download"),
-                             class = "btn-success btn-block")
+                             class = "btn-success btn-block"),
+                  shark_slow_query_notice
                 )
               ),
 
@@ -243,8 +256,8 @@ shark_ui <- function() {
                   width = 12,
 
                   textInput("shark_occurrence_species",
-                           "Scientific Name:",
-                           placeholder = "e.g., 'Macoma balthica', 'Temora longicornis'"),
+                            "Scientific Name:",
+                            placeholder = "e.g., 'Macoma balthica', 'Temora longicornis'"),
 
                   dateRangeInput("shark_occurrence_dates",
                                "Date Range:",
@@ -262,6 +275,7 @@ shark_ui <- function() {
                              "Get Records",
                              icon = icon("search"),
                              class = "btn-primary btn-block"),
+                  shark_slow_query_notice,
 
                   br(),
                   tags$small(HTML("
@@ -331,9 +345,9 @@ shark_ui <- function() {
                   br(), br(),
 
                   selectInput("shark_qc_datatype",
-                            "Data Type:",
-                            choices = c("Auto (from delivery_datatype column)" = "auto", SHARK_QC_DATATYPES),
-                            selected = "auto"),
+                              "Data Type:",
+                              choices = c("Auto (from delivery_datatype column)" = "auto", SHARK_QC_DATATYPES),
+                              selected = "auto"),
 
                   actionButton("shark_run_qc",
                              "Run Quality Control",
