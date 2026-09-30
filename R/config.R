@@ -291,13 +291,13 @@ load_version_info <- function() {
 
   # Default version info (fallback)
   version_info <- list(
-    VERSION = "1.6.2",
-    VERSION_NAME = "Trait Lookups",
-    RELEASE_DATE = "2026-09-29",
+    VERSION = "1.6.3",
+    VERSION_NAME = "SHARK Rewire",
+    RELEASE_DATE = "2026-09-30",
     STATUS = "stable",
     MAJOR = 1,
     MINOR = 6,
-    PATCH = 2
+    PATCH = 3
   )
 
   # Try to read VERSION file

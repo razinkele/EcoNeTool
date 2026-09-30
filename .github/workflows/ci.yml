@@ -212,6 +212,17 @@ jobs:
             libproj-dev \
             libudunits2-dev
 
+      # duckdb (pulled in by rfishbase -> duckdbfs) takes over 45 minutes to
+      # compile from source. When a new duckdb release is on CRAN before P3M
+      # has a Linux binary for it, "latest" serves the source package and the
+      # job times out. Install the binary from a dated P3M snapshot first;
+      # setup-r-dependencies keeps an installed package that satisfies the
+      # requirement (upgrade: false), so it is not rebuilt.
+      - name: Install duckdb binary from a P3M snapshot
+        run: |
+          Rscript -e 'install.packages("duckdb", repos = sprintf("https://p3m.dev/cran/__linux__/%s/2026-09-28", system("lsb_release -cs", intern = TRUE)))'
+          Rscript -e 'cat("duckdb", as.character(packageVersion("duckdb")), "\n")'
+
       - name: Install R dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
