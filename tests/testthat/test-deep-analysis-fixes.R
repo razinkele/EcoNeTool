@@ -512,14 +512,11 @@ test_that("no RS/TT/ST assignment in orchestrator.R bypasses the guard", {
 
 test_that("the no-size branch does not clear an offline-prefilled MS", {
   code <- readLines(app_path("R/functions/trait_lookup/orchestrator.R"), warn = FALSE)
-  hit <- grep("result[$]MS <- NA_character_", code)
-  skip_if(length(hit) == 0, "MS reset line not found; orchestrator restructured")
-
-  # Walk back to the nearest enclosing guard and require it to consult
-  # offline_prefilled.
-  window <- code[max(1L, hit[1] - 6L):hit[1]]
-  expect_true(any(grepl("offline_prefilled", window, fixed = TRUE)),
-              info = paste("unguarded MS reset at line", hit[1]))
+  # Since C-8 the no-size branch never assigns MS: an offline MS is kept by
+  # its own branch, and nothing resets MS to NA. The behaviour is pinned in
+  # test-trait-provenance.R ("an offline-prefilled MS / FS / MB / EP ...").
+  expect_false(any(grepl("result[$]MS <- NA_character_", code)))
+  expect_true(any(grepl('} else if ("MS" %in% offline_prefilled) {', code, fixed = TRUE)))
 })
 
 # -----------------------------------------------------------------------------

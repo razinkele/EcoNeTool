@@ -382,3 +382,117 @@ test_that("a session with its own harmonization settings is not served offline c
                     lookup_worms_traits = worms_taxon("Chordata", "Actinopteri", "Gadiformes")))
   expect_true(called)
 })
+
+# ---------------------------------------------------------------------------
+# Task 4 - the harmonisation phase: sources at assignment, size precedence,
+# fuzzy fallbacks respect the offline DB, PR left for imputation (C3.6)
+# ---------------------------------------------------------------------------
+
+test_that("a WoRMS size wins when SeaLifeBase reports no size (F28)", {
+  res <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Mollusca", "Bivalvia", max_length_cm = 20),
+    lookup_sealifebase_traits = found(list(trophic_level = 2.1))))
+  expect_identical(res$MS, "MS5")
+  expect_identical(res$MS_source, "WoRMS")
+  expect_identical(res$MS_method, "observed")
+})
+
+test_that("SeaLifeBase outranks WoRMS for size (F28 precedence)", {
+  res <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Mollusca", "Bivalvia", max_length_cm = 20),
+    lookup_sealifebase_traits = found(list(max_length_cm = 4))))
+  expect_identical(res$MS, "MS3")
+  expect_identical(res$MS_source, "SeaLifeBase")
+})
+
+test_that("a MAREDAT size (ESD) feeds MS (F28)", {
+  res <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Chordata", "Appendicularia"),
+    lookup_maredat_traits = found(list(size_um = 1500, max_length_cm = 0.15))))
+  expect_identical(res$MS, "MS2")
+  expect_identical(res$MS_source, "MAREDAT")
+})
+
+test_that("BIOTIC and PTDB sizes feed MS (F28)", {
+  biotic <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Annelida", "Polychaeta"),
+    lookup_biotic_traits = found(list(max_length_cm = 12))))
+  expect_identical(biotic$MS_source, "BIOTIC")
+  expect_identical(biotic$MS, "MS4")
+  ptdb <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Bacillariophyta", "Bacillariophyceae"),
+    lookup_ptdb_traits = found(list(cell_volume_um3 = 1000, max_length_cm = 0.001))))
+  expect_identical(ptdb$MS_source, "PTDB")
+  expect_identical(ptdb$MS, "MS1")
+})
+
+test_that("an offline-prefilled MS / FS / MB / EP is never replaced or cleared (F27)", {
+  offline <- data.frame(species = "Testus maximus", MS = "MS3", FS = "FS5", MB = "MB3", EP = "EP4",
+                        MS_confidence = 0.7, FS_confidence = 0.7, MB_confidence = 0.7, EP_confidence = 0.7,
+                        primary_source = "biotic", stringsAsFactors = FALSE)
+  res <- run_pipeline(list(
+    lookup_offline_traits = function(...) offline,
+    lookup_worms_traits = worms_taxon("Annelida", "Polychaeta"),
+    lookup_ontology_traits = found(data.frame(trait = "x")),
+    extract_primary_feeding = function(...) list(modality = NA, score = NA, ontology_id = NA),
+    harmonize_fuzzy_foraging = function(...) list(class = "FS1", confidence = "high", modalities = "x"),
+    harmonize_fuzzy_mobility = function(...) list(class = "MB5", confidence = "high", modalities = "x"),
+    harmonize_fuzzy_habitat = function(...) list(class = "EP1", confidence = "high", modalities = "x")))
+  expect_identical(c(res$MS, res$FS, res$MB, res$EP), c("MS3", "FS5", "MB3", "EP4")) # no size: MS kept too
+  expect_identical(c(res$MS_source, res$FS_source, res$MB_source, res$EP_source), rep("BIOTIC", 4))
+})
+
+test_that("the ontology fallback is labelled Ontology / rule when nothing was prefilled", {
+  res <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Annelida", "Polychaeta"),
+    lookup_ontology_traits = found(data.frame(trait = "x")),
+    extract_primary_feeding = function(...) list(modality = NA, score = NA, ontology_id = NA),
+    harmonize_fuzzy_foraging = function(...) list(class = "FS1", confidence = "high", modalities = "x"),
+    harmonize_fuzzy_mobility = function(...) list(class = NA, confidence = NA, modalities = character()),
+    harmonize_fuzzy_habitat = function(...) list(class = NA, confidence = NA, modalities = character())))
+  expect_identical(res$FS, "FS1")
+  expect_identical(res$FS_source, "Ontology")
+  expect_identical(res$FS_method, "rule")
+})
+
+test_that("with no protection text and no taxon rule, PR reaches imputation as NA (F26)", {
+  seen_ml <- "not called"
+  seen_phylo <- NULL
+  run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Chordata", "Mammalia", "Carnivora"),
+    apply_ml_fallback = function(harmonized_traits, raw_traits, verbose = FALSE) {
+      seen_ml <<- harmonized_traits$PR
+      harmonized_traits
+    },
+    apply_phylogenetic_imputation = function(species_name, current_traits, ...) {
+      seen_phylo <<- current_traits
+      current_traits
+    }))
+  expect_identical(seen_ml, NA_character_)
+  expect_identical(seen_phylo$PR, NA_character_)
+  expect_identical(seen_phylo$PR_source, NA_character_) # was "Taxonomy" for a guessed PR0
+})
+
+test_that("FS, MB and EP name the database or rule that decided them (F28)", {
+  res <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Mollusca", "Bivalvia"),
+    lookup_biotic_traits = found(list(feeding_mode = "filter feeder", living_habit = "burrow dwelling")),
+    lookup_cefas_traits = found(list(feeding_mode = "deposit"))))
+  expect_identical(res$FS_source, "BIOTIC") # first feeding contributor, not the last database queried
+  expect_identical(res$FS_method, "observed")
+  expect_identical(res$EP_source, "BIOTIC")
+  expect_identical(res$EP_method, "observed")
+  expect_identical(res$PR_source, "Taxonomy")
+  expect_identical(res$PR_method, "rule")
+
+  fish <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Chordata", "Actinopteri", "Gadiformes"),
+    lookup_fishbase_traits = found(list(max_length_cm = 100, trophic_level = 4.1, body_shape = "fusiform",
+                                        depth_min = 10, depth_max = 30))))
+  expect_identical(fish$FS_source, "FishBase")
+  expect_identical(fish$MB_source, "Taxonomy") # fish MB comes from the taxon rule, not the body shape
+  expect_identical(fish$MB_method, "rule")
+  expect_identical(fish$EP_source, "Depth-based")
+  expect_identical(fish$EP_method, "rule")
+})
+

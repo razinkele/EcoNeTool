@@ -445,10 +445,14 @@ lookup_species_traits <- function(species_name,
   }
 
   # Initialize variables for trait merging
-  # Start with WoRMS Traits Portal data if available
+  # Start with WoRMS Traits Portal data if available. Every size a database
+  # reports is also recorded in size_candidates; before harmonisation one is
+  # picked by database precedence (F28), whatever order the lookups ran in.
   size_cm <- NULL
+  size_candidates <- list()
   if (!is.null(worms_data) && isTRUE(worms_data$success) && !is.null(raw_traits$worms$max_length_cm)) {
     size_cm <- raw_traits$worms$max_length_cm
+    size_candidates$WoRMS <- size_cm
   }
   trophic_level <- NULL
   feeding_mode <- character()
@@ -599,6 +603,7 @@ lookup_species_traits <- function(species_name,
 
       if (!is.null(fishbase_data$traits$max_length_cm)) {
         size_cm <- fishbase_data$traits$max_length_cm
+        size_candidates$FishBase <- size_cm
         message("    \u2192 Max Length: ", size_cm, " cm [\u2192 MS]")
       }
       if (!is.null(fishbase_data$traits$trophic_level)) {
@@ -646,9 +651,10 @@ lookup_species_traits <- function(species_name,
       sources_used <- c(sources_used, "SeaLifeBase")
       message("  \u2713 SUCCESS (", db_time, "s)")
 
-      if (is.null(size_cm) && !is.null(sealifebase_data$traits$max_length_cm)) {
-        size_cm <- sealifebase_data$traits$max_length_cm
-        message("    \u2192 Max Length: ", size_cm, " cm [\u2192 MS]")
+      if (!is.null(sealifebase_data$traits$max_length_cm)) {
+        size_candidates$SeaLifeBase <- sealifebase_data$traits$max_length_cm
+        if (is.null(size_cm)) size_cm <- sealifebase_data$traits$max_length_cm
+        message("    \u2192 Max Length: ", sealifebase_data$traits$max_length_cm, " cm [\u2192 MS]")
       }
       if (is.null(trophic_level) && !is.null(sealifebase_data$traits$trophic_level)) {
         trophic_level <- sealifebase_data$traits$trophic_level
@@ -674,6 +680,11 @@ lookup_species_traits <- function(species_name,
       sources_used <- c(sources_used, "BIOTIC")
       message("  \u2713 SUCCESS (", db_time, "s)")
 
+      if (!is.null(biotic_data$traits$max_length_cm)) {
+        size_candidates$BIOTIC <- biotic_data$traits$max_length_cm
+        if (is.null(size_cm)) size_cm <- biotic_data$traits$max_length_cm
+        message("    \u2192 Max Length: ", biotic_data$traits$max_length_cm, " cm [\u2192 MS]")
+      }
       if (!is.null(biotic_data$traits$mobility)) {
         mobility_info <- c(mobility_info, biotic_data$traits$mobility)
         message("    \u2192 Mobility: ", biotic_data$traits$mobility, " [\u2192 MB]")
@@ -722,6 +733,7 @@ lookup_species_traits <- function(species_name,
       message("  \u2713 SUCCESS (", db_time, "s)")
 
       if (!is.null(bvol_traits$size_cm)) {
+        size_candidates$BVOL <- bvol_traits$size_cm
         if (is.null(size_cm)) {
           size_cm <- bvol_traits$size_cm
         }
@@ -768,6 +780,7 @@ lookup_species_traits <- function(species_name,
       message("  \u2713 SUCCESS (", db_time, "s)")
 
       if (!is.null(enriched_traits$size_cm)) {
+        size_candidates$SpeciesEnriched <- enriched_traits$size_cm
         if (is.null(size_cm)) {
           size_cm <- enriched_traits$size_cm
         }
@@ -803,9 +816,10 @@ lookup_species_traits <- function(species_name,
       sources_used <- c(sources_used, "freshwaterecology.info")
       message("  \u2713 SUCCESS (", db_time, "s)")
 
-      if (is.null(size_cm) && !is.null(freshwater_data$traits$max_length_mm)) {
-        size_cm <- freshwater_data$traits$max_length_mm / 10
-        message("    \u2192 Max Length: ", freshwater_data$traits$max_length_mm, " mm (", size_cm, " cm) [\u2192 MS]")
+      if (!is.null(freshwater_data$traits$max_length_mm)) {
+        size_candidates[["freshwaterecology.info"]] <- freshwater_data$traits$max_length_mm / 10
+        if (is.null(size_cm)) size_cm <- freshwater_data$traits$max_length_mm / 10
+        message("    \u2192 Max Length: ", freshwater_data$traits$max_length_mm, " mm [\u2192 MS]")
       }
       if (!is.null(freshwater_data$traits$locomotion)) {
         mobility_info <- c(mobility_info, freshwater_data$traits$locomotion)
@@ -830,6 +844,11 @@ lookup_species_traits <- function(species_name,
       raw_traits$maredat <- maredat_data$traits
       sources_used <- c(sources_used, "MAREDAT")
       message("  \u2713 SUCCESS (", db_time, "s)")
+      if (!is.null(maredat_data$traits$max_length_cm)) {
+        size_candidates$MAREDAT <- maredat_data$traits$max_length_cm
+        if (is.null(size_cm)) size_cm <- maredat_data$traits$max_length_cm
+        message("    \u2192 Size (ESD): ", maredat_data$traits$max_length_cm, " cm [\u2192 MS]")
+      }
       message("    \u2192 Provides: Zooplankton size and feeding data [\u2192 MS, FS]")
     } else {
       message("  \u2717 FAILED (", db_time, "s) - Not in local MAREDAT database")
@@ -849,6 +868,11 @@ lookup_species_traits <- function(species_name,
       raw_traits$ptdb <- ptdb_data$traits
       sources_used <- c(sources_used, "PTDB")
       message("  \u2713 SUCCESS (", db_time, "s)")
+      if (!is.null(ptdb_data$traits$max_length_cm)) {
+        size_candidates$PTDB <- ptdb_data$traits$max_length_cm
+        if (is.null(size_cm)) size_cm <- ptdb_data$traits$max_length_cm
+        message("    \u2192 Cell size: ", ptdb_data$traits$max_length_cm, " cm [\u2192 MS]")
+      }
       message("    \u2192 Provides: Phytoplankton cell size [\u2192 MS, FS=FS0]")
     } else {
       message("  \u2717 FAILED (", db_time, "s) - Not in local PTDB database")
@@ -1040,11 +1064,8 @@ lookup_species_traits <- function(species_name,
           result, "RS", harmonize_reproductive_strategy(coral_data$traits$reproductive_mode),
           "CoralTraits")
       }
-      tt_code <- coral_thermal_to_tt(coral_data$traits$thermal_tolerance)
-      if (!is.na(tt_code)) {
-        result$TT <- tt_code
-        result$TT_source <- "CoralTraits"
-      }
+      result <- assign_trait_if_resolved(
+        result, "TT", coral_thermal_to_tt(coral_data$traits$thermal_tolerance), "CoralTraits")
       if (!is.null(coral_data$traits$depth_min)) result$depth_min <- coral_data$traits$depth_min
       if (!is.null(coral_data$traits$depth_max)) result$depth_max <- coral_data$traits$depth_max
       message("    Found: ", paste(names(coral_data$traits), collapse = ", "))
@@ -1061,8 +1082,9 @@ lookup_species_traits <- function(species_name,
       raw_traits$pelagic <- pelagic_data$traits
       sources_used <- c(sources_used, "PelagicTraits")
       if (!is.null(pelagic_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, pelagic_data$traits$feeding_mode)
-      if (!is.null(pelagic_data$traits$body_length_cm) && is.null(size_cm)) {
-        size_cm <- pelagic_data$traits$body_length_cm
+      if (!is.null(pelagic_data$traits$body_length_cm)) {
+        size_candidates$PelagicTraits <- pelagic_data$traits$body_length_cm
+        if (is.null(size_cm)) size_cm <- pelagic_data$traits$body_length_cm
       }
       message("    Found: ", paste(names(pelagic_data$traits), collapse = ", "))
     }
@@ -1177,18 +1199,21 @@ lookup_species_traits <- function(species_name,
   message("\u2551 HARMONIZATION - Converting raw data to categorical traits     \u2551")
   message("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d")
 
+  # One body size, by database precedence (F28): FishBase > SeaLifeBase >
+  # WoRMS > BIOTIC > MAREDAT > PTDB > BVOL > SpeciesEnriched / freshwater /
+  # pelagic. Its source is MS_source; no more inferring it from field presence.
+  size_pick <- select_size_by_precedence(size_candidates)
+  size_cm <- size_pick$size_cm
+  size_source <- size_pick$source
+  ms_from_size <- FALSE  # TRUE when MS below was harmonised from size_cm
+
   # 1. MS - Max Size Class
   message("\n[MS] Max Size Class:")
   if (!is.null(size_cm)) {
-    message("  \U0001f4cf Input: ", size_cm, " cm")
+    message("  \U0001f4cf Input: ", size_cm, " cm (", size_source, ")")
     if (!"MS" %in% offline_prefilled) {
-      result$MS <- harmonize_size_class(size_cm)
-      if (!is.null(raw_traits$fishbase$max_length_cm)) result$MS_source <- "FishBase"
-      else if (!is.null(raw_traits$sealifebase$max_length_cm)) result$MS_source <- "SeaLifeBase"
-      else if (!is.null(raw_traits$biotic$max_length_cm)) result$MS_source <- "BIOTIC"
-      else if (!is.null(raw_traits$ptdb$cell_volume)) result$MS_source <- "PTDB"
-      else if (!is.null(raw_traits$worms$max_length_cm)) result$MS_source <- "WoRMS"
-      else result$MS_source <- "Harmonized"
+      result <- assign_trait_if_resolved(result, "MS", harmonize_size_class(size_cm), size_source, "observed")
+      ms_from_size <- !is.na(result$MS)
     } else {
       message("  Kept offline value: ", result$MS)
     }
@@ -1200,30 +1225,26 @@ lookup_species_traits <- function(species_name,
     else if (size_cm < 50.0) message("     (20-50 cm = Large - MS5)")
     else if (size_cm < 150.0) message("     (50-150 cm = Very Large - MS6)")
     else message("     (> 150 cm = Giant - MS7)")
+  } else if ("MS" %in% offline_prefilled) {
+    message("  Kept offline value: ", result$MS)
   } else {
     message("  \u274c No size data available")
-    # Guard mirrors the size_cm branch above. Without it, a species whose MS
-    # came from the offline DB had that value cleared here whenever the online
-    # sources returned no size, while MS_source stayed "OfflineDB" - a row
-    # claiming an offline provenance for a value it no longer held.
-    if (!"MS" %in% offline_prefilled) {
-      result$MS <- NA_character_
-    } else {
-      message("  Kept offline value: ", result$MS)
-    }
   }
 
-  # 2. FS - Foraging Strategy
+  # 2. FS - Foraging Strategy. The source is the database of the input that
+  # decided it (trophic level or feeding text), recorded here (F28). The
+  # ontology fallback only runs when the offline DB did not prefill FS (F27).
   message("\n[FS] Foraging Strategy:")
   if (length(feeding_mode) > 0 || !is.null(trophic_level)) {
     if (!is.null(trophic_level)) message("  \U0001f374 Trophic Level: ", trophic_level)
     if (length(feeding_mode) > 0) message("  \U0001f374 Feeding Modes: ", paste(feeding_mode, collapse = ", "))
     if (!"FS" %in% offline_prefilled) {
-      result$FS <- harmonize_foraging_strategy(feeding_mode, trophic_level)
-      if (!is.null(raw_traits$fishbase$trophic_level)) result$FS_source <- "FishBase"
-      else if (!is.null(raw_traits$biotic$feeding_mode)) result$FS_source <- "BIOTIC"
-      else if (length(feeding_mode) > 0) result$FS_source <- sources_used[length(sources_used)]
-      else result$FS_source <- "Harmonized"
+      fs <- harmonize_foraging_detail(feeding_mode, trophic_level)
+      fs_source <- switch(fs$basis,
+                          trophic_level = text_input_source(raw_traits, "trophic_level"),
+                          text = text_input_source(raw_traits, "feeding"),
+                          "Default")
+      result <- assign_trait_if_resolved(result, "FS", fs$code, fs_source, fs$method)
     } else {
       message("  Kept offline value: ", result$FS)
     }
@@ -1232,33 +1253,25 @@ lookup_species_traits <- function(species_name,
     if (!is.na(fs_label)) {
       message("     (", fs_label, ")")
     }
-  } else {
-    # Try fuzzy harmonization from ontology traits
-    if (!is.null(raw_traits$ontology)) {
-      message("  \U0001f50d Trying fuzzy harmonization from ontology...")
-      fuzzy_fs <- harmonize_fuzzy_foraging(raw_traits$ontology)
-      if (!is.na(fuzzy_fs$class)) {
-        result$FS <- fuzzy_fs$class
-        result$FS_source <- "Ontology"
-        sources_used <- c(sources_used, "Fuzzy")
-        message("  \u2713 Output: ", result$FS, " (from fuzzy ontology, confidence=", fuzzy_fs$confidence, ")")
-        fs_label <- if (!is.na(result$FS)) trait_code_label(result$FS) else NA_character_
-        if (!is.na(fs_label)) {
-          message("     (", fs_label, ")")
-        }
-        message("     Modalities: ", paste(fuzzy_fs$modalities, collapse = ", "))
-      } else if (!"FS" %in% offline_prefilled) {
-        message("  \u274c No feeding/trophic data available (including ontology)")
-        result$FS <- NA_character_
-      } else {
-        message("  Kept offline value: ", result$FS)
+  } else if ("FS" %in% offline_prefilled) {
+    message("  Kept offline value: ", result$FS)
+  } else if (!is.null(raw_traits$ontology)) {
+    message("  \U0001f50d Trying fuzzy harmonization from ontology...")
+    fuzzy_fs <- harmonize_fuzzy_foraging(raw_traits$ontology)
+    if (!is.na(fuzzy_fs$class)) {
+      result <- assign_trait_if_resolved(result, "FS", fuzzy_fs$class, "Ontology", "rule")
+      sources_used <- c(sources_used, "Fuzzy")
+      message("  \u2713 Output: ", result$FS, " (from fuzzy ontology, confidence=", fuzzy_fs$confidence, ")")
+      fs_label <- if (!is.na(result$FS)) trait_code_label(result$FS) else NA_character_
+      if (!is.na(fs_label)) {
+        message("     (", fs_label, ")")
       }
-    } else if (!"FS" %in% offline_prefilled) {
-      message("  \u274c No feeding/trophic data available")
-      result$FS <- NA_character_
+      message("     Modalities: ", paste(fuzzy_fs$modalities, collapse = ", "))
     } else {
-      message("  Kept offline value: ", result$FS)
+      message("  \u274c No feeding/trophic data available (including ontology)")
     }
+  } else {
+    message("  \u274c No feeding/trophic data available")
   }
 
   # 3. MB - Mobility
@@ -1267,39 +1280,33 @@ lookup_species_traits <- function(species_name,
     if (!is.null(body_shape)) message("  \U0001f3ca Body Shape: ", body_shape)
     if (length(mobility_info) > 0) message("  \U0001f3ca Mobility Info: ", paste(mobility_info, collapse = ", "))
     if (!"MB" %in% offline_prefilled) {
-      result$MB <- harmonize_mobility(mobility_info, body_shape, raw_traits$worms)
-      if (!is.null(raw_traits$fishbase$body_shape)) result$MB_source <- "FishBase"
-      else if (!is.null(raw_traits$biotic$mobility)) result$MB_source <- "BIOTIC"
-      else result$MB_source <- "Harmonized"
+      mb <- harmonize_mobility_detail(mobility_info, body_shape, raw_traits$worms)
+      mb_source <- switch(mb$basis,
+                          text = text_input_source(raw_traits, "mobility"),
+                          taxon = "Taxonomy",
+                          "Default")
+      result <- assign_trait_if_resolved(result, "MB", mb$code, mb_source, mb$method)
     } else {
       message("  Kept offline value: ", result$MB)
     }
     message("  \u2713 Output: ", result$MB)
     if (!is.na(trait_code_label(result$MB))) message("     (", trait_code_label(result$MB), ")")
-  } else {
-    # Try fuzzy harmonization from ontology traits
-    if (!is.null(raw_traits$ontology)) {
-      message("  \U0001f50d Trying fuzzy harmonization from ontology...")
-      fuzzy_mb <- harmonize_fuzzy_mobility(raw_traits$ontology)
-      if (!is.na(fuzzy_mb$class)) {
-        result$MB <- fuzzy_mb$class
-        result$MB_source <- "Ontology"
-        sources_used <- c(sources_used, "Fuzzy")
-        message("  \u2713 Output: ", result$MB, " (from fuzzy ontology, confidence=", fuzzy_mb$confidence, ")")
-        if (!is.na(trait_code_label(result$MB))) message("     (", trait_code_label(result$MB), ")")
-        message("     Modalities: ", paste(fuzzy_mb$modalities, collapse = ", "))
-      } else if (!"MB" %in% offline_prefilled) {
-        message("  \u274c No mobility data available (including ontology)")
-        result$MB <- NA_character_
-      } else {
-        message("  Kept offline value: ", result$MB)
-      }
-    } else if (!"MB" %in% offline_prefilled) {
-      message("  \u274c No mobility data available")
-      result$MB <- NA_character_
+  } else if ("MB" %in% offline_prefilled) {
+    message("  Kept offline value: ", result$MB)
+  } else if (!is.null(raw_traits$ontology)) {
+    message("  \U0001f50d Trying fuzzy harmonization from ontology...")
+    fuzzy_mb <- harmonize_fuzzy_mobility(raw_traits$ontology)
+    if (!is.na(fuzzy_mb$class)) {
+      result <- assign_trait_if_resolved(result, "MB", fuzzy_mb$class, "Ontology", "rule")
+      sources_used <- c(sources_used, "Fuzzy")
+      message("  \u2713 Output: ", result$MB, " (from fuzzy ontology, confidence=", fuzzy_mb$confidence, ")")
+      if (!is.na(trait_code_label(result$MB))) message("     (", trait_code_label(result$MB), ")")
+      message("     Modalities: ", paste(fuzzy_mb$modalities, collapse = ", "))
     } else {
-      message("  Kept offline value: ", result$MB)
+      message("  \u274c No mobility data available (including ontology)")
     }
+  } else {
+    message("  \u274c No mobility data available")
   }
 
   # 4. EP - Environmental Position
@@ -1308,62 +1315,56 @@ lookup_species_traits <- function(species_name,
     if (!is.null(depth_min)) message("  \U0001f30a Depth Range: ", depth_min, "-", depth_max, " m")
     if (length(habitat_info) > 0) message("  \U0001f30a Habitat Info: ", paste(habitat_info, collapse = ", "))
     if (!"EP" %in% offline_prefilled) {
-      result$EP <- harmonize_environmental_position(depth_min, depth_max, habitat_info, raw_traits$worms)
-      if (!is.null(depth_min)) result$EP_source <- "Depth-based"
-      else result$EP_source <- "Taxonomy"
+      ep <- harmonize_environmental_detail(depth_min, depth_max, habitat_info, raw_traits$worms)
+      ep_source <- switch(ep$basis,
+                          text = text_input_source(raw_traits, "habitat"),
+                          taxon = "Taxonomy",
+                          depth = "Depth-based",
+                          "Default")
+      result <- assign_trait_if_resolved(result, "EP", ep$code, ep_source, ep$method)
     } else {
       message("  Kept offline value: ", result$EP)
     }
     message("  \u2713 Output: ", result$EP)
     if (!is.na(trait_code_label(result$EP))) message("     (", trait_code_label(result$EP), ")")
-  } else {
-    # Try fuzzy harmonization from ontology traits
-    if (!is.null(raw_traits$ontology)) {
-      message("  \U0001f50d Trying fuzzy harmonization from ontology...")
-      fuzzy_ep <- harmonize_fuzzy_habitat(raw_traits$ontology)
-      if (!is.na(fuzzy_ep$class)) {
-        result$EP <- fuzzy_ep$class
-        result$EP_source <- "Ontology"
-        sources_used <- c(sources_used, "Fuzzy")
-        message("  \u2713 Output: ", result$EP, " (from fuzzy ontology, confidence=", fuzzy_ep$confidence, ")")
-        if (!is.na(trait_code_label(result$EP))) message("     (", trait_code_label(result$EP), ")")
-        message("     Modalities: ", paste(fuzzy_ep$modalities, collapse = ", "))
-      } else if (!"EP" %in% offline_prefilled) {
-        message("  \u274c No depth/habitat data available (including ontology)")
-        result$EP <- NA_character_
-      } else {
-        message("  Kept offline value: ", result$EP)
-      }
-    } else if (!"EP" %in% offline_prefilled) {
-      message("  \u274c No depth/habitat data available")
-      result$EP <- NA_character_
+  } else if ("EP" %in% offline_prefilled) {
+    message("  Kept offline value: ", result$EP)
+  } else if (!is.null(raw_traits$ontology)) {
+    message("  \U0001f50d Trying fuzzy harmonization from ontology...")
+    fuzzy_ep <- harmonize_fuzzy_habitat(raw_traits$ontology)
+    if (!is.na(fuzzy_ep$class)) {
+      result <- assign_trait_if_resolved(result, "EP", fuzzy_ep$class, "Ontology", "rule")
+      sources_used <- c(sources_used, "Fuzzy")
+      message("  \u2713 Output: ", result$EP, " (from fuzzy ontology, confidence=", fuzzy_ep$confidence, ")")
+      if (!is.na(trait_code_label(result$EP))) message("     (", trait_code_label(result$EP), ")")
+      message("     Modalities: ", paste(fuzzy_ep$modalities, collapse = ", "))
     } else {
-      message("  Kept offline value: ", result$EP)
+      message("  \u274c No depth/habitat data available (including ontology)")
     }
+  } else {
+    message("  \u274c No depth/habitat data available")
   }
 
-  # 5. PR - Predator Resistance
+  # 5. PR - Predator Resistance. No protection text and no taxon rule leaves
+  # PR NA (F26), so ML and phylogenetic imputation can fill it below.
   message("\n[PR] Predator Resistance:")
   if (length(protection_info) > 0) {
     message("  \U0001f6e1\ufe0f  Protection Info: ", paste(protection_info, collapse = ", "))
-    if (!"PR" %in% offline_prefilled) {
-      result$PR <- harmonize_protection(protection_info, raw_traits$worms)
-      result$PR_source <- "Taxonomy"
-    } else {
-      message("  Kept offline value: ", result$PR)
-    }
-    message("  \u2713 Output: ", result$PR)
-    if (!is.na(trait_code_label(result$PR))) message("     (", trait_code_label(result$PR), ")")
   } else {
     message("  \U0001f6e1\ufe0f  Using taxonomic inference from WoRMS")
-    if (!"PR" %in% offline_prefilled) {
-      result$PR <- harmonize_protection(protection_info, raw_traits$worms)
-      result$PR_source <- "Taxonomy"
-    } else {
-      message("  Kept offline value: ", result$PR)
-    }
-    message("  \u2713 Output: ", result$PR)
   }
+  if (!"PR" %in% offline_prefilled) {
+    pr <- harmonize_protection_detail(protection_info, raw_traits$worms)
+    pr_source <- switch(pr$basis,
+                        text = text_input_source(raw_traits, "protection"),
+                        taxon = "Taxonomy",
+                        NA_character_)
+    result <- assign_trait_if_resolved(result, "PR", pr$code, pr_source, pr$method)
+  } else {
+    message("  Kept offline value: ", result$PR)
+  }
+  message("  \u2713 Output: ", result$PR)
+  if (!is.na(trait_code_label(result$PR))) message("     (", trait_code_label(result$PR), ")")
 
   # ═══════════════════════════════════════════════════════════════════════
   # ML FALLBACK - Predict missing traits using Random Forest models
