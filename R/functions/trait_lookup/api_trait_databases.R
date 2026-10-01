@@ -95,9 +95,17 @@ lookup_worms_traits_api <- function(species_name = NULL, aphia_id = NULL, timeou
                        warning(sprintf(
                          "[lookup_worms_traits_api] httr::GET failed for AphiaID %s: %s",
                          aphia_id, conditionMessage(e)), call. = FALSE)
+                       # A transport failure is an error, not "not found"
+                       result$error <<- conditionMessage(e)
                        NULL
                      })
-    if (is.null(resp) || httr::status_code(resp) != 200) return(result)
+    if (is.null(resp)) return(result)
+    status <- httr::status_code(resp)
+    if (status >= 500) {
+      result$error <- sprintf("WoRMS Traits HTTP error %d", status)
+      return(result)
+    }
+    if (status != 200) return(result)
 
     body <- tryCatch(
       jsonlite::fromJSON(httr::content(resp, as = "text", encoding = "UTF-8"),
@@ -177,6 +185,10 @@ lookup_polytraits <- function(species_name, timeout = 10) {
       "/json/"
     )
     taxon_resp <- httr::GET(taxon_url, httr::timeout(timeout))
+    if (httr::status_code(taxon_resp) >= 500) {
+      result$error <- sprintf("PolyTraits HTTP error %d", httr::status_code(taxon_resp))
+      return(result)
+    }
     if (httr::http_error(taxon_resp)) return(result)
 
     taxon_data <- jsonlite::fromJSON(
@@ -194,6 +206,10 @@ lookup_polytraits <- function(species_name, timeout = 10) {
       "/json/"
     )
     traits_resp <- httr::GET(traits_url, httr::timeout(timeout))
+    if (httr::status_code(traits_resp) >= 500) {
+      result$error <- sprintf("PolyTraits HTTP error %d", httr::status_code(traits_resp))
+      return(result)
+    }
     if (httr::http_error(traits_resp)) return(result)
 
     traits_json <- jsonlite::fromJSON(
@@ -399,6 +415,10 @@ lookup_traitbank <- function(species_name, timeout = 15) {
       "&page=1&exact=true"
     )
     search_resp <- httr::GET(search_url, httr::timeout(timeout))
+    if (httr::status_code(search_resp) >= 500) {
+      result$error <- sprintf("TraitBank HTTP error %d", httr::status_code(search_resp))
+      return(result)
+    }
     if (httr::http_error(search_resp)) return(result)
 
     search_data <- jsonlite::fromJSON(
@@ -415,6 +435,10 @@ lookup_traitbank <- function(species_name, timeout = 15) {
       ".json?details=true&common_names=false&images_per_page=0"
     )
     pages_resp <- httr::GET(pages_url, httr::timeout(timeout))
+    if (httr::status_code(pages_resp) >= 500) {
+      result$error <- sprintf("TraitBank HTTP error %d", httr::status_code(pages_resp))
+      return(result)
+    }
     if (httr::http_error(pages_resp)) return(result)
 
     pages_data <- jsonlite::fromJSON(

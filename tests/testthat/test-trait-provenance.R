@@ -871,3 +871,76 @@ test_that("a freshwaterecology HTTP error sets result$error; a missing key stays
     expect_match(res$note, "API key not configured")
   })
 })
+
+# ---------------------------------------------------------------------------
+# CodeRabbit follow-up - WoRMS without a classification, API 5xx / transport
+# ---------------------------------------------------------------------------
+
+test_that("WoRMS success without a classification degrades the row (1-day TTL); a classified one does not", {
+  cache_dir <- withr::local_tempdir()
+  res <- run_pipeline(list(
+    lookup_worms_traits = found(list(aphia_id = 1L, isMarine = TRUE)),
+    lookup_fishbase_traits = found(list(max_length_cm = 100))), cache_dir = cache_dir)
+  expect_true(res$degraded)
+  env <- read_envelope(cache_dir)
+  expect_true(env$degraded)
+  expect_identical(env$ttl_days, 1)
+
+  ok_dir <- withr::local_tempdir()
+  ok <- run_pipeline(list(lookup_worms_traits = worms_taxon("Mollusca", "Bivalvia", max_length_cm = 20)),
+                     cache_dir = ok_dir)
+  expect_false(ok$degraded)
+  expect_null(read_envelope(ok_dir)$ttl_days)
+})
+
+test_that("a complete offline row is degraded when WoRMS gave no classification", {
+  reset_offline_vocab_gate()
+  db <- make_offline_db_fixture(data.frame(
+    species = "Testus maximus", MS = "MS3", FS = "FS6", MB = "MB1", EP = "EP3", PR = "PR6",
+    primary_source = "biotic", stringsAsFactors = FALSE))
+  real <- lookup_offline_traits
+  offline <- function(species_name, db_path = db) real(species_name, db_path)
+  cache_dir <- withr::local_tempdir()
+  res <- run_pipeline(list(
+    lookup_offline_traits = offline,
+    lookup_worms_traits = found(list(aphia_id = 1L, isMarine = TRUE))), cache_dir = cache_dir)
+  expect_identical(res$source, "offline:biotic")
+  expect_true(res$degraded)
+  expect_identical(read_envelope(cache_dir)$ttl_days, 1)
+  good <- run_pipeline(list(
+    lookup_offline_traits = offline,
+    lookup_worms_traits = worms_taxon("Mollusca", "Bivalvia")))
+  expect_false(good$degraded)
+})
+
+test_that("API lookups: transport and 5xx errors set result$error; 404 is not found", {
+  skip_if_not_installed("httr")
+  skip_if_not_installed("jsonlite")
+  source(file.path(get_app_root(), "R/functions/trait_lookup/api_trait_databases.R"), local = FALSE)
+  resp <- function(code) structure(list(status_code = code), class = "response")
+  lookups <- list(
+    WoRMS = function() lookup_worms_traits_api("Testus maximus", aphia_id = 123),
+    PolyTraits = function() lookup_polytraits("Testus maximus"),
+    TraitBank = function() lookup_traitbank("Testus maximus"))
+  for (nm in names(lookups)) {
+    run <- lookups[[nm]]
+    testthat::local_mocked_bindings(GET = function(...) stop("connection reset"), .package = "httr")
+    suppressWarnings(res <- run())
+    expect_match(res$error, "connection reset", info = nm)
+    expect_false(res$success, info = nm)
+
+    testthat::local_mocked_bindings(
+      GET = function(...) resp(503L),
+      status_code = function(x) x$status_code,
+      http_error = function(x) x$status_code >= 400L,
+      .package = "httr")
+    res <- run()
+    expect_match(res$error, "503", info = nm)
+    expect_false(res$success, info = nm)
+
+    testthat::local_mocked_bindings(GET = function(...) resp(404L), .package = "httr")
+    res <- run()
+    expect_null(res$error, info = nm)
+    expect_false(res$success, info = nm)
+  }
+})

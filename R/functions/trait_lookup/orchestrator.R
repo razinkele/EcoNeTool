@@ -386,6 +386,9 @@ lookup_species_traits <- function(species_name,
   worms_data <- lookup_worms_traits(species_name)
   db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
   worms_ok <- !is.null(worms_data) && isTRUE(worms_data$success)
+  # WoRMS can succeed (isMarine / AphiaID) without a classification when the
+  # classification call timed out; such a row is degraded too.
+  worms_classified <- worms_ok && !is.na(.scalar_chr(worms_data$traits$phylum))
 
   # Network lookups that failed with an error (not "not found"). A lookup
   # with any, or without a WoRMS classification, is degraded: it is cached
@@ -524,7 +527,7 @@ lookup_species_traits <- function(species_name,
       result$overall_confidence <- overall$value
       result$confidence <- overall$label
       result$imputation_method <- aggregate_imputation_method(result)
-      degraded <- !worms_ok
+      degraded <- !worms_classified
       result$degraded <- degraded
 
       # Cache result
@@ -1642,7 +1645,7 @@ lookup_species_traits <- function(species_name,
 
   # A degraded lookup (no WoRMS classification, or a database failed with an
   # error) is flagged in the results and cached for 1 day only (spec C3.7).
-  degraded <- !worms_ok || length(lookup_errors) > 0
+  degraded <- !worms_classified || length(lookup_errors) > 0
   result$degraded <- degraded
   if (length(lookup_errors) > 0) {
     message("  Degraded lookup: ", paste(unique(lookup_errors), collapse = ", "), " failed")
