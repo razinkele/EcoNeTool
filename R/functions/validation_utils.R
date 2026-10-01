@@ -507,6 +507,8 @@ validate_file_exists <- function(file_path, param_name = "file") {
 #'   missing, i.e. written before trait vocab v2 - is a miss, so old MB/EP/PR
 #'   codes are refreshed on first read instead of served for 30 days. Compute
 #'   it in the calling process, like `config_hash`.
+#' @details An envelope may carry its own `ttl_days` (a degraded lookup is written with
+#' 1, spec C3.7); the shorter of that and `max_age_days` applies.
 #' @return The field's value, or NULL if absent/stale/missing/unreadable/foreign-config/foreign-vocab.
 #' @export
 read_cache_field <- function(cache_file, field, max_age_days = 30, config_hash = NULL,
@@ -520,7 +522,9 @@ read_cache_field <- function(cache_file, field, max_age_days = 30, config_hash =
   if (is.null(cached) || is.null(cached[[field]]) || is.null(cached$timestamp)) {
     return(NULL)
   }
-  if (difftime(Sys.time(), cached$timestamp, units = "days") >= max_age_days) {
+  ttl <- suppressWarnings(as.numeric(cached$ttl_days))
+  max_age <- if (length(ttl) == 1L && isTRUE(ttl > 0)) min(ttl, max_age_days) else max_age_days
+  if (difftime(Sys.time(), cached$timestamp, units = "days") >= max_age) {
     return(NULL)
   }
   if (!is.null(config_hash) && !identical(cached$config_hash, config_hash)) {

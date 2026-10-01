@@ -385,6 +385,18 @@ lookup_species_traits <- function(species_name,
   db_start <- Sys.time()
   worms_data <- lookup_worms_traits(species_name)
   db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
+  worms_ok <- !is.null(worms_data) && isTRUE(worms_data$success)
+
+  # Network lookups that failed with an error (not "not found"). A lookup
+  # with any, or without a WoRMS classification, is degraded: it is cached
+  # for 1 day instead of 30 and flagged in the results (spec C3.7). The
+  # local files and the ontology also set `error` for "not found", so they
+  # are not tracked.
+  lookup_errors <- character()
+  note_lookup <- function(label, res) {
+    if (!is.null(res$error)) lookup_errors <<- c(lookup_errors, label)
+    res
+  }
 
   if (!is.null(worms_data) && isTRUE(worms_data$success)) {
     raw_traits$worms <- worms_data$traits
@@ -504,15 +516,18 @@ lookup_species_traits <- function(species_name,
       result$overall_confidence <- overall$value
       result$confidence <- overall$label
       result$imputation_method <- aggregate_imputation_method(result)
+      degraded <- !worms_ok
+      result$degraded <- degraded
 
       # Cache result
       if (!is.null(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
         cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species_name), ".rds"))
         # Offline-DB codes were harmonized at build time with the defaults.
-        saveRDS(list(traits = result, timestamp = Sys.time(),
-                     config_hash = harm_default_config_hash(),
-                     trait_vocab_version = current_trait_vocab_version()), cache_file)
+        saveRDS(build_trait_cache_envelope(
+          result, build_harmonized_block(result, raw_traits$worms, degraded),
+          config_hash = harm_default_config_hash(), degraded = degraded
+        ), cache_file)
       }
 
       total_time <- round(as.numeric(difftime(Sys.time(), total_start, units = "secs")), 2)
@@ -552,7 +567,6 @@ lookup_species_traits <- function(species_name,
   query_obis <- FALSE
   query_traitbank <- FALSE
 
-  worms_ok <- !is.null(worms_data) && isTRUE(worms_data$success)
   route_flags <- route_trait_databases(
     phylum = raw_traits$worms$phylum,
     class = raw_traits$worms$class,
@@ -593,7 +607,7 @@ lookup_species_traits <- function(species_name,
   if (query_fishbase) {
     message("\n[3/12] \U0001f41f FishBase - Fish morphology & ecology...")
     db_start <- Sys.time()
-    fishbase_data <- lookup_fishbase_traits(species_name)
+    fishbase_data <- note_lookup("FishBase", lookup_fishbase_traits(species_name))
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
     if (!is.null(fishbase_data) && isTRUE(fishbase_data$success)) {
@@ -643,7 +657,7 @@ lookup_species_traits <- function(species_name,
   if (query_sealifebase) {
     message("\n[4/12] \U0001f41a SeaLifeBase - Marine invertebrate traits...")
     db_start <- Sys.time()
-    sealifebase_data <- lookup_sealifebase_traits(species_name)
+    sealifebase_data <- note_lookup("SeaLifeBase", lookup_sealifebase_traits(species_name))
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
     if (isTRUE(sealifebase_data$success)) {
@@ -808,7 +822,7 @@ lookup_species_traits <- function(species_name,
   if (query_freshwater) {
     message("\n[8/12] \U0001f30a freshwaterecology.info - Freshwater species...")
     db_start <- Sys.time()
-    freshwater_data <- lookup_freshwaterecology_traits(species_name)
+    freshwater_data <- note_lookup("freshwaterecology.info", lookup_freshwaterecology_traits(species_name))
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
     if (isTRUE(freshwater_data$success)) {
@@ -885,7 +899,7 @@ lookup_species_traits <- function(species_name,
   if (query_algaebase) {
     message("\n[11/12] \U0001f331 AlgaeBase - Algae taxonomy...")
     db_start <- Sys.time()
-    algaebase_data <- lookup_algaebase_traits(species_name)
+    algaebase_data <- note_lookup("AlgaeBase", lookup_algaebase_traits(species_name))
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
     if (isTRUE(algaebase_data$success)) {
@@ -1101,10 +1115,10 @@ lookup_species_traits <- function(species_name,
     if (!completeness$complete) {
       message("\n[API] WoRMS Traits API...")
       db_start <- Sys.time()
-      worms_attr_data <- lookup_worms_traits_api(
+      worms_attr_data <- note_lookup("WoRMS_Traits", lookup_worms_traits_api(
         species_name = species_name,
         aphia_id = raw_traits$worms$aphia_id
-      )
+      ))
       if (isTRUE(worms_attr_data$success)) {
         raw_traits$worms_attrs <- worms_attr_data$traits
         sources_used <- c(sources_used, "WoRMS_Traits")
@@ -1127,7 +1141,7 @@ lookup_species_traits <- function(species_name,
   if (query_polytraits) {
     message("\n[API] PolyTraits...")
     db_start <- Sys.time()
-    poly_data <- lookup_polytraits(species_name)
+    poly_data <- note_lookup("PolyTraits", lookup_polytraits(species_name))
     if (isTRUE(poly_data$success)) {
       raw_traits$polytraits <- poly_data$traits
       sources_used <- c(sources_used, "PolyTraits")
@@ -1147,7 +1161,7 @@ lookup_species_traits <- function(species_name,
   if (query_emodnet) {
     message("\n[API] EMODnet Btrait...")
     db_start <- Sys.time()
-    emodnet_data <- lookup_emodnet_traits(species_name)
+    emodnet_data <- note_lookup("EMODnet", lookup_emodnet_traits(species_name))
     if (isTRUE(emodnet_data$success)) {
       raw_traits$emodnet <- emodnet_data$traits
       sources_used <- c(sources_used, "EMODnet")
@@ -1162,7 +1176,7 @@ lookup_species_traits <- function(species_name,
   if (query_obis) {
     message("\n[API] OBIS MoF...")
     db_start <- Sys.time()
-    obis_data <- lookup_obis_traits(species_name)
+    obis_data <- note_lookup("OBIS", lookup_obis_traits(species_name))
     if (isTRUE(obis_data$success)) {
       raw_traits$obis <- obis_data$traits
       sources_used <- c(sources_used, "OBIS")
@@ -1181,7 +1195,7 @@ lookup_species_traits <- function(species_name,
   if (query_traitbank) {
     message("\n[API] TraitBank/EOL...")
     db_start <- Sys.time()
-    tb_data <- lookup_traitbank(species_name)
+    tb_data <- note_lookup("TraitBank", lookup_traitbank(species_name))
     if (isTRUE(tb_data$success)) {
       raw_traits$traitbank <- tb_data$traits
       sources_used <- c(sources_used, "TraitBank")
@@ -1618,6 +1632,14 @@ lookup_species_traits <- function(species_name,
     message("\u274c INCOMPLETE: Only ", n_traits_found, "/5 traits assigned (insufficient data)")
   }
 
+  # A degraded lookup (no WoRMS classification, or a database failed with an
+  # error) is flagged in the results and cached for 1 day only (spec C3.7).
+  degraded <- !worms_ok || length(lookup_errors) > 0
+  result$degraded <- degraded
+  if (length(lookup_errors) > 0) {
+    message("  Degraded lookup: ", paste(unique(lookup_errors), collapse = ", "), " failed")
+  }
+
   # Cache result
   if (!is.null(cache_dir)) {
     if (!dir.exists(cache_dir)) {
@@ -1625,80 +1647,16 @@ lookup_species_traits <- function(species_name,
     }
     cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species_name), ".rds"))
 
-    # Prepare harmonized data structure (for ML model training)
-    harmonized_data <- list(
-      species = species_name,
-      MS = result$MS,
-      FS = result$FS,
-      MB = result$MB,
-      EP = result$EP,
-      PR = result$PR
+    # The harmonized block carries T, T_source, T_method and T_confidence for
+    # every trait (phylogenetic imputation and ML training read it), plus the
+    # taxonomy, the vocabulary version and the degraded flag.
+    extra <- list()
+    if (!is.null(raw_traits$ontology)) extra$ontology_traits <- raw_traits$ontology
+    if (!is.null(raw_traits$worms)) extra$worms_taxonomy <- raw_traits$worms
+    cache_data <- build_trait_cache_envelope(
+      result, build_harmonized_block(result, raw_traits$worms, degraded),
+      config_hash = harm_config_hash(), degraded = degraded, extra = extra
     )
-
-    # Add taxonomy from WoRMS for ML training
-    if (!is.null(raw_traits$worms)) {
-      harmonized_data$phylum <- raw_traits$worms$phylum
-      harmonized_data$class <- raw_traits$worms$class
-      harmonized_data$order <- raw_traits$worms$order
-      harmonized_data$family <- raw_traits$worms$family
-      harmonized_data$genus <- raw_traits$worms$genus
-    }
-
-    # Add ML metadata if available
-    for (trait in c("MS", "FS", "MB", "EP", "PR")) {
-      conf_field <- paste0(trait, "_ml_confidence")
-      prob_field <- paste0(trait, "_ml_probability")
-      if (!is.null(result[[conf_field]])) {
-        harmonized_data[[conf_field]] <- result[[conf_field]]
-      }
-      if (!is.null(result[[prob_field]])) {
-        harmonized_data[[prob_field]] <- result[[prob_field]]
-      }
-    }
-
-    # Add uncertainty quantification metadata if available
-    for (trait in c("MS", "FS", "MB", "EP", "PR")) {
-      confidence_field <- paste0(trait, "_confidence")
-      interval_lower_field <- paste0(trait, "_interval_lower")
-      interval_upper_field <- paste0(trait, "_interval_upper")
-      category_field <- paste0(trait, "_confidence_category")
-
-      if (!is.null(result[[confidence_field]])) {
-        harmonized_data[[confidence_field]] <- result[[confidence_field]]
-      }
-      if (!is.null(result[[interval_lower_field]])) {
-        harmonized_data[[interval_lower_field]] <- result[[interval_lower_field]]
-      }
-      if (!is.null(result[[interval_upper_field]])) {
-        harmonized_data[[interval_upper_field]] <- result[[interval_upper_field]]
-      }
-      if (!is.null(result[[category_field]])) {
-        harmonized_data[[category_field]] <- result[[category_field]]
-      }
-    }
-
-    # Add overall confidence if available
-    if (!is.null(result$overall_confidence)) {
-      harmonized_data$overall_confidence <- result$overall_confidence
-    }
-
-    # Build cache data structure
-    cache_data <- list(
-      traits = result,
-      harmonized = harmonized_data,
-      species = species_name,
-      timestamp = Sys.time(),
-      config_hash = harm_config_hash(),
-      trait_vocab_version = current_trait_vocab_version()
-    )
-
-    # Include raw traits for reference
-    if (!is.null(raw_traits$ontology)) {
-      cache_data$ontology_traits <- raw_traits$ontology
-    }
-    if (!is.null(raw_traits$worms)) {
-      cache_data$worms_taxonomy <- raw_traits$worms
-    }
 
     saveRDS(cache_data, cache_file)
   }

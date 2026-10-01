@@ -82,7 +82,9 @@ get_harm_config <- function() {
 #' every cache/taxonomy envelope written before the fix is a miss and is
 #' refreshed on first read instead of serving the old value for 30 days.
 #' 2L: C-6a (WoRMS body-size units, FishBase grams, NA ranks).
-TRAIT_LOOKUP_REVISION <- 2L
+#' 3L: C-8 (per-trait T_method / T_confidence, PR no longer defaults to a
+#'     "Taxonomy" PR0, scored imputed codes, 0.34 / 0.67 label bands).
+TRAIT_LOOKUP_REVISION <- 3L
 
 
 #' Hash of the effective harmonization config (trait-cache key, F72)

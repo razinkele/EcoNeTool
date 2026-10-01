@@ -132,7 +132,9 @@ lookup_worms_traits_api <- function(species_name = NULL, aphia_id = NULL, timeou
     result$success <- length(traits) > 0
     result
   }, error = function(e) {
-    message("  [WoRMS Traits] Error: ", e$message)
+    warning(sprintf("[lookup_worms_traits_api] lookup failed for '%s': %s",
+                    species_name %||% aphia_id, conditionMessage(e)), call. = FALSE)
+    result$error <- conditionMessage(e)
     result
   })
 }
@@ -219,7 +221,9 @@ lookup_polytraits <- function(species_name, timeout = 10) {
     result$success <- length(traits) > 0
     result
   }, error = function(e) {
-    message("  [PolyTraits] Error: ", e$message)
+    warning(sprintf("[lookup_polytraits] lookup failed for '%s': %s",
+                    species_name, conditionMessage(e)), call. = FALSE)
+    result$error <- conditionMessage(e)
     result
   })
 }
@@ -272,7 +276,9 @@ lookup_emodnet_traits <- function(species_name) {
     result$success <- length(traits) > 0
     result
   }, error = function(e) {
-    message("  [EMODnet] Error: ", e$message)
+    warning(sprintf("[lookup_emodnet_traits] lookup failed for '%s': %s",
+                    species_name, conditionMessage(e)), call. = FALSE)
+    result$error <- conditionMessage(e)
     result
   })
 }
@@ -351,7 +357,9 @@ lookup_obis_traits <- function(species_name, timeout = 30) {
     result$success <- length(traits) > 0
     result
   }, error = function(e) {
-    message("  [OBIS] Error: ", e$message)
+    warning(sprintf("[lookup_obis_traits] lookup failed for '%s': %s",
+                    species_name, conditionMessage(e)), call. = FALSE)
+    result$error <- conditionMessage(e)
     result
   })
 }
@@ -430,7 +438,9 @@ lookup_traitbank <- function(species_name, timeout = 15) {
     result$success <- length(traits) > 0
     result
   }, error = function(e) {
-    message("  [TraitBank] Error: ", e$message)
+    warning(sprintf("[lookup_traitbank] lookup failed for '%s': %s",
+                    species_name, conditionMessage(e)), call. = FALSE)
+    result$error <- conditionMessage(e)
     result
   })
 }

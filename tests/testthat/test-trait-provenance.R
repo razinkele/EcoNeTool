@@ -628,3 +628,88 @@ test_that("a partly prefilled offline row keeps its stored confidences through t
   expect_true(res$MS_confidence > 0 && res$MS_confidence <= 1)
 })
 
+
+# ---------------------------------------------------------------------------
+# Task 6 - the cache contract: provenance in the envelope, degraded lookups
+# live one day (C3.7, C3.8)
+# ---------------------------------------------------------------------------
+
+read_envelope <- function(cache_dir, species = "Testus maximus") {
+  readRDS(file.path(cache_dir, paste0(gsub(" ", "_", species), ".rds")))
+}
+
+test_that("the envelope's harmonized block carries T, T_source, T_method for every trait (C3.7)", {
+  cache_dir <- withr::local_tempdir()
+  run_pipeline(list(lookup_worms_traits = worms_taxon("Mollusca", "Bivalvia", max_length_cm = 20)),
+               cache_dir = cache_dir)
+  env <- read_envelope(cache_dir)
+  for (t in TRAIT_COLUMNS) {
+    expect_true(all(c(t, paste0(t, "_source"), paste0(t, "_method")) %in% names(env$harmonized)), info = t)
+  }
+  expect_identical(env$harmonized$MS_method, "observed")
+  expect_identical(env$harmonized$phylum, "Mollusca")
+  expect_identical(env$harmonized$trait_vocab_version, current_trait_vocab_version())
+  expect_false(env$harmonized$degraded)
+  expect_false(env$degraded)
+  expect_null(env$ttl_days)
+})
+
+test_that("a WoRMS failure gives a degraded envelope with a 1-day TTL (C3.7, acceptance 6)", {
+  cache_dir <- withr::local_tempdir()
+  res <- suppressWarnings(run_pipeline(list(
+    lookup_worms_traits = function(...) list(success = FALSE, traits = list(), error = "timeout"),
+    lookup_fishbase_traits = found(list(max_length_cm = 100))), cache_dir = cache_dir))
+  expect_true(res$degraded)
+  f <- file.path(cache_dir, "Testus_maximus.rds")
+  env <- readRDS(f)
+  expect_true(env$degraded)
+  expect_identical(env$ttl_days, 1)
+  expect_false(is.null(read_cache_field(f, "traits", config_hash = env$config_hash)))
+  # Older than a day: stale. A healthy envelope of the same age is still served.
+  env$timestamp <- Sys.time() - 1.5 * 86400
+  saveRDS(env, f)
+  expect_null(read_cache_field(f, "traits", config_hash = env$config_hash))
+  env$ttl_days <- NULL
+  saveRDS(env, f)
+  expect_false(is.null(read_cache_field(f, "traits", config_hash = env$config_hash)))
+})
+
+test_that("a network lookup error degrades the row; a local 'not found' does not (C3.7)", {
+  failed <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Mollusca", "Bivalvia", max_length_cm = 20),
+    lookup_sealifebase_traits = function(...) list(success = FALSE, traits = list(), error = "HTTP 503")))
+  expect_true(failed$degraded)
+  fine <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Mollusca", "Bivalvia", max_length_cm = 20),
+    lookup_ontology_traits = function(...) list(success = FALSE, traits = list(),
+                                                error = "Species not found in ontology traits database"),
+    lookup_biotic_traits = function(...) list(success = FALSE, traits = list(), error = "BIOTIC file not found")))
+  expect_false(fine$degraded)
+})
+
+test_that("an envelope from an older trait vocabulary is stale (C3.7)", {
+  f <- withr::local_tempfile(fileext = ".rds")
+  saveRDS(list(traits = data.frame(MB = "MB2"), timestamp = Sys.time(), config_hash = "h",
+               trait_vocab_version = current_trait_vocab_version() - 1L), f)
+  expect_null(read_cache_field(f, "traits", config_hash = "h", vocab_version = current_trait_vocab_version()))
+})
+
+test_that("an API lookup that throws warns and reports the error (C3.8)", {
+  skip_if_not_installed("httr")
+  source(file.path(get_app_root(), "R/functions/trait_lookup/api_trait_databases.R"), local = FALSE)
+  testthat::local_mocked_bindings(GET = function(...) stop("connection reset"), .package = "httr")
+  expect_warning(res <- lookup_polytraits("Hediste diversicolor"),
+                 "\\[lookup_polytraits\\] lookup failed for 'Hediste diversicolor': connection reset")
+  expect_identical(res$error, "connection reset")
+  expect_false(res$success)
+})
+
+test_that("the degraded badge is constant markup and phylo / default sources have colours", {
+  source(file.path(get_app_root(), "R/modules/trait_research_server.R"), local = FALSE)
+  out <- format_degraded_badge(c(TRUE, FALSE, NA))
+  expect_match(out[1], "partial")
+  expect_identical(out[2:3], c("", ""))
+  expect_false(identical(source_badge_color("Phylogenetic"), "#9e9e9e"))
+  expect_true(nzchar(source_badge_color("Default")))
+})
+

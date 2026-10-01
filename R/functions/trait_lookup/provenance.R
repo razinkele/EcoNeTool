@@ -191,3 +191,64 @@ overall_trait_confidence <- function(result) {
   if (!isTRUE(is.finite(overall))) return(list(value = NA_real_, label = "none"))
   list(value = overall, label = confidence_to_label(overall))
 }
+
+#' The cache envelope's `harmonized` block (spec C3.7)
+#'
+#' Phylogenetic imputation and ML training read it, so every trait carries
+#' its code, source, method and confidence, together with the taxonomy, the
+#' vocabulary version and whether the lookup was degraded.
+#'
+#' @param result One-row lookup result.
+#' @param taxonomy WoRMS taxonomy list (phylum ... genus), or NULL.
+#' @param degraded TRUE when a database failed during the lookup.
+#' @return Named list.
+build_harmonized_block <- function(result, taxonomy = NULL, degraded = FALSE) {
+  h <- list(species = as.character(result$species[1]))
+  for (trait in TRAIT_COLUMNS) {
+    for (suffix in c("", "_source", "_method", "_confidence")) {
+      col <- paste0(trait, suffix)
+      h[[col]] <- if (col %in% names(result)) result[[col]][1] else NA
+    }
+  }
+  for (rank in c("phylum", "class", "order", "family", "genus")) {
+    h[[rank]] <- if (is.null(taxonomy)) NA_character_ else .scalar_chr(taxonomy[[rank]])
+  }
+  # ML and uncertainty metadata, kept for diagnostics
+  for (trait in CORE_TRAIT_COLUMNS) {
+    for (suffix in c("_ml_confidence", "_ml_probability", "_interval_lower", "_interval_upper",
+                     "_confidence_category")) {
+      col <- paste0(trait, suffix)
+      if (col %in% names(result)) h[[col]] <- result[[col]][1]
+    }
+  }
+  if ("overall_confidence" %in% names(result)) h$overall_confidence <- result$overall_confidence[1]
+  h$trait_vocab_version <- current_trait_vocab_version()
+  h$degraded <- isTRUE(degraded)
+  h
+}
+
+#' A trait cache envelope (spec C3.7)
+#'
+#' A degraded lookup (a database failed, or WoRMS gave no classification) is
+#' cached with `ttl_days = 1`, so it is retried the next day instead of
+#' serving the partial result for 30 days; read_cache_field() honours it.
+#'
+#' @param result One-row lookup result.
+#' @param harmonized build_harmonized_block() output.
+#' @param config_hash harm_config_hash() of the settings the codes were made with.
+#' @param degraded TRUE for a degraded lookup.
+#' @param extra Named list of further fields (raw ontology traits, taxonomy).
+#' @return The envelope list for saveRDS().
+build_trait_cache_envelope <- function(result, harmonized, config_hash, degraded = FALSE, extra = list()) {
+  envelope <- c(list(
+    traits = result,
+    harmonized = harmonized,
+    species = as.character(result$species[1]),
+    timestamp = Sys.time(),
+    config_hash = config_hash,
+    trait_vocab_version = current_trait_vocab_version(),
+    degraded = isTRUE(degraded)
+  ), extra)
+  if (isTRUE(degraded)) envelope$ttl_days <- 1
+  envelope
+}

@@ -477,7 +477,12 @@ test_that("read_cache_field treats another or a missing vocab version as stale (
 test_that("both orchestrator cache writers stamp trait_vocab_version", {
   orch <- readLines(file.path(get_app_root(), "R/functions/trait_lookup/orchestrator.R"), warn = FALSE)
   orch <- orch[!startsWith(trimws(orch), "#")]
-  expect_equal(sum(grepl("trait_vocab_version = current_trait_vocab_version()", orch, fixed = TRUE)), 2L)
+  # Since C-8 both writers build their envelope with build_trait_cache_envelope(),
+  # which stamps the version (pinned behaviourally in test-trait-provenance.R).
+  expect_equal(sum(grepl("saveRDS(build_trait_cache_envelope(", orch, fixed = TRUE)) +
+                 sum(grepl("cache_data <- build_trait_cache_envelope(", orch, fixed = TRUE)), 2L)
+  env <- build_trait_cache_envelope(data.frame(species = "x"), list(), config_hash = "h")
+  expect_identical(env$trait_vocab_version, current_trait_vocab_version())
 })
 
 # Fake randomForest-like models: predict() gives "<trait>2" with probability 0.9.

@@ -504,7 +504,7 @@ test_that("a batch whose only species fails still renders its table and summary 
 # ---------------------------------------------------------------------------
 
 test_that("harm_config_hash changes with the lookup revision, so pre-C-6a envelopes are misses", {
-  expect_identical(TRAIT_LOOKUP_REVISION, 2L)
+  expect_identical(TRAIT_LOOKUP_REVISION, 3L) # 3L since C-8
   old <- TRAIT_LOOKUP_REVISION
   withr::defer(assign("TRAIT_LOOKUP_REVISION", old, envir = globalenv()))
   before <- harm_config_hash(HARMONIZATION_CONFIG)
