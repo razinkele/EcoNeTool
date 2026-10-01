@@ -272,6 +272,16 @@ fixes. Follow them or risk re-introducing bugs we already paid to find.
   SHARK4R so the test runs. The SHARK wrappers return a status (`found` /
   `not_found` / `no_key` / `error`, or `ok` / `empty` / `error`) instead
   of NULL, so the tab can say why nothing came back.
+- **Every trait code carries its provenance.** Assign codes only through
+  `assign_trait_if_resolved(result, trait, value, source, method)`, so
+  `<T>_source` and `<T>_method` ("observed", "rule", "default", "ml",
+  "phylo") are set at assignment. Confidences are numeric, NA exactly when the
+  code is NA; labels come from `confidence_to_label()` only (never inline
+  bands). A new source label needs a `DATABASE_WEIGHTS` entry
+  (`uncertainty_quantification.R`), or `get_database_weight()` warns. Only
+  "observed" / "rule" codes may vote as phylogenetic relatives or train ML
+  models (`cached_relative_traits()`). Write cache envelopes with
+  `build_trait_cache_envelope()`; a degraded lookup gets `ttl_days = 1`.
 
 ## Commit Messages
 
