@@ -252,3 +252,91 @@ build_trait_cache_envelope <- function(result, harmonized, config_hash, degraded
   if (isTRUE(degraded)) envelope$ttl_days <- 1
   envelope
 }
+
+#' Normalised species key (case, spaces and underscores folded)
+#'
+#' @param x Species name or cache-file stem ("Gadus_morhua").
+#' @return Lower-case name with single spaces.
+species_key <- function(x) {
+  tolower(gsub("[_[:space:]]+", " ", trimws(as.character(x))))
+}
+
+#' Codes a cached envelope may contribute as evidence (spec C3.7)
+#'
+#' Only "observed" and "rule" codes count: an ML, phylo or default code voting
+#' for a relative, or training the ML models, would feed imputations back into
+#' imputation (F29, F34).
+#'
+#' @param cache_data A cache/taxonomy envelope (readRDS()).
+#' @param traits Trait columns wanted.
+#' @return Named list trait -> code (NA where the cached code is missing or not
+#'   observed / rule), or NULL for an envelope without per-trait methods
+#'   (written before C-8).
+cached_relative_traits <- function(cache_data, traits = CORE_TRAIT_COLUMNS) {
+  h <- cache_data$harmonized
+  if (is.null(h) || !any(paste0(traits, "_method") %in% names(h))) return(NULL)
+  out <- lapply(traits, function(t) {
+    v <- h[[t]]
+    m <- h[[paste0(t, "_method")]]
+    if (length(v) == 1L && !is.na(v) && length(m) == 1L && isTRUE(m %in% RELATIVE_METHODS)) {
+      as.character(v)
+    } else {
+      NA_character_
+    }
+  })
+  names(out) <- traits
+  out
+}
+
+#' ML training rows from the trait cache (spec C3.7)
+#'
+#' One row per cached species with at least phylum and class and one
+#' observed / rule code. Envelopes written before C-8 (no per-trait methods)
+#' are skipped with a single warning.
+#'
+#' @param cache_files Paths of cache/taxonomy/*.rds files.
+#' @param traits Trait columns to return.
+#' @return Data frame: species, phylum, class, order, family, genus (lower
+#'   case, "" when missing) and one column per trait; zero rows when nothing
+#'   qualifies.
+training_rows_from_cache <- function(cache_files, traits = CORE_TRAIT_COLUMNS) {
+  rows <- list()
+  n_legacy <- 0L
+  for (f in cache_files) {
+    cache_data <- tryCatch(readRDS(f), error = function(e) {
+      warning(sprintf("[train] unreadable cache file '%s': %s", f, conditionMessage(e)), call. = FALSE)
+      NULL
+    })
+    if (is.null(cache_data) || is.null(cache_data$harmonized)) next
+    vals <- cached_relative_traits(cache_data, traits)
+    if (is.null(vals)) {
+      n_legacy <- n_legacy + 1L
+      next
+    }
+    if (all(is.na(unlist(vals)))) next
+    h <- cache_data$harmonized
+    rank <- function(r) {
+      v <- .scalar_chr(h[[r]])
+      if (is.na(v)) "" else tolower(v)
+    }
+    if (!nzchar(rank("phylum")) || !nzchar(rank("class"))) next
+    rows[[length(rows) + 1L]] <- data.frame(
+      species = .scalar_chr(cache_data$species %||% h$species),
+      phylum = rank("phylum"), class = rank("class"), order = rank("order"),
+      family = rank("family"), genus = rank("genus"),
+      as.data.frame(vals, stringsAsFactors = FALSE),
+      stringsAsFactors = FALSE
+    )
+  }
+  if (n_legacy > 0) {
+    warning(sprintf("[train] skipped %d cache file(s) without trait provenance (written before C-8)", n_legacy),
+            call. = FALSE)
+  }
+  if (length(rows) == 0) {
+    empty <- data.frame(species = character(), phylum = character(), class = character(), order = character(),
+                        family = character(), genus = character(), stringsAsFactors = FALSE)
+    for (t in traits) empty[[t]] <- character()
+    return(empty)
+  }
+  do.call(rbind, rows)
+}

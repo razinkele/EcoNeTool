@@ -58,117 +58,23 @@ if (file.exists(ontology_file)) {
       length(unique(ontology_raw$taxon_name)), "species\n")
 }
 
-# Load functions for harmonization and WoRMS lookup
-cat("Loading helper functions...\n")
-source("R/functions/trait_lookup.R", local = TRUE)
+# Load functions for harmonization and WoRMS lookup. trait_lookup.R was split
+# into R/functions/trait_lookup/ long ago; load_all.R is the entry point (run
+# this script from the repo root, like load_all.R itself).
+source("R/functions/validation_utils.R")
+source("R/config/harmonization_config.R")
+source("R/functions/trait_lookup/load_all.R")
 
-# Scan cache for species with complete trait and taxonomy data
+# Training labels: only codes a database or a rule produced (T_method
+# "observed" / "rule") - never ML, phylogenetic or default codes, which would
+# train the models on their own output (spec C3.7, F34). Cache files written
+# before C-8 carry no per-trait method and are skipped with one warning.
 cache_files <- list.files(cache_dir, pattern = "\\.rds$", full.names = TRUE)
 cat("Found", length(cache_files), "cached species\n")
 
-training_data <- list()
-
 cat("Extracting training data...\n")
-pb <- txtProgressBar(min = 0, max = length(cache_files), style = 3)
-
-for (i in seq_along(cache_files)) {
-  tryCatch({
-    data <- readRDS(cache_files[i])
-
-    # Try new format first (harmonized field)
-    if (!is.null(data$harmonized) &&
-        all(c("phylum", "class") %in% names(data$harmonized)) &&
-        any(!is.na(data$harmonized[c("MS", "FS", "MB", "EP", "PR")]))) {
-
-      # NEW FORMAT: Use harmonized data
-      training_data[[length(training_data) + 1]] <- data.frame(
-        species = data$species %||% data$harmonized$species %||% "Unknown",
-        phylum = tolower(data$harmonized$phylum %||% ""),
-        class = tolower(data$harmonized$class %||% ""),
-        order = tolower(data$harmonized$order %||% ""),
-        family = tolower(data$harmonized$family %||% ""),
-        genus = tolower(data$harmonized$genus %||% ""),
-        MS = data$harmonized$MS,
-        FS = data$harmonized$FS,
-        MB = data$harmonized$MB,
-        EP = data$harmonized$EP,
-        PR = data$harmonized$PR,
-        stringsAsFactors = FALSE
-      )
-
-    } else if (!is.null(data$worms_taxonomy) && !is.null(data$traits)) {
-
-      # OLD FORMAT: Extract from worms_taxonomy + traits
-      worms <- data$worms_taxonomy
-      traits_df <- data$traits
-
-      # Check if we have minimum taxonomy (phylum + class)
-      has_min_taxonomy <- !is.null(worms$phylum) && !is.null(worms$class) &&
-                         worms$phylum != "" && worms$class != ""
-
-      # Check if we have any traits
-      has_traits <- any(!is.na(traits_df[c("MS", "FS", "MB", "EP", "PR")]))
-
-      if (has_min_taxonomy && has_traits) {
-        training_data[[length(training_data) + 1]] <- data.frame(
-          species = traits_df$species[1] %||% "Unknown",
-          phylum = tolower(worms$phylum %||% ""),
-          class = tolower(worms$class %||% ""),
-          order = tolower(worms$order %||% ""),
-          family = tolower(worms$family %||% ""),
-          genus = tolower(worms$genus %||% ""),
-          MS = traits_df$MS[1],
-          FS = traits_df$FS[1],
-          MB = traits_df$MB[1],
-          EP = traits_df$EP[1],
-          PR = traits_df$PR[1],
-          stringsAsFactors = FALSE
-        )
-      }
-    } else if (!is.null(data$traits)) {
-
-      # FALLBACK: Use ontology data if available
-      # Try to match species in ontology database
-      traits_df <- data$traits
-      species_name <- traits_df$species[1]
-
-      if (!is.null(species_name) && exists("ontology_raw")) {
-        # Look for this species in ontology
-        ontology_species <- ontology_raw[ontology_raw$taxon_name == species_name, ]
-
-        if (nrow(ontology_species) > 0) {
-          # Get first record with taxonomy
-          tax_record <- ontology_species[1, ]
-
-          has_min_taxonomy <- !is.na(tax_record$phylum) && !is.na(tax_record$class)
-          has_traits <- any(!is.na(traits_df[c("MS", "FS", "MB", "EP", "PR")]))
-
-          if (has_min_taxonomy && has_traits) {
-            training_data[[length(training_data) + 1]] <- data.frame(
-              species = species_name,
-              phylum = tolower(tax_record$phylum %||% ""),
-              class = tolower(tax_record$class %||% ""),
-              order = tolower(tax_record$order %||% ""),
-              family = tolower(tax_record$family %||% ""),
-              genus = tolower(tax_record$genus %||% ""),
-              MS = traits_df$MS[1],
-              FS = traits_df$FS[1],
-              MB = traits_df$MB[1],
-              EP = traits_df$EP[1],
-              PR = traits_df$PR[1],
-              stringsAsFactors = FALSE
-            )
-          }
-        }
-      }
-    }
-  }, error = function(e) {
-    # Skip corrupted cache files
-  })
-
-  setTxtProgressBar(pb, i)
-}
-close(pb)
+cache_rows <- training_rows_from_cache(cache_files)
+training_data <- if (nrow(cache_rows) > 0) split(cache_rows, seq_len(nrow(cache_rows))) else list()
 
 cat("\n")
 cat("Cache data extracted:", length(training_data), "species\n")
@@ -420,7 +326,10 @@ model_package <- list(
   training_date = Sys.Date(),
   training_samples = nrow(training_df),
   r_version = R.version.string,
-  randomForest_version = packageVersion("randomForest")
+  randomForest_version = packageVersion("randomForest"),
+  # predict_trait_ml() serves MB only from a model trained on the current
+  # trait vocabulary (C-5 gate).
+  trait_vocab_version = current_trait_vocab_version()
 )
 
 saveRDS(model_package, models_file)

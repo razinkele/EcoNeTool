@@ -112,7 +112,14 @@ calculate_taxonomic_distance <- function(taxonomy1, taxonomy2) {
 #'   under different (or unknown) harmonization settings, so voting them in
 #'   would leak one session's thresholds into another's imputation (F72).
 #'   NULL (default) preserves the old, unkeyed behaviour.
-#' @return Data frame with: species, distance, and trait values for each relative
+#' @param target_species Optional name of the species being imputed. Its own
+#'   cache file is never a relative (F29: a stale own file used to vote for
+#'   itself).
+#' @return Data frame with: species, distance, and trait values for each
+#'   relative. Only "observed" and "rule" codes are returned (F34: ML, phylo
+#'   and default codes never vote); envelopes written before C-8 (no per-trait
+#'   methods) are skipped with one warning. Fewer than `min_matches` relatives
+#'   give an empty data frame.
 #'
 #' @examples
 #' relatives <- find_closest_relatives(
@@ -130,7 +137,8 @@ find_closest_relatives <- function(target_taxonomy,
                                    max_distance = 3,
                                    min_matches = 3,
                                    traits_needed = c("MS", "FS", "MB", "EP", "PR"),
-                                   config_hash = NULL) {
+                                   config_hash = NULL,
+                                   target_species = NULL) {
 
   if (!dir.exists(cache_dir)) {
     return(data.frame())
@@ -164,6 +172,9 @@ find_closest_relatives <- function(target_taxonomy,
     relatives[[trait]] <- character()
   }
 
+  target_key <- if (is.null(target_species)) NA_character_ else species_key(target_species)
+  n_legacy <- 0L
+
   for (cache_file in cache_files) {
     tryCatch({
       cache_data <- readRDS(cache_file)
@@ -174,60 +185,6 @@ find_closest_relatives <- function(target_taxonomy,
         next
       }
 
-      # Extract taxonomy
-      relative_taxonomy <- NULL
-      if (!is.null(cache_data$harmonized)) {
-        relative_taxonomy <- list(
-          phylum = cache_data$harmonized$phylum,
-          class = cache_data$harmonized$class,
-          order = cache_data$harmonized$order,
-          family = cache_data$harmonized$family,
-          genus = cache_data$harmonized$genus
-        )
-      } else if (!is.null(cache_data$worms_taxonomy)) {
-        relative_taxonomy <- list(
-          phylum = cache_data$worms_taxonomy$phylum,
-          class = cache_data$worms_taxonomy$class,
-          order = cache_data$worms_taxonomy$order,
-          family = cache_data$worms_taxonomy$family,
-          genus = cache_data$worms_taxonomy$genus
-        )
-      }
-
-      if (is.null(relative_taxonomy)) next
-
-      # Calculate distance
-      distance <- calculate_taxonomic_distance(target_taxonomy, relative_taxonomy)
-
-      # Skip if too distant
-      if (distance > max_distance) next
-
-      # Extract trait values
-      relative_traits <- list()
-      if (!is.null(cache_data$harmonized)) {
-        for (trait in traits_needed) {
-          relative_traits[[trait]] <- cache_data$harmonized[[trait]]
-        }
-      } else if (!is.null(cache_data$traits)) {
-        for (trait in traits_needed) {
-          relative_traits[[trait]] <- cache_data$traits[[trait]]
-        }
-      }
-
-      # Keep this relative if it provides AT LEAST ONE of the missing traits.
-      # Previously the gate required all() — but impute_traits_from_relatives
-      # already does per-trait NA filtering inside its loop (it skips relatives
-      # whose value for that specific trait is NA), so dropping a partial
-      # relative here just throws away usable data. A cached Somateria with
-      # only MS + PR could not contribute to inferring Branta's MS or PR,
-      # which is why almost every bird/mammal logged "No close relatives
-      # found" even with several relatives within the same order.
-      has_any_needed_trait <- any(sapply(missing_traits, function(t) {
-        !is.null(relative_traits[[t]]) && !is.na(relative_traits[[t]])
-      }))
-
-      if (!has_any_needed_trait) next
-
       # Get species name
       species_name <- if (!is.null(cache_data$species)) {
         cache_data$species
@@ -236,6 +193,40 @@ find_closest_relatives <- function(target_taxonomy,
       } else {
         gsub("\\.rds$", "", basename(cache_file))
       }
+
+      # The target's own file never votes for itself (F29).
+      if (!is.na(target_key) && identical(species_key(species_name), target_key)) next
+
+      # Only observed / rule codes count (F34); an envelope without per-trait
+      # methods was written before C-8 and is skipped.
+      relative_traits <- cached_relative_traits(cache_data, traits_needed)
+      if (is.null(relative_traits)) {
+        n_legacy <- n_legacy + 1L
+        next
+      }
+
+      relative_taxonomy <- list(
+        phylum = cache_data$harmonized$phylum,
+        class = cache_data$harmonized$class,
+        order = cache_data$harmonized$order,
+        family = cache_data$harmonized$family,
+        genus = cache_data$harmonized$genus
+      )
+
+      # Calculate distance
+      distance <- calculate_taxonomic_distance(target_taxonomy, relative_taxonomy)
+
+      # Skip if too distant
+      if (distance > max_distance) next
+
+      # Keep this relative if it provides AT LEAST ONE of the missing traits.
+      # impute_traits_from_relatives() filters NA per trait, so a partial
+      # relative still contributes the traits it has.
+      has_any_needed_trait <- any(sapply(missing_traits, function(t) {
+        !is.null(relative_traits[[t]]) && !is.na(relative_traits[[t]])
+      }))
+
+      if (!has_any_needed_trait) next
 
       # Add to relatives
       new_row <- data.frame(
@@ -251,14 +242,23 @@ find_closest_relatives <- function(target_taxonomy,
       relatives <- rbind(relatives, new_row)
 
     }, error = function(e) {
-      # Skip problematic cache files
+      warning(sprintf("[phylo] skipped unreadable cache file '%s': %s",
+                      basename(cache_file), conditionMessage(e)), call. = FALSE)
     })
   }
 
-  # Sort by distance (closest first)
-  if (nrow(relatives) > 0) {
-    relatives <- relatives[order(relatives$distance), ]
+  if (n_legacy > 0) {
+    warning(sprintf("[phylo] skipped %d cache file(s) without trait provenance (written before C-8)", n_legacy),
+            call. = FALSE)
   }
+
+  # Too few relatives to vote (min_matches was accepted but never enforced)
+  if (nrow(relatives) < min_matches) {
+    return(relatives[0, , drop = FALSE])
+  }
+
+  # Sort by distance (closest first)
+  relatives <- relatives[order(relatives$distance), ]
 
   return(relatives)
 }
@@ -464,7 +464,8 @@ apply_phylogenetic_imputation <- function(species_name,
     max_distance = max_distance,
     min_matches = min_relatives,
     traits_needed = c("MS", "FS", "MB", "EP", "PR"),
-    config_hash = config_hash
+    config_hash = config_hash,
+    target_species = species_name
   )
 
   if (nrow(relatives) == 0) {
@@ -504,6 +505,7 @@ apply_phylogenetic_imputation <- function(species_name,
 
       # Store metadata
       current_traits[[paste0(trait, "_source")]] <- "Phylogenetic"
+      current_traits[[paste0(trait, "_method")]] <- "phylo"
       current_traits[[paste0(trait, "_phylo_confidence")]] <- imputation$confidence
       current_traits[[paste0(trait, "_phylo_n_relatives")]] <- imputation$n_relatives
       current_traits[[paste0(trait, "_phylo_avg_distance")]] <- imputation$avg_distance

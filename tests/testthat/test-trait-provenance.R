@@ -713,3 +713,80 @@ test_that("the degraded badge is constant markup and phylo / default sources hav
   expect_true(nzchar(source_badge_color("Default")))
 })
 
+
+# ---------------------------------------------------------------------------
+# Task 7 - relatives and training labels: observed / rule codes only, never
+# the target itself (C3.7, F29, F34)
+# ---------------------------------------------------------------------------
+
+gadus <- list(phylum = "Chordata", class = "Actinopteri", order = "Gadiformes",
+              family = "Gadidae", genus = "Gadus")
+
+# A C-8 envelope whose EP was decided by `ep_method`.
+write_relative <- function(cache_dir, species, ep, ep_method, taxonomy = gadus, hash = "h") {
+  traits <- data.frame(species = species, EP = ep, EP_source = "X", EP_method = ep_method,
+                       stringsAsFactors = FALSE)
+  h <- c(list(species = species, EP = ep, EP_method = ep_method), taxonomy)
+  saveRDS(list(traits = traits, harmonized = h, species = species, timestamp = Sys.time(),
+               config_hash = hash), file.path(cache_dir, paste0(gsub(" ", "_", species), ".rds")))
+}
+
+test_that("the target's own file and an ML-coded relative never vote (F29, F34)", {
+  source(file.path(get_app_root(), "R/functions/phylogenetic_imputation.R"), local = FALSE)
+  cache_dir <- withr::local_tempdir()
+  write_relative(cache_dir, "Gadus morhua", "EP1", "observed")      # the target itself
+  write_relative(cache_dir, "Gadus macrocephalus", "EP1", "ml")     # an imputed code
+  write_relative(cache_dir, "Gadus ogac", "EP3", "default")         # a fall-through code (PR0)
+  write_relative(cache_dir, "Gadus chalcogrammus", "EP2", "observed")
+  rel <- find_closest_relatives(gadus, list(EP = NA), cache_dir, min_matches = 1,
+                                traits_needed = "EP", config_hash = "h", target_species = "Gadus morhua")
+  expect_identical(rel$species[!is.na(rel$EP)], "Gadus chalcogrammus")
+  expect_false("Gadus morhua" %in% rel$species)
+  expect_false("Gadus ogac" %in% rel$species)
+})
+
+test_that("a legacy envelope (no T_method) is skipped with a single warning (C3.7)", {
+  source(file.path(get_app_root(), "R/functions/phylogenetic_imputation.R"), local = FALSE)
+  cache_dir <- withr::local_tempdir()
+  for (sp in c("Gadus legacya", "Gadus legacyb")) {
+    saveRDS(list(species = sp, harmonized = c(list(species = sp, EP = "EP2"), gadus), timestamp = Sys.time(),
+                 config_hash = "h"), file.path(cache_dir, paste0(gsub(" ", "_", sp), ".rds")))
+  }
+  expect_warning(rel <- find_closest_relatives(gadus, list(EP = NA), cache_dir, min_matches = 1,
+                                               traits_needed = "EP", config_hash = "h"),
+                 "skipped 2 cache file\\(s\\) without trait provenance")
+  expect_identical(nrow(rel), 0L)
+})
+
+test_that("min_matches is enforced (C3.7)", {
+  source(file.path(get_app_root(), "R/functions/phylogenetic_imputation.R"), local = FALSE)
+  cache_dir <- withr::local_tempdir()
+  write_relative(cache_dir, "Gadus chalcogrammus", "EP2", "observed")
+  write_relative(cache_dir, "Gadus macrocephalus", "EP2", "rule")
+  expect_identical(nrow(find_closest_relatives(gadus, list(EP = NA), cache_dir, min_matches = 3,
+                                               traits_needed = "EP", config_hash = "h")), 0L)
+  expect_identical(nrow(find_closest_relatives(gadus, list(EP = NA), cache_dir, min_matches = 2,
+                                               traits_needed = "EP", config_hash = "h")), 2L)
+})
+
+test_that("ML training rows use only observed / rule codes (C3.7, F34)", {
+  cache_dir <- withr::local_tempdir()
+  write_relative(cache_dir, "Gadus chalcogrammus", "EP2", "observed")
+  write_relative(cache_dir, "Gadus macrocephalus", "EP1", "phylo")
+  saveRDS(list(species = "Gadus legacy", harmonized = c(list(EP = "EP2"), gadus), timestamp = Sys.time()),
+          file.path(cache_dir, "Gadus_legacy.rds"))
+  expect_warning(rows <- training_rows_from_cache(list.files(cache_dir, full.names = TRUE)),
+                 "skipped 1 cache file")
+  expect_identical(rows$species, "Gadus chalcogrammus")
+  expect_identical(rows$EP, "EP2")
+  expect_identical(rows$phylum, "chordata")
+})
+
+test_that("the training script runs on the current loader, filters labels and stamps the vocabulary", {
+  script <- readLines(file.path(get_app_root(), "scripts/train_trait_models.R"), warn = FALSE)
+  code <- script[!startsWith(trimws(script), "#")]
+  expect_false(any(grepl('source("R/functions/trait_lookup.R"', code, fixed = TRUE)))
+  expect_true(any(grepl('source("R/functions/trait_lookup/load_all.R")', code, fixed = TRUE)))
+  expect_true(any(grepl("training_rows_from_cache(cache_files)", code, fixed = TRUE)))
+  expect_true(any(grepl("trait_vocab_version = current_trait_vocab_version()", code, fixed = TRUE)))
+})
