@@ -674,7 +674,7 @@ test_that("a WoRMS failure gives a degraded envelope with a 1-day TTL (C3.7, acc
   expect_false(is.null(read_cache_field(f, "traits", config_hash = env$config_hash)))
 })
 
-test_that("a network lookup error degrades the row; a local 'not found' does not (C3.7)", {
+test_that("the orchestrator degrades the row on a reported lookup error; a local 'not found' does not (C3.7)", {
   failed <- run_pipeline(list(
     lookup_worms_traits = worms_taxon("Mollusca", "Bivalvia", max_length_cm = 20),
     lookup_sealifebase_traits = function(...) list(success = FALSE, traits = list(), error = "HTTP 503")))
@@ -708,6 +708,7 @@ test_that("the degraded badge is constant markup and phylo / default sources hav
   source(file.path(get_app_root(), "R/modules/trait_research_server.R"), local = FALSE)
   out <- format_degraded_badge(c(TRUE, FALSE, NA))
   expect_match(out[1], "partial")
+  expect_match(out[1], "WoRMS gave no classification or a database could not be reached", fixed = TRUE)
   expect_identical(out[2:3], c("", ""))
   expect_false(identical(source_badge_color("Phylogenetic"), "#9e9e9e"))
   expect_true(nzchar(source_badge_color("Default")))
@@ -789,4 +790,84 @@ test_that("the training script runs on the current loader, filters labels and st
   expect_true(any(grepl('source("R/functions/trait_lookup/load_all.R")', code, fixed = TRUE)))
   expect_true(any(grepl("training_rows_from_cache(cache_files)", code, fixed = TRUE)))
   expect_true(any(grepl("trait_vocab_version = current_trait_vocab_version()", code, fixed = TRUE)))
+})
+
+
+# ---------------------------------------------------------------------------
+# Final review fixes - transient failures set result$error; offline RS/TT/ST
+# are not overwritten by live sources
+# ---------------------------------------------------------------------------
+
+test_that("a live source cannot replace an offline-prefilled RS (final review)", {
+  reset_offline_vocab_gate()
+  db <- make_offline_db_fixture(data.frame(species = "Testus maximus", RS = "RS2", RS_confidence = 0.6,
+                                           primary_source = "cefas", stringsAsFactors = FALSE))
+  real <- lookup_offline_traits
+  res <- run_pipeline(list(
+    lookup_offline_traits = function(species_name, db_path = db) real(species_name, db_path),
+    lookup_worms_traits = worms_taxon("Mollusca", "Bivalvia"),
+    lookup_cefas_traits = found(list(reproductive_mode = "broadcast spawner"))))
+  expect_identical(harmonize_reproductive_strategy("broadcast spawner"), "RS1")
+  expect_identical(res$RS, "RS2")
+  expect_identical(res$RS_source, "Cefas")
+  expect_identical(res$RS_confidence, 0.6)
+})
+
+test_that("a FishBase / SeaLifeBase connection error or timeout sets result$error and warns", {
+  skip_if_not_installed("rfishbase")
+  testthat::local_mocked_bindings(species = function(...) stop("connection refused"), .package = "rfishbase")
+  expect_warning(fb <- lookup_fishbase_traits("Gadus morhua"), "fishbase")
+  expect_false(is.null(fb$error))
+  expect_match(fb$error, "FishBase connection error or timeout")
+  expect_false(fb$success)
+  expect_warning(sl <- lookup_sealifebase_traits("Mytilus edulis"), "sealifebase")
+  expect_match(sl$error, "SeaLifeBase connection error or timeout")
+
+  testthat::local_mocked_bindings(species = function(...) stop("Time limit exceeded"), .package = "rfishbase")
+  expect_warning(fb2 <- lookup_fishbase_traits("Gadus morhua"), "fishbase")
+  expect_false(is.null(fb2$error))
+})
+
+test_that("a FishBase / SeaLifeBase 'not found' (0 rows) leaves result$error NULL", {
+  skip_if_not_installed("rfishbase")
+  testthat::local_mocked_bindings(species = function(...) data.frame(), .package = "rfishbase")
+  expect_no_warning(fb <- lookup_fishbase_traits("Nonexistus speciesus"))
+  expect_null(fb$error)
+  expect_match(fb$note, "species not found")
+  expect_no_warning(sl <- lookup_sealifebase_traits("Nonexistus speciesus"))
+  expect_null(sl$error)
+  expect_match(sl$note, "not found in SeaLifeBase")
+})
+
+test_that("a failing auxiliary FishBase call warns but does not set result$error", {
+  skip_if_not_installed("rfishbase")
+  testthat::local_mocked_bindings(
+    species = function(...) data.frame(Length = 100, Weight = 5000),
+    morphology = function(...) stop("morphology down"),
+    ecology = function(...) stop("ecology down"),
+    .package = "rfishbase")
+  w <- testthat::capture_warnings(fb <- lookup_fishbase_traits("Gadus morhua"))
+  expect_true(any(grepl("morphology", w)))
+  expect_true(any(grepl("ecology", w)))
+  expect_null(fb$error)
+  expect_true(fb$success)
+})
+
+test_that("a freshwaterecology HTTP error sets result$error; a missing key stays note-only", {
+  skip_if_not_installed("httr")
+  skip_if_not_installed("jsonlite")
+  with_globals(list(get_api_key = function(...) "k"), {
+    testthat::local_mocked_bindings(
+      GET = function(...) structure(list(status_code = 503L), class = "response"),
+      http_error = function(...) TRUE,
+      status_code = function(...) 503L,
+      .package = "httr")
+    expect_warning(res <- lookup_freshwaterecology_traits("Salmo trutta"), "HTTP error 503")
+    expect_match(res$error, "503")
+  })
+  with_globals(list(get_api_key = function(...) ""), {
+    expect_no_warning(res <- lookup_freshwaterecology_traits("Salmo trutta"))
+    expect_null(res$error)
+    expect_match(res$note, "API key not configured")
+  })
 })

@@ -145,7 +145,7 @@ format_trait_badge <- function(value, source) {
 #' @export
 format_degraded_badge <- function(degraded) {
   badge <- paste0('<span style="background:#ef6c00;color:white;padding:1px 4px;border-radius:3px;',
-                  'font-size:9px" title="A database could not be reached; this row is ',
+                  'font-size:9px" title="WoRMS gave no classification or a database could not be reached; ',
                   'looked up again after one day">partial</span>')
   ifelse(vapply(as.list(degraded), isTRUE, logical(1)), badge, "")
 }

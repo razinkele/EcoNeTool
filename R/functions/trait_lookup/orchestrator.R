@@ -496,6 +496,14 @@ lookup_species_traits <- function(species_name,
   }
   offline_prefilled <- character()  # Track which traits came from offline
 
+  # Live RS / TT / ST assignments must not replace an offline-prefilled trait:
+  # the scoring step blanks every prefilled trait's confidence, so a live code
+  # would otherwise carry the offline row's stored confidence.
+  assign_live_trait <- function(result, trait, value, source, method = "observed") {
+    if (trait %in% offline_prefilled) return(result)
+    assign_trait_if_resolved(result, trait, value, source, method)
+  }
+
   if (!is.null(offline)) {
     # Every code the row holds, with the row's database as its source, the
     # stored confidence (0.0 = unknown -> the source's weight) and its method
@@ -1000,17 +1008,17 @@ lookup_species_traits <- function(species_name,
       if (!is.null(blacksea_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, blacksea_data$traits$feeding_mode)
       if (!is.null(blacksea_data$traits$mobility_info)) mobility_info <- c(mobility_info, blacksea_data$traits$mobility_info)
       if (!is.null(blacksea_data$traits$reproductive_mode)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "RS", harmonize_reproductive_strategy(blacksea_data$traits$reproductive_mode),
           "BlackSea")
       }
       if (!is.null(blacksea_data$traits$temperature_affinity)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "TT", harmonize_temperature_tolerance(blacksea_data$traits$temperature_affinity),
           "BlackSea")
       }
       if (!is.null(blacksea_data$traits$salinity_affinity)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "ST", harmonize_salinity_tolerance(blacksea_data$traits$salinity_affinity),
           "BlackSea")
       }
@@ -1030,12 +1038,12 @@ lookup_species_traits <- function(species_name,
       if (!is.null(arctic_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, arctic_data$traits$feeding_mode)
       if (!is.null(arctic_data$traits$mobility_info)) mobility_info <- c(mobility_info, arctic_data$traits$mobility_info)
       if (!is.null(arctic_data$traits$reproductive_mode)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "RS", harmonize_reproductive_strategy(arctic_data$traits$reproductive_mode),
           "ArcticTraits")
       }
       if (!is.null(arctic_data$traits$temperature_preference)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "TT", harmonize_temperature_tolerance(arctic_data$traits$temperature_preference),
           "ArcticTraits")
       }
@@ -1056,7 +1064,7 @@ lookup_species_traits <- function(species_name,
       if (!is.null(cefas_data$traits$mobility_info)) mobility_info <- c(mobility_info, cefas_data$traits$mobility_info)
       if (!is.null(cefas_data$traits$longevity_years)) result$longevity_years <- cefas_data$traits$longevity_years
       if (!is.null(cefas_data$traits$reproductive_mode)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "RS", harmonize_reproductive_strategy(cefas_data$traits$reproductive_mode),
           "Cefas")
       }
@@ -1074,11 +1082,11 @@ lookup_species_traits <- function(species_name,
       raw_traits$coral <- coral_data$traits
       sources_used <- c(sources_used, "CoralTraits")
       if (!is.null(coral_data$traits$reproductive_mode)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "RS", harmonize_reproductive_strategy(coral_data$traits$reproductive_mode),
           "CoralTraits")
       }
-      result <- assign_trait_if_resolved(
+      result <- assign_live_trait(
         result, "TT", coral_thermal_to_tt(coral_data$traits$thermal_tolerance), "CoralTraits")
       if (!is.null(coral_data$traits$depth_min)) result$depth_min <- coral_data$traits$depth_min
       if (!is.null(coral_data$traits$depth_max)) result$depth_max <- coral_data$traits$depth_max
@@ -1125,7 +1133,7 @@ lookup_species_traits <- function(species_name,
         if (!is.null(worms_attr_data$traits$feeding_type)) feeding_mode <- c(feeding_mode, worms_attr_data$traits$feeding_type)
         if (!is.null(worms_attr_data$traits$zone)) habitat_info <- c(habitat_info, worms_attr_data$traits$zone)
         if (!is.null(worms_attr_data$traits$salinity)) {
-          result <- assign_trait_if_resolved(
+          result <- assign_live_trait(
             result, "ST", harmonize_salinity_tolerance(worms_attr_data$traits$salinity),
             "WoRMS_Traits")
         }
@@ -1148,7 +1156,7 @@ lookup_species_traits <- function(species_name,
       if (!is.null(poly_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, poly_data$traits$feeding_mode)
       if (!is.null(poly_data$traits$mobility_info)) mobility_info <- c(mobility_info, poly_data$traits$mobility_info)
       if (!is.null(poly_data$traits$reproductive_mode)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "RS", harmonize_reproductive_strategy(poly_data$traits$reproductive_mode),
           "PolyTraits")
       }
