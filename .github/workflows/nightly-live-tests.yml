@@ -60,6 +60,28 @@ jobs:
             libproj-dev \
             libudunits2-dev
 
+      # Same as ci.yml testthat-offline: a new CRAN duckdb without a P3M
+      # binary compiles for over 45 minutes. Install the binary from a dated
+      # snapshot; setup-r-dependencies keeps it (upgrade: false).
+      - name: Install duckdb binary from a P3M snapshot
+        run: |
+          Rscript -e 'install.packages("duckdb", repos = sprintf("https://p3m.dev/cran/__linux__/%s/2026-09-28", system("lsb_release -cs", intern = TRUE)))'
+          Rscript -e 'cat("duckdb", as.character(packageVersion("duckdb")), "\n")'
+
+      # Diagnostic only: since 2026-09-28 the ICES WFS answers this runner with
+      # HTTP 400 while it answers other hosts with 200. Print what it returns,
+      # with curl's and R's user agents, so a failing live test can be triaged.
+      - name: Probe ICES WFS (diagnostic)
+        continue-on-error: true
+        run: |
+          url='https://gis.ices.dk/geoserver/ows?service=WFS&version=2.0.0&request=GetFeature&typeNames=ices_eg:ICES_AREAS_VISA_SIMPLE_5KM&outputFormat=application/json'
+          curl -s -o /tmp/ices_curl -w 'curl UA: HTTP %{http_code} %{size_download}B\n' --max-time 120 "$url" || true
+          head -c 1000 /tmp/ices_curl; echo
+          Rscript -e 'cat("R UA:", getOption("HTTPUserAgent"), "\n")'
+          curl -s -o /tmp/ices_r -A "$(Rscript -e 'cat(getOption("HTTPUserAgent"))')" \
+            -w 'R UA: HTTP %{http_code} %{size_download}B\n' --max-time 120 "$url" || true
+          head -c 1000 /tmp/ices_r; echo
+
       # Must stay a superset of the testthat-offline job's list in ci.yml
       # (guarded by tests/testthat/test-ci-workflows.R): this job runs the
       # same test_dir() plus the live tests.
