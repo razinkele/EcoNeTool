@@ -311,3 +311,79 @@ offline_db_schema_sql <- function() {
     "CREATE INDEX IF NOT EXISTS idx_aphia   ON species_traits(aphia_id)"
   )
 }
+
+#' Does the bundled SQLite support UPSERT (ON CONFLICT ... DO UPDATE)?
+#'
+#' UPSERT arrived in SQLite 3.24.0. RSQLite bundles its own SQLite, so this
+#' is the library version RSQLite was built with.
+#'
+#' @return TRUE or FALSE.
+sqlite_supports_upsert <- function() {
+  lib <- tryCatch(RSQLite::rsqliteVersion()[["library"]], error = function(e) {
+    warning(sprintf("[offline] cannot read the SQLite version: %s", conditionMessage(e)), call. = FALSE)
+    "0"
+  })
+  utils::compareVersion(lib, "3.24.0") >= 0
+}
+
+#' Write one species' RS / TT / ST into the offline DB without losing data (F22)
+#'
+#' The external-CSV writers (build_offline_trait_db.R sources 7-10) used
+#' INSERT OR IGNORE: a species an earlier source had already written - every
+#' BIOTIC / MAREDAT / PTDB / BVOL species - was skipped, so its RS / TT / ST
+#' never reached the DB. Now a new species is inserted and an existing one is
+#' enriched: each of RS / TT / ST is filled only where the row has none, with
+#' its confidence. A value the row already holds is never overwritten.
+#'
+#' @param con Open DBI connection to the DB being built.
+#' @param species Scientific name.
+#' @param source_label primary_source for a new row ("blacksea", ...).
+#' @param rs,tt,st Codes, or NA.
+#' @param rs_conf,tt_conf,st_conf Confidences for the codes (0 for NA codes).
+#' @param use_upsert Use ON CONFLICT ... DO UPDATE (SQLite >= 3.24); FALSE
+#'   runs the UPDATE-then-INSERT fallback.
+#' @return Integer: rows inserted or changed (0 when nothing was new).
+upsert_extended_traits <- function(con, species, source_label, rs, tt, st,
+                                   rs_conf, tt_conf, st_conf,
+                                   use_upsert = sqlite_supports_upsert()) {
+  values <- list(species, source_label, rs, tt, st, rs_conf, tt_conf, st_conf)
+  if (isTRUE(use_upsert)) {
+    sql <- "
+      INSERT INTO species_traits
+        (species, primary_source, RS, TT, ST, RS_confidence, TT_confidence, ST_confidence)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(species) DO UPDATE SET
+        RS_confidence = CASE WHEN species_traits.RS IS NULL AND excluded.RS IS NOT NULL
+                             THEN excluded.RS_confidence ELSE species_traits.RS_confidence END,
+        TT_confidence = CASE WHEN species_traits.TT IS NULL AND excluded.TT IS NOT NULL
+                             THEN excluded.TT_confidence ELSE species_traits.TT_confidence END,
+        ST_confidence = CASE WHEN species_traits.ST IS NULL AND excluded.ST IS NOT NULL
+                             THEN excluded.ST_confidence ELSE species_traits.ST_confidence END,
+        RS = COALESCE(species_traits.RS, excluded.RS),
+        TT = COALESCE(species_traits.TT, excluded.TT),
+        ST = COALESCE(species_traits.ST, excluded.ST)
+      WHERE (species_traits.RS IS NULL AND excluded.RS IS NOT NULL)
+         OR (species_traits.TT IS NULL AND excluded.TT IS NOT NULL)
+         OR (species_traits.ST IS NULL AND excluded.ST IS NOT NULL)"
+    return(as.integer(DBI::dbExecute(con, sql, params = values)))
+  }
+
+  exists_row <- nrow(DBI::dbGetQuery(con, "SELECT 1 FROM species_traits WHERE species = ?",
+                                     params = list(species))) > 0
+  if (!exists_row) {
+    return(as.integer(DBI::dbExecute(con, "
+      INSERT INTO species_traits
+        (species, primary_source, RS, TT, ST, RS_confidence, TT_confidence, ST_confidence)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)", params = values)))
+  }
+  as.integer(DBI::dbExecute(con, "
+    UPDATE species_traits SET
+      RS_confidence = CASE WHEN RS IS NULL AND ?1 IS NOT NULL THEN ?4 ELSE RS_confidence END,
+      TT_confidence = CASE WHEN TT IS NULL AND ?2 IS NOT NULL THEN ?5 ELSE TT_confidence END,
+      ST_confidence = CASE WHEN ST IS NULL AND ?3 IS NOT NULL THEN ?6 ELSE ST_confidence END,
+      RS = COALESCE(RS, ?1), TT = COALESCE(TT, ?2), ST = COALESCE(ST, ?3)
+    WHERE species = ?7
+      AND ((RS IS NULL AND ?1 IS NOT NULL) OR (TT IS NULL AND ?2 IS NOT NULL)
+           OR (ST IS NULL AND ?3 IS NOT NULL))",
+    params = list(rs, tt, st, rs_conf, tt_conf, st_conf, species)))
+}

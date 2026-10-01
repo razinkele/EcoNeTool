@@ -1130,7 +1130,7 @@ trait_research_server <- function(input, output, session, shared_data) {
   # refresh) — same data, three round-trips.
   offline_db_summary <- reactive({
     offline_db_trigger()  # invalidate on rebuild
-    db_path <- "cache/offline_traits.db"
+    db_path <- app_path("cache/offline_traits.db")
     default <- list(
       count = 0,
       age_text = "Not built", age_color = "danger",
@@ -1352,7 +1352,7 @@ trait_research_server <- function(input, output, session, shared_data) {
 
   output$offline_db_contents <- DT::renderDataTable({
     req(input$view_offline_db > 0)
-    db_path <- "cache/offline_traits.db"
+    db_path <- app_path("cache/offline_traits.db")
     if (!file.exists(db_path) || !requireNamespace("RSQLite", quietly = TRUE)) {
       return(DT::datatable(data.frame(Message = "Database not available")))
     }

@@ -736,19 +736,30 @@ process_external_csv <- function(csv_path, source_label, conf, col_map) {
     tt_conf <- if (!is.na(tt_val)) conf else 0.0
     st_conf <- if (!is.na(st_val)) conf else 0.0
 
-    # Ad-hoc INSERT covering only the extended-modality columns; falls
-    # back to NULL for the core MS/FS/MB/EP/PR slots so we don't shadow
-    # those when a downstream source has them.
-    safe_insert(con,
-      "INSERT OR IGNORE INTO species_traits
-         (species, primary_source,
-          RS, TT, ST, RS_confidence, TT_confidence, ST_confidence)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      list(sp, source_label, rs_val, tt_val, st_val, rs_conf, tt_conf, st_conf))
-    inserted <- inserted + 1L
+    # Insert a new species, or enrich an existing one: only RS / TT / ST the
+    # row does not hold yet are filled (F22; INSERT OR IGNORE skipped every
+    # species an earlier source had written). The core MS/FS/MB/EP/PR slots
+    # are never touched. Counted by rows actually inserted or changed.
+    affected <- tryCatch(
+      upsert_extended_traits(con, sp, source_label, rs_val, tt_val, st_val,
+                             rs_conf, tt_conf, st_conf, use_upsert = use_upsert),
+      error = function(e) {
+        warning(sprintf("[build] %s RS/TT/ST write failed for '%s': %s",
+                        source_label, sp, conditionMessage(e)), call. = FALSE)
+        0L
+      }
+    )
+    inserted <- inserted + affected
   }
-  cat("  Inserted:", inserted, "species\n")
+  cat("  Inserted or enriched:", inserted, "species\n")
   inserted
+}
+
+# SQLite >= 3.24 (bundled with RSQLite) runs the UPSERT; older builds use the
+# UPDATE-then-INSERT fallback in upsert_extended_traits().
+use_upsert <- sqlite_supports_upsert()
+if (!use_upsert) {
+  warning("[build] SQLite < 3.24: RS/TT/ST use the UPDATE-then-INSERT fallback", call. = FALSE)
 }
 
 # Source 7/10 - BlackSea (RS/TT/ST)

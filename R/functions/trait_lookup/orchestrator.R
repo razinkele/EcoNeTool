@@ -90,9 +90,10 @@ offline_db_vocab_status <- function(db_path) {
 #' process - until it is rebuilt; lookups then fall back to the live APIs.
 #'
 #' @param species_name Scientific name
-#' @param db_path Path to offline SQLite database
+#' @param db_path Path to the offline SQLite database. The default resolves
+#'   through app_path(), so it is found from any working directory (F24).
 #' @return Data frame row with trait codes, or NULL if not found
-lookup_offline_traits <- function(species_name, db_path = "cache/offline_traits.db") {
+lookup_offline_traits <- function(species_name, db_path = app_path("cache/offline_traits.db")) {
   if (!file.exists(db_path)) return(NULL)
 
   if (!requireNamespace("RSQLite", quietly = TRUE)) {
@@ -170,21 +171,26 @@ lookup_offline_traits <- function(species_name, db_path = "cache/offline_traits.
 #' provenance for a value that source never produced.
 #'
 #' Last-writer-wins still holds between sources that DO resolve; only
-#' unresolved writes are suppressed.
+#' unresolved writes are suppressed. Every trait code in the pipeline is
+#' assigned through here, so `<trait>_source` and `<trait>_method` are set at
+#' assignment time (spec C3.1), never inferred afterwards.
 #'
 #' @param result The one-row result frame being assembled.
 #' @param trait Trait column name, e.g. "RS".
 #' @param value The harmonised value; NULL, NA, "" or length != 1 count as
 #'   unresolved.
 #' @param source Provenance label to record alongside a resolved value.
+#' @param method How the value was decided: "observed", "rule", "default",
+#'   "ml" or "phylo" (see R/functions/trait_lookup/provenance.R).
 #' @return `result`, modified only when `value` resolved.
 #' @export
-assign_trait_if_resolved <- function(result, trait, value, source) {
+assign_trait_if_resolved <- function(result, trait, value, source, method = "observed") {
   if (length(value) != 1L || is.na(value) || !nzchar(as.character(value))) {
     return(result)
   }
-  result[[trait]] <- value
+  result[[trait]] <- as.character(value)
   result[[paste0(trait, "_source")]] <- source
+  result[[paste0(trait, "_method")]] <- method
   result
 }
 
@@ -341,6 +347,10 @@ lookup_species_traits <- function(species_name,
     MB_source = NA_character_, EP_source = NA_character_,
     PR_source = NA_character_, RS_source = NA_character_,
     TT_source = NA_character_, ST_source = NA_character_,
+    MS_method = NA_character_, FS_method = NA_character_,
+    MB_method = NA_character_, EP_method = NA_character_,
+    PR_method = NA_character_, RS_method = NA_character_,
+    TT_method = NA_character_, ST_method = NA_character_,
     imputation_method = "observed",
     stringsAsFactors = FALSE
   )
@@ -459,26 +469,37 @@ lookup_species_traits <- function(species_name,
   # STEP 0: Offline pre-computed trait database (instant lookup)
   # ═══════════════════════════════════════════════════════════════════════
   message("\n[0/12] Offline trait database check...")
-  offline <- lookup_offline_traits(species_name)
+  # The offline codes were harmonised at build time with the default
+  # settings. A session with its own thresholds or patterns must not be
+  # served them, so it skips the offline DB and harmonises live.
+  offline <- if (identical(harm_config_hash(), harm_default_config_hash())) {
+    lookup_offline_traits(species_name)
+  } else {
+    message("  Skipped: this session's harmonization settings differ from the offline DB's defaults")
+    NULL
+  }
   offline_prefilled <- character()  # Track which traits came from offline
 
   if (!is.null(offline)) {
-    has_all <- !is.na(offline$MS) && !is.na(offline$FS) && !is.na(offline$MB) && !is.na(offline$EP) && !is.na(offline$PR)
+    # Every code the row holds, with the row's database as its source, the
+    # stored confidence (0.0 = unknown -> the source's weight) and its method
+    # (F20). RS / TT / ST are read too (F22).
+    offline_label <- offline_source_label(offline$primary_source)
+    offline_method <- offline_trait_method(offline$primary_source)
+    for (trait in TRAIT_COLUMNS) {
+      if (!trait %in% names(offline) || is.na(offline[[trait]][1])) next
+      result <- assign_trait_if_resolved(result, trait, offline[[trait]][1], offline_label, offline_method)
+      result[[paste0(trait, "_confidence")]] <- offline_trait_confidence(offline, trait)
+      offline_prefilled <- c(offline_prefilled, trait)
+    }
 
-    if (has_all) {
+    if (all(CORE_TRAIT_COLUMNS %in% offline_prefilled)) {
       message("  Complete traits found offline (source: ", offline$primary_source, ")")
-      result$MS <- offline$MS
-      result$FS <- offline$FS
-      result$MB <- offline$MB
-      result$EP <- offline$EP
-      result$PR <- offline$PR
-      result$MS_source <- "OfflineDB"
-      result$FS_source <- "OfflineDB"
-      result$MB_source <- "OfflineDB"
-      result$EP_source <- "OfflineDB"
-      result$PR_source <- "OfflineDB"
       result$source <- paste0("offline:", offline$primary_source)
-      result$confidence <- "high"
+      overall <- overall_trait_confidence(result)
+      result$overall_confidence <- overall$value
+      result$confidence <- overall$label
+      result$imputation_method <- aggregate_imputation_method(result)
 
       # Cache result
       if (!is.null(cache_dir)) {
@@ -495,11 +516,6 @@ lookup_species_traits <- function(species_name,
       return(result)
     } else {
       message("  Partial traits found offline - will fill gaps via API lookups")
-      if (!is.na(offline$MS)) { result$MS <- offline$MS; result$MS_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "MS") }
-      if (!is.na(offline$FS)) { result$FS <- offline$FS; result$FS_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "FS") }
-      if (!is.na(offline$MB)) { result$MB <- offline$MB; result$MB_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "MB") }
-      if (!is.na(offline$EP)) { result$EP <- offline$EP; result$EP_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "EP") }
-      if (!is.na(offline$PR)) { result$PR <- offline$PR; result$PR_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "PR") }
       message("  Pre-filled: ", paste(offline_prefilled, collapse = ", "))
     }
   } else {
@@ -869,8 +885,8 @@ lookup_species_traits <- function(species_name,
 
   } # End of else block for early exit
 
-  # If no data found
-  if (length(raw_traits) == 0) {
+  # If no data found (offline-prefilled codes still go through the pipeline)
+  if (length(raw_traits) == 0 && length(offline_prefilled) == 0) {
     message("\n\u274c NO DATA FOUND - No databases contained information for this species")
     result$confidence <- "none"
     total_time <- round(as.numeric(difftime(Sys.time(), total_start, units = "secs")), 2)

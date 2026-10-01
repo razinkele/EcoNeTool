@@ -10,6 +10,7 @@
 
 source_app_dependencies()
 source(file.path(get_app_root(), "R/functions/uncertainty_quantification.R"), local = FALSE)
+source(file.path(get_app_root(), "R/functions/offline_db_rebuild.R"), local = FALSE)
 
 # Run `code` with `cfg` as this session's harmonization config.
 with_session_config <- function(cfg, code) {
@@ -206,3 +207,178 @@ test_that("the overall confidence is the geometric mean, labelled with the canon
   expect_identical(overall_trait_confidence(data.frame(MS_confidence = -1))$label, "none")
 })
 
+
+# ---------------------------------------------------------------------------
+# A stubbed lookup pipeline: every database lookup is "not found" unless the
+# test supplies it, so lookup_species_traits() runs offline and fast.
+# ---------------------------------------------------------------------------
+
+# Run `code` with each function in `fns` (name -> function) assigned in
+# globalenv, restoring (or removing) whatever was there before on the way out.
+with_globals <- function(fns, code) {
+  old <- mget(names(fns), envir = globalenv(), ifnotfound = list(NULL))
+  on.exit({
+    for (nm in names(fns)) {
+      if (is.null(old[[nm]])) {
+        if (exists(nm, envir = globalenv(), inherits = FALSE)) rm(list = nm, envir = globalenv())
+      } else {
+        assign(nm, old[[nm]], envir = globalenv())
+      }
+    }
+  }, add = TRUE)
+  for (nm in names(fns)) assign(nm, fns[[nm]], envir = globalenv())
+  force(code)
+}
+
+not_found <- function(...) list(success = FALSE, traits = list())
+found <- function(traits) {
+  force(traits)
+  function(...) list(success = TRUE, traits = traits)
+}
+worms_taxon <- function(phylum, class, order = NA_character_, ...) {
+  found(list(phylum = phylum, class = class, order = order, family = NA_character_,
+             genus = NA_character_, aphia_id = 1L, isMarine = TRUE, ...))
+}
+
+pipeline_stubs <- function() {
+  lookups <- c("lookup_worms_traits", "lookup_ontology_traits", "lookup_fishbase_traits",
+               "lookup_sealifebase_traits", "lookup_biotic_traits", "lookup_maredat_traits",
+               "lookup_ptdb_traits", "lookup_algaebase_traits", "lookup_freshwaterecology_traits",
+               "lookup_blacksea_traits", "lookup_arctic_traits", "lookup_cefas_traits",
+               "lookup_coral_traits", "lookup_pelagic_traits", "lookup_worms_traits_api",
+               "lookup_polytraits", "lookup_emodnet_traits", "lookup_obis_traits", "lookup_traitbank")
+  stubs <- stats::setNames(rep(list(not_found), length(lookups)), lookups)
+  c(stubs, list(
+    lookup_offline_traits = function(...) NULL,
+    lookup_bvol_traits = function(...) NULL,
+    lookup_species_enriched_traits = function(...) NULL,
+    apply_ml_fallback = function(harmonized_traits, raw_traits, verbose = FALSE) harmonized_traits,
+    apply_phylogenetic_imputation = function(species_name, current_traits, ...) current_traits
+  ))
+}
+
+# lookup_species_traits() with every lookup stubbed; `stubs` overrides some.
+# Without a `cache_dir` it uses a fresh temp directory.
+run_pipeline <- function(stubs = list(), species = "Testus maximus", cache_dir = NULL) {
+  if (is.null(cache_dir)) {
+    cache_dir <- tempfile("taxonomy_")
+    dir.create(cache_dir)
+    on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  }
+  with_globals(utils::modifyList(pipeline_stubs(), stubs),
+               suppressMessages(lookup_species_traits(species, cache_dir = cache_dir)))
+}
+
+offline_row <- function(species = "Testus maximus") {
+  data.frame(species = species, MS = "MS3", FS = "FS1", MB = "MB2", EP = "EP1", PR = "PR0",
+             primary_source = "ontology", stringsAsFactors = FALSE)
+}
+
+# ---------------------------------------------------------------------------
+# Task 3 - the offline DB: stored confidences, RS/TT/ST, path, writer (C3.5)
+# ---------------------------------------------------------------------------
+
+test_that("a complete offline row keeps its stored confidences; the label is their geometric mean (F20)", {
+  reset_offline_vocab_gate()
+  db <- make_offline_db_fixture(data.frame(
+    species = "Testus maximus", MS = "MS3", FS = "FS6", MB = "MB1", EP = "EP3", PR = "PR6",
+    MS_confidence = 0.5, FS_confidence = 0.8, MB_confidence = 0.8, EP_confidence = 0.8,
+    PR_confidence = 0.3, primary_source = "biotic", stringsAsFactors = FALSE))
+  real <- lookup_offline_traits
+  res <- run_pipeline(list(
+    lookup_offline_traits = function(species_name, db_path = db) real(species_name, db_path),
+    lookup_worms_traits = worms_taxon("Mollusca", "Bivalvia")))
+  expect_identical(res$MS_confidence, 0.5)
+  expect_identical(res$PR_confidence, 0.3)
+  expect_equal(res$overall_confidence, exp(mean(log(c(0.5, 0.8, 0.8, 0.8, 0.3)))))
+  expect_identical(res$confidence, confidence_to_label(res$overall_confidence))
+  expect_identical(res$confidence, "medium") # was a hard-coded "high"
+  expect_identical(res$MS_source, "BIOTIC")
+  expect_identical(res$MS_method, "observed")
+  expect_identical(res$imputation_method, "observed")
+  expect_identical(res$source, "offline:biotic")
+})
+
+test_that("an offline DB from another vocabulary is skipped with a rebuild warning (C3.5)", {
+  reset_offline_vocab_gate()
+  withr::defer(reset_offline_vocab_gate())
+  db <- make_offline_db_fixture(offline_row(), vocab_version = 1L)
+  expect_warning(res <- lookup_offline_traits("Testus maximus", db_path = db), "rebuild required")
+  expect_null(res)
+})
+
+test_that("the default offline DB path resolves from any working directory (F24)", {
+  reset_offline_vocab_gate()
+  srv <- readLines(file.path(get_app_root(), "R/modules/trait_research_server.R"), warn = FALSE)
+  expect_false(any(grepl('db_path <- "cache/offline_traits.db"', srv, fixed = TRUE)))
+  fixture <- make_offline_db_fixture(offline_row())
+  root <- withr::local_tempdir()
+  dir.create(file.path(root, "R", "functions"), recursive = TRUE)
+  dir.create(file.path(root, "tests", "testthat"), recursive = TRUE)
+  dir.create(file.path(root, "cache"))
+  file.create(file.path(root, "app.R"))
+  file.copy(fixture, file.path(root, "cache", "offline_traits.db"))
+  withr::local_options(econetool.app_root = NULL)
+  withr::local_dir(file.path(root, "tests", "testthat"))
+  res <- lookup_offline_traits("Testus maximus")
+  expect_identical(res$MS, "MS3")
+})
+
+test_that("an offline row with only RS is served with its source and confidence (F22)", {
+  reset_offline_vocab_gate()
+  db <- make_offline_db_fixture(data.frame(species = "Testus maximus", RS = "RS2", RS_confidence = 0.6,
+                                           primary_source = "cefas", stringsAsFactors = FALSE))
+  real <- lookup_offline_traits
+  res <- run_pipeline(list(
+    lookup_offline_traits = function(species_name, db_path = db) real(species_name, db_path),
+    lookup_worms_traits = worms_taxon("Chordata", "Actinopteri", "Gadiformes")))
+  expect_identical(res$RS, "RS2")
+  expect_identical(res$RS_source, "Cefas")
+  expect_identical(res$RS_method, "observed")
+  expect_identical(res$RS_confidence, 0.6)
+})
+
+test_that("the RS/TT/ST writer enriches an existing species and counts rows changed (F22)", {
+  for (upsert in c(TRUE, FALSE)) {
+    db <- make_offline_db_fixture(offline_row())
+    con <- DBI::dbConnect(RSQLite::SQLite(), db)
+    n_new <- upsert_extended_traits(con, "Testus maximus", "cefas", "RS2", NA, NA, 0.7, 0, 0,
+                                    use_upsert = upsert)
+    n_again <- upsert_extended_traits(con, "Testus maximus", "cefas", "RS3", NA, NA, 0.7, 0, 0,
+                                      use_upsert = upsert)
+    n_other <- upsert_extended_traits(con, "Novus species", "cefas", NA, "TT2", NA, 0, 0.7, 0,
+                                      use_upsert = upsert)
+    row <- DBI::dbGetQuery(con, "SELECT * FROM species_traits WHERE species = 'Testus maximus'")
+    other <- DBI::dbGetQuery(con, "SELECT * FROM species_traits WHERE species = 'Novus species'")
+    DBI::dbDisconnect(con)
+    expect_identical(c(n_new, n_again, n_other), c(1L, 0L, 1L), info = upsert)
+    expect_identical(row$RS, "RS2", info = upsert) # filled once, never overwritten
+    expect_identical(row$RS_confidence, 0.7, info = upsert)
+    expect_identical(row$MS, "MS3", info = upsert) # core codes untouched
+    expect_identical(row$primary_source, "ontology", info = upsert)
+    expect_identical(other$TT, "TT2", info = upsert)
+  }
+  build <- readLines(file.path(get_app_root(), "scripts/initialization/build_offline_trait_db.R"), warn = FALSE)
+  build <- build[!startsWith(trimws(build), "#")]
+  expect_true(any(grepl("upsert_extended_traits(con, sp, source_label", build, fixed = TRUE)))
+  expect_true(any(grepl("inserted <- inserted + affected", build, fixed = TRUE)))
+})
+
+test_that("a session with its own harmonization settings is not served offline codes", {
+  reset_offline_vocab_gate()
+  cfg <- HARMONIZATION_CONFIG
+  cfg$size_thresholds$MS3_MS4 <- 6
+  called <- FALSE
+  spy <- function(...) {
+    called <<- TRUE
+    NULL
+  }
+  with_session_config(cfg, {
+    run_pipeline(list(lookup_offline_traits = spy,
+                      lookup_worms_traits = worms_taxon("Chordata", "Actinopteri", "Gadiformes")))
+  })
+  expect_false(called)
+  run_pipeline(list(lookup_offline_traits = spy,
+                    lookup_worms_traits = worms_taxon("Chordata", "Actinopteri", "Gadiformes")))
+  expect_true(called)
+})
