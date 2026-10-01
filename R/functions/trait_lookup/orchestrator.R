@@ -1420,62 +1420,17 @@ lookup_species_traits <- function(species_name,
         # Apply ML fallback (function defined in ml_trait_prediction.R)
         result_with_ml <- apply_ml_fallback(harmonized_for_ml, raw_traits, verbose = TRUE)
 
-        # Update result with ML predictions
-        if (!is.na(result_with_ml$MS) && is.na(result$MS)) {
-          result$MS <- result_with_ml$MS
-          result$MS_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-        if (!is.na(result_with_ml$FS) && is.na(result$FS)) {
-          result$FS <- result_with_ml$FS
-          result$FS_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-        if (!is.na(result_with_ml$MB) && is.na(result$MB)) {
-          result$MB <- result_with_ml$MB
-          result$MB_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-        if (!is.na(result_with_ml$EP) && is.na(result$EP)) {
-          result$EP <- result_with_ml$EP
-          result$EP_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-        if (!is.na(result_with_ml$PR) && is.na(result$PR)) {
-          result$PR <- result_with_ml$PR
-          result$PR_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-        if (!is.na(result_with_ml$RS) && is.na(result$RS)) {
-          result$RS <- result_with_ml$RS
-          result$RS_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-        if (!is.na(result_with_ml$TT) && is.na(result$TT)) {
-          result$TT <- result_with_ml$TT
-          result$TT_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-        if (!is.na(result_with_ml$ST) && is.na(result$ST)) {
-          result$ST <- result_with_ml$ST
-          result$ST_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-
-        # Set imputation metadata for ML-filled traits
-        if ("ML" %in% sources_used) {
-          result$imputation_method <- "rf_predicted"
-        }
-
-        # Store ML metadata if available
-        for (trait in c("MS", "FS", "MB", "EP", "PR")) {
-          conf_field <- paste0(trait, "_ml_confidence")
-          prob_field <- paste0(trait, "_ml_probability")
-          if (!is.null(result_with_ml[[conf_field]])) {
-            result[[conf_field]] <- result_with_ml[[conf_field]]
-          }
-          if (!is.null(result_with_ml[[prob_field]])) {
-            result[[prob_field]] <- result_with_ml[[prob_field]]
+        # Fill each missing code from its ML prediction, as method "ml"
+        # (C3.1). The ML metadata is kept only for the traits ML filled, so
+        # a probability never scales a code another database supplied.
+        for (trait in TRAIT_COLUMNS) {
+          predicted <- result_with_ml[[trait]]
+          if (is.na(result[[trait]]) && length(predicted) == 1L && !is.na(predicted)) {
+            result <- assign_trait_if_resolved(result, trait, predicted, "ML", "ml")
+            sources_used <- c(sources_used, "ML")
+            for (field in paste0(trait, c("_ml_confidence", "_ml_probability"))) {
+              if (!is.null(result_with_ml[[field]])) result[[field]] <- result_with_ml[[field]]
+            }
           }
         }
 
@@ -1483,118 +1438,6 @@ lookup_species_traits <- function(species_name,
         warning(sprintf("[orchestrator] ML prediction failed for '%s': %s",
                         species_name, conditionMessage(e)), call. = FALSE)
       })
-    }
-  }
-
-  # =================================================================
-  # UNCERTAINTY QUANTIFICATION - Calculate probabilistic confidence
-  # =================================================================
-
-  # Source uncertainty quantification functions
-  # Note: Using local = FALSE (default) so that %||% operator from validation_utils.R is available
-  if (!exists("calculate_all_trait_confidence")) {
-    message("  [DEBUG] Sourcing uncertainty_quantification.R...")
-    tryCatch({
-      source(app_path("R/functions/uncertainty_quantification.R"))
-      message("  [DEBUG] uncertainty_quantification.R sourced successfully")
-    }, error = function(e) {
-      warning(sprintf("[orchestrator] uncertainty_quantification.R source failed: %s",
-                      conditionMessage(e)), call. = FALSE)
-    })
-  } else {
-    message("  [DEBUG] calculate_all_trait_confidence already exists in environment")
-  }
-
-  # Calculate confidence for all traits
-  if (exists("calculate_all_trait_confidence")) {
-    message("\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557")
-    message("\u2551 UNCERTAINTY QUANTIFICATION                                     \u2551")
-    message("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d")
-
-    # Prepare trait record with sources and raw values
-    trait_record <- list(
-      MS = result$MS,
-      size_cm = size_cm,
-      MS_source = result$MS_source,
-      MS_ml_probability = result$MS_ml_probability,
-
-      FS = result$FS,
-      FS_source = result$FS_source,
-      FS_ml_probability = result$FS_ml_probability,
-
-      MB = result$MB,
-      MB_source = result$MB_source,
-      MB_ml_probability = result$MB_ml_probability,
-
-      EP = result$EP,
-      EP_source = result$EP_source,
-      EP_ml_probability = result$EP_ml_probability,
-
-      PR = result$PR,
-      PR_source = result$PR_source,
-      PR_ml_probability = result$PR_ml_probability
-    )
-
-    # Calculate confidence for all traits
-    message("  [DEBUG] Calling calculate_all_trait_confidence...")
-    confidence_data <- tryCatch(
-      calculate_all_trait_confidence(trait_record),
-      error = function(e) {
-        warning(sprintf("[orchestrator] confidence calc failed for '%s' (falling back to count-based): %s",
-                        species_name, conditionMessage(e)), call. = FALSE)
-        list()
-      }
-    )
-    message("  [DEBUG] calculate_all_trait_confidence completed")
-
-    # Merge confidence data into result
-    for (field in names(confidence_data)) {
-      result[[field]] <- confidence_data[[field]]
-    }
-
-    # Display confidence summary
-    if (!is.null(result$MS_confidence)) {
-      message("  MS confidence: ", round(result$MS_confidence * 100, 1), "% (",
-              result$MS_confidence_category, ")")
-    }
-    if (!is.null(result$FS_confidence)) {
-      message("  FS confidence: ", round(result$FS_confidence * 100, 1), "% (",
-              result$FS_confidence_category, ")")
-    }
-    if (!is.null(result$MB_confidence)) {
-      message("  MB confidence: ", round(result$MB_confidence * 100, 1), "% (",
-              result$MB_confidence_category, ")")
-    }
-    if (!is.null(result$EP_confidence)) {
-      message("  EP confidence: ", round(result$EP_confidence * 100, 1), "% (",
-              result$EP_confidence_category, ")")
-    }
-    if (!is.null(result$PR_confidence)) {
-      message("  PR confidence: ", round(result$PR_confidence * 100, 1), "% (",
-              result$PR_confidence_category, ")")
-    }
-
-    # Calculate overall confidence (geometric mean)
-    confidence_values <- c(
-      result$MS_confidence, result$FS_confidence, result$MB_confidence,
-      result$EP_confidence, result$PR_confidence
-    )
-    valid_confidence <- confidence_values[!is.na(confidence_values)]
-
-    if (length(valid_confidence) > 0) {
-      overall_confidence <- exp(mean(log(valid_confidence)))  # Geometric mean
-      result$overall_confidence <- overall_confidence
-
-      if (overall_confidence >= 0.7) {
-        overall_category <- "high"
-      } else if (overall_confidence >= 0.5) {
-        overall_category <- "medium"
-      } else {
-        overall_category <- "low"
-      }
-
-      message("\n  Overall confidence: ", round(overall_confidence * 100, 1), "% (",
-              overall_category, ")")
     }
   }
 
@@ -1669,31 +1512,77 @@ lookup_species_traits <- function(species_name,
     }
   }
 
-  # Set source and confidence
-  result$source <- paste(unique(sources_used), collapse = "+")
+  # ML- and phylo-filled codes carry their method (C3.1).
+  result <- mark_imputed_methods(result)
 
-  # Set categorical confidence (backward compatibility)
-  n_traits_found <- sum(!is.na(c(result$MS, result$FS, result$MB, result$EP, result$PR)))
+  # A PR that neither the text, a taxon rule, ML nor phylogenetic imputation
+  # decided falls back to PR0, labelled for what it is: a default without
+  # evidence (method "default", source "Default"), never a taxonomic finding.
+  # It is not offered to relatives or ML training. (C-8 user decision 1.)
+  if (is.na(result$PR)) {
+    result <- assign_trait_if_resolved(result, "PR", "PR0", "Default", "default")
+  }
 
-  # Use probabilistic confidence if available, otherwise fallback to count-based
-  if (!is.null(result$overall_confidence)) {
-    if (result$overall_confidence >= 0.7) {
-      result$confidence <- "high"
-    } else if (result$overall_confidence >= 0.5) {
-      result$confidence <- "medium"
-    } else {
-      result$confidence <- "low"
+  # =================================================================
+  # UNCERTAINTY QUANTIFICATION - score every code, imputed ones included
+  # =================================================================
+  # Runs after ML and phylogenetic imputation (C3.2), so imputed codes are
+  # scored too (C3.3).
+
+  # Source uncertainty quantification functions (app.R sources it at startup)
+  if (!exists("calculate_all_trait_confidence")) {
+    tryCatch({
+      source(app_path("R/functions/uncertainty_quantification.R"))
+    }, error = function(e) {
+      warning(sprintf("[orchestrator] uncertainty_quantification.R source failed: %s",
+                      conditionMessage(e)), call. = FALSE)
+    })
+  }
+
+  if (exists("calculate_all_trait_confidence")) {
+    message("\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557")
+    message("\u2551 UNCERTAINTY QUANTIFICATION                                     \u2551")
+    message("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d")
+
+    trait_record <- as.list(result)
+    # Codes read from the offline DB keep the confidence the DB stored (F20).
+    for (trait in offline_prefilled) trait_record[[trait]] <- NA_character_
+    # The boundary distance applies only to an MS harmonised from that size.
+    trait_record$size_cm <- if (isTRUE(ms_from_size)) size_cm else NULL
+
+    confidence_data <- tryCatch(
+      calculate_all_trait_confidence(trait_record),
+      error = function(e) {
+        warning(sprintf("[orchestrator] confidence calc failed for '%s': %s",
+                        species_name, conditionMessage(e)), call. = FALSE)
+        list()
+      }
+    )
+    for (field in names(confidence_data)) {
+      result[[field]] <- confidence_data[[field]]
     }
-  } else {
-    # Fallback: count-based confidence
-    if (n_traits_found == 5) {
-      result$confidence <- "high"
-    } else if (n_traits_found >= 3) {
-      result$confidence <- "medium"
-    } else {
-      result$confidence <- "low"
+    for (trait in TRAIT_COLUMNS) {
+      conf <- result[[paste0(trait, "_confidence")]]
+      if (length(conf) == 1L && !is.na(conf)) {
+        message("  ", trait, " confidence: ", round(conf * 100, 1), "% (", confidence_to_label(conf), ")")
+      }
     }
   }
+
+  # Overall confidence: the geometric mean of the MS..PR confidences, with
+  # the canonical 0.34 / 0.67 bands; "none" when there is nothing to average.
+  overall <- overall_trait_confidence(result)
+  result$overall_confidence <- overall$value
+  result$confidence <- overall$label
+  result$imputation_method <- aggregate_imputation_method(result)
+  message("\n  Overall confidence: ",
+          if (is.na(overall$value)) "none" else paste0(round(overall$value * 100, 1), "%"),
+          " (", overall$label, ")")
+
+  # Set source
+  result$source <- paste(unique(sources_used), collapse = "+")
+
+  n_traits_found <- sum(!is.na(c(result$MS, result$FS, result$MB, result$EP, result$PR)))
 
   # FINAL SUMMARY
   message("\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557")

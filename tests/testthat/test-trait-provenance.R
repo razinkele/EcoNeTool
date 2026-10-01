@@ -496,3 +496,135 @@ test_that("FS, MB and EP name the database or rule that decided them (F28)", {
   expect_identical(fish$EP_method, "rule")
 })
 
+# ---------------------------------------------------------------------------
+# Task 5 - pipeline order: ML -> phylo -> scoring -> overall label (C3.2, C3.3)
+# ---------------------------------------------------------------------------
+
+# A phylogenetic-imputation stub that fills EP like the real one does.
+phylo_fills_ep <- function(species_name, current_traits, ...) {
+  if (is.na(current_traits$EP)) {
+    current_traits$EP <- "EP3"
+    current_traits$EP_source <- "Phylogenetic"
+    current_traits$EP_phylo_confidence <- 0.8
+  }
+  current_traits
+}
+
+test_that("a phylo-imputed EP is method phylo and scored after imputation (C3.2, C3.3)", {
+  res <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Chordata", "Actinopteri", "Gadiformes"),
+    apply_phylogenetic_imputation = phylo_fills_ep))
+  expect_identical(res$EP, "EP3")
+  expect_identical(res$EP_method, "phylo")
+  expect_equal(res$EP_confidence, 0.8 * DATABASE_WEIGHTS[["Phylogenetic"]])
+  expect_gt(res$EP_confidence, 0)
+  expect_match(res$imputation_method, "phylo")
+})
+
+test_that("an ML-filled code is method ml, scored by its probability; ML never rescales other codes", {
+  ml <- function(harmonized_traits, raw_traits, verbose = FALSE) {
+    for (t in c("MS", "MB")) {
+      if (is.na(harmonized_traits[[t]])) harmonized_traits[[t]] <- if (t == "MS") "MS3" else "MB3"
+      harmonized_traits[[paste0(t, "_ml_probability")]] <- 0.6
+      harmonized_traits[[paste0(t, "_ml_confidence")]] <- "medium"
+    }
+    harmonized_traits
+  }
+  res <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Mollusca", "Gastropoda", max_length_cm = 3),
+    apply_ml_fallback = ml))
+  # MB had no mobility text, so ML filled it.
+  expect_identical(res$MB, "MB3")
+  expect_identical(res$MB_source, "ML")
+  expect_identical(res$MB_method, "ml")
+  expect_equal(res$MB_confidence, 0.6 * DATABASE_WEIGHTS[["ML_prediction"]])
+  expect_match(res$imputation_method, "ml")
+  # MS came from the WoRMS size: ML's probability for MS is neither kept nor applied.
+  expect_identical(res$MS_method, "observed")
+  expect_null(res$MS_ml_probability)
+  expect_identical(res$MS_confidence, DATABASE_WEIGHTS[["WoRMS"]])
+})
+
+test_that("a measured size on a class boundary does not make otherwise-good data low (F37)", {
+  res <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Chordata", "Actinopteri", "Gadiformes"),
+    lookup_fishbase_traits = found(list(max_length_cm = 50, trophic_level = 4.1,
+                                        depth_min = 10, depth_max = 30))))
+  expect_identical(res$MS, "MS6")
+  expect_equal(res$MS_confidence, 0.3) # FishBase 1.0 x the 0.3 floor (was 0, so the whole row was "low")
+  expect_false(identical(res$confidence, "low"))
+  expect_identical(res$confidence, confidence_to_label(res$overall_confidence))
+})
+
+test_that("an undecided PR falls back to PR0 labelled Default / default (C-8 user decision 1)", {
+  res <- run_pipeline(list(lookup_worms_traits = worms_taxon("Chordata", "Mammalia", "Carnivora")))
+  expect_identical(res$PR, "PR0")
+  expect_identical(res$PR_source, "Default")
+  expect_identical(res$PR_method, "default")
+  expect_identical(res$PR_confidence, DATABASE_WEIGHTS[["Default"]])
+  expect_match(res$imputation_method, "default")
+})
+
+test_that("every code has a method and a confidence, and the label matches the overall value (acceptance 5)", {
+  cases <- list(
+    fish = list(lookup_worms_traits = worms_taxon("Chordata", "Actinopteri", "Gadiformes"),
+                lookup_fishbase_traits = found(list(max_length_cm = 130, trophic_level = 4.4,
+                                                    depth_min = 150, depth_max = 600))),
+    mussel = list(lookup_worms_traits = worms_taxon("Mollusca", "Bivalvia", max_length_cm = 20)),
+    copepod = list(lookup_worms_traits = worms_taxon("Arthropoda", "Copepoda"),
+                   apply_phylogenetic_imputation = phylo_fills_ep),
+    medusa = list(lookup_worms_traits = worms_taxon("Cnidaria", "Scyphozoa", max_length_cm = 40)),
+    urchin = list(lookup_worms_traits = worms_taxon("Echinodermata", "Echinoidea")),
+    nematode = list(lookup_worms_traits = worms_taxon("Nematoda", "Enoplea"))
+  )
+  for (nm in names(cases)) {
+    res <- run_pipeline(cases[[nm]], species = nm)
+    for (t in TRAIT_COLUMNS) {
+      code <- res[[t]]
+      conf <- res[[paste0(t, "_confidence")]]
+      if (is.na(code)) {
+        expect_true(is.null(conf) || is.na(conf), info = paste(nm, t))
+      } else {
+        expect_false(is.na(res[[paste0(t, "_method")]]), info = paste(nm, t))
+        expect_false(is.na(res[[paste0(t, "_source")]]), info = paste(nm, t))
+        expect_true(isTRUE(conf > 0 && conf <= 1), info = paste(nm, t))
+      }
+    }
+    expect_identical(res$confidence, confidence_to_label(res$overall_confidence), info = nm)
+  }
+})
+
+test_that("no private confidence bands or legacy method labels are left in the orchestrator (C3.2)", {
+  orch <- readLines(file.path(get_app_root(), "R/functions/trait_lookup/orchestrator.R"), warn = FALSE)
+  code <- orch[!startsWith(trimws(orch), "#")]
+  expect_false(any(grepl(">= 0.7|>= 0.5", code)))
+  expect_false(any(grepl("rf_predicted", code, fixed = TRUE)))
+  expect_false(any(grepl('confidence <- "high"', code, fixed = TRUE)))
+})
+
+test_that("a partly prefilled offline row keeps its stored confidences through the pipeline", {
+  reset_offline_vocab_gate()
+  db <- make_offline_db_fixture(data.frame(
+    species = "Testus maximus", FS = "FS6", MB = "MB1", EP = "EP3",
+    FS_confidence = 0.8, MB_confidence = 0.6, EP_confidence = 0.7,
+    primary_source = "biotic", stringsAsFactors = FALSE))
+  real <- lookup_offline_traits
+  res <- run_pipeline(list(
+    lookup_offline_traits = function(species_name, db_path = db) real(species_name, db_path),
+    lookup_worms_traits = worms_taxon("Chordata", "Actinopteri", "Gadiformes"),
+    lookup_fishbase_traits = found(list(max_length_cm = 130, trophic_level = 4.4,
+                                        depth_min = 150, depth_max = 600))))
+  # Stored confidences survive, with the offline source and method.
+  expect_identical(res$FS_confidence, 0.8)
+  expect_identical(res$MB_confidence, 0.6)
+  expect_identical(res$EP_confidence, 0.7)
+  for (t in c("FS", "MB", "EP")) {
+    expect_identical(res[[paste0(t, "_source")]], "BIOTIC", info = t)
+    expect_identical(res[[paste0(t, "_method")]], "observed", info = t)
+  }
+  # MS was not in the offline row: it comes live from the FishBase size and is scored now.
+  expect_identical(res$MS_source, "FishBase")
+  expect_false(is.na(res$MS_confidence))
+  expect_true(res$MS_confidence > 0 && res$MS_confidence <= 1)
+})
+
