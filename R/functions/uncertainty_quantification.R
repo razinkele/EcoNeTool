@@ -29,51 +29,99 @@ DATABASE_WEIGHTS <- list(
   "freshwaterecology" = 0.85,
   "MAREDAT" = 0.80,
   "PTDB" = 0.75,
+  "BVOL" = 0.75,
+  "PelagicTraits" = 0.75,
+  "PolyTraits" = 0.75,
+  "SpeciesEnriched" = 0.70,
+  "Cefas" = 0.70,
+  "EMODnet" = 0.70,
+  "BlackSea" = 0.60,
+  "ArcticTraits" = 0.60,
+  "CoralTraits" = 0.60,
 
   # Taxonomic databases (medium authority - good for traits, limited for ecology)
   "WoRMS" = 0.60,
+  "WoRMS_Traits" = 0.60,
+  "AlgaeBase" = 0.60,
+  "OBIS" = 0.50,
+  "TraitBank" = 0.50,
+
+  # The offline trait DB (codes harmonised at build time) and the fuzzy
+  # ontology profiles
+  "OfflineDB" = 0.80,
+  "Ontology" = 0.60,
 
   # Predicted/inferred data (lower authority)
   "ML_prediction" = 0.50,
-  "Phylogenetic" = 0.40,
-  "Rule-based" = 0.30
+  "Phylogenetic" = 0.55,
+  "Taxonomy" = 0.50,
+  "Harmonized" = 0.50,
+  "Rule-based" = 0.40,
+  "Depth-based" = 0.40,
+  # A harmoniser's fall-through code (MB4, EP3, FS6, the PR0 fallback): no
+  # evidence at all, so it ranks below every rule.
+  "Default" = 0.30
 )
+
+# Source labels that name a DATABASE_WEIGHTS key differently: the
+# orchestrator's labels ("ML", "freshwaterecology.info") and the offline DB's
+# primary_source values (lower case; see offline_source_label()).
+DATABASE_WEIGHT_ALIASES <- c(
+  "ML" = "ML_prediction",
+  "freshwaterecology.info" = "freshwaterecology",
+  "species_enriched" = "SpeciesEnriched",
+  "coral" = "CoralTraits",
+  "arctic" = "ArcticTraits"
+)
+
+# Unknown-source warnings: once per source label per process.
+.uq_weight_warned <- new.env(parent = emptyenv())
+
+#' Reset the once-per-source unknown-weight warnings (tests)
+reset_database_weight_warnings <- function() {
+  rm(list = ls(.uq_weight_warned, all.names = TRUE), envir = .uq_weight_warned)
+  invisible(TRUE)
+}
 
 #' Get Database Authority Weight
 #'
-#' Returns the authority weight for a given data source.
+#' Returns the authority weight for a given data source. Labels are matched
+#' exactly, then through DATABASE_WEIGHT_ALIASES, then case-insensitively (the
+#' offline DB stores "biotic", "ontology", ...). A label that matches nothing
+#' - or a missing one - gets 0.5 with a warning (once per label per process),
+#' so no source falls to the default silently (spec C3.3).
 #'
-#' @param source Character string. Data source name.
-#' @return Numeric value between 0 and 1. Returns 0.5 if source not found.
+#' @param source Character string. Data source name; comma-separated names
+#'   take the best weight.
+#' @return Numeric value between 0 and 1.
 #'
 #' @examples
 #' get_database_weight("FishBase")  # Returns 1.0
-#' get_database_weight("ML_prediction")  # Returns 0.5
+#' get_database_weight("ML")        # Returns 0.5 (alias of ML_prediction)
 #'
 get_database_weight <- function(source) {
-  if (is.null(source) || is.na(source)) {
-    return(0.5)
+  if (is.null(source) || length(source) == 0 || is.na(source[1]) || !nzchar(source[1])) {
+    source <- "<missing>"
+  }
+  source <- as.character(source[1])
+
+  # Multiple sources (comma-separated): use the best one
+  if (grepl(",", source, fixed = TRUE)) {
+    parts <- trimws(strsplit(source, ",", fixed = TRUE)[[1]])
+    return(max(vapply(parts, get_database_weight, numeric(1))))
   }
 
-  # Check for multiple sources (comma-separated)
-  if (grepl(",", source)) {
-    sources <- trimws(strsplit(source, ",")[[1]])
-    weights <- sapply(sources, function(s) {
-      if (s %in% names(DATABASE_WEIGHTS)) {
-        DATABASE_WEIGHTS[[s]]
-      } else {
-        0.5
-      }
-    })
-    return(max(weights))  # Use best source
-  }
+  key <- source
+  if (key %in% names(DATABASE_WEIGHT_ALIASES)) key <- DATABASE_WEIGHT_ALIASES[[key]]
+  if (key %in% names(DATABASE_WEIGHTS)) return(DATABASE_WEIGHTS[[key]])
+  ci <- match(tolower(key), tolower(names(DATABASE_WEIGHTS)))
+  if (!is.na(ci)) return(DATABASE_WEIGHTS[[ci]])
 
-  # Single source
-  if (source %in% names(DATABASE_WEIGHTS)) {
-    return(DATABASE_WEIGHTS[[source]])
-  } else {
-    return(0.5)  # Default for unknown sources
+  if (!isTRUE(.uq_weight_warned[[source]])) {
+    assign(source, TRUE, envir = .uq_weight_warned)
+    warning(sprintf("[uq] no database weight for source '%s'; using 0.5", source), call. = FALSE)
   }
+  0.5
 }
 
 
@@ -85,20 +133,31 @@ get_database_weight <- function(source) {
 #' Calculate Distance to Nearest Size Threshold
 #'
 #' Calculates how far a size measurement is from the nearest class boundary.
-#' Species close to boundaries (within 10%) have reduced confidence.
+#' The distance is measured on the profile-adjusted size - the value
+#' harmonize_size_class() classified - so an ecosystem profile cannot put the
+#' size outside its own class (F37). Within 10% of a boundary the factor falls
+#' linearly, but never below 0.3: a measured size on a boundary is still
+#' measured data, and a factor of 0 used to turn the whole species "low".
 #'
-#' @param size_cm Numeric. Body size in cm.
+#' @param size_cm Numeric. Body size in cm (raw, before the profile adjustment).
 #' @param size_class Character. Assigned size class (MS1-MS7).
-#' @return Numeric. Distance factor between 0 (at boundary) and 1 (far from boundary).
+#' @return Numeric factor in [0.3, 1], or NA_real_ for a missing or
+#'   non-finite size, a missing class or a code outside MS1-MS7.
 #'
 #' @examples
 #' calculate_threshold_distance(3.0, "MS3")  # Returns 1.0 (middle of class)
-#' calculate_threshold_distance(4.9, "MS3")  # Returns 0.02 (near boundary)
+#' calculate_threshold_distance(4.9, "MS3")  # Returns 0.3 (near boundary)
 #'
 calculate_threshold_distance <- function(size_cm, size_class) {
-  if (is.na(size_cm) || is.na(size_class)) {
-    return(1.0)  # No penalty if missing
+  size_cm <- suppressWarnings(as.numeric(size_cm))
+  if (length(size_cm) != 1L || !is.finite(size_cm) ||
+        length(size_class) != 1L || is.na(size_class)) {
+    return(NA_real_)
   }
+  if (exists("apply_size_adjustment", mode = "function")) {
+    size_cm <- apply_size_adjustment(size_cm)
+  }
+  if (!is.finite(size_cm)) return(NA_real_)
 
   # Load harmonization config if available. get_harm_config() returns
   # the per-session config when called inside a Shiny session and falls
@@ -131,9 +190,9 @@ calculate_threshold_distance <- function(size_cm, size_class) {
   )
 
   # Get class index
-  class_num <- as.integer(gsub("MS", "", size_class))
+  class_num <- suppressWarnings(as.integer(gsub("MS", "", size_class)))
   if (is.na(class_num) || class_num < 1 || class_num > 7) {
-    return(1.0)
+    return(NA_real_)
   }
 
   # Get lower and upper boundaries for this class
@@ -154,13 +213,9 @@ calculate_threshold_distance <- function(size_cm, size_class) {
     dist_to_boundary <- min(dist_to_lower, dist_to_upper)
   }
 
-  # Convert to confidence factor (0 at boundary, 1 far from boundary)
-  # Within 10% of boundary → reduced confidence
-  if (dist_to_boundary < 0.1) {
-    return(dist_to_boundary / 0.1)  # Linear decrease from 1.0 to 0
-  } else {
-    return(1.0)
-  }
+  # Confidence factor: 1 far from a boundary, falling linearly within 10% of
+  # one, floored at 0.3 (spec C3.4).
+  min(1, max(0.3, dist_to_boundary / 0.1))
 }
 
 
@@ -180,14 +235,18 @@ calculate_threshold_distance <- function(size_cm, size_class) {
 #' @param source Character. Data source (e.g., "FishBase", "ML_prediction").
 #' @param threshold_distance Numeric. Distance factor from boundaries (0-1). Default 1.0.
 #' @param ml_probability Numeric. ML prediction probability (0-1). Optional.
-#' @return List with: confidence, interval_lower, interval_upper, source, notes
+#' @param phylo_confidence Numeric. Phylogenetic-imputation confidence (0-1).
+#'   Optional; multiplies the weight like `ml_probability` (spec C3.3).
+#' @return List with: confidence, interval_lower, interval_upper, category,
+#'   source, notes. `category` is confidence_to_label(confidence).
 #'
 #' @examples
 #' calculate_trait_confidence("MS4", 15.0, "FishBase", 1.0)
-#' calculate_trait_confidence("FS1", NA, "ML_prediction", ml_probability = 0.75)
+#' calculate_trait_confidence("FS1", NA, "ML", ml_probability = 0.75)
 #'
 calculate_trait_confidence <- function(trait_value, raw_value = NA, source = "Unknown",
-                                      threshold_distance = 1.0, ml_probability = NA) {
+                                      threshold_distance = 1.0, ml_probability = NA,
+                                      phylo_confidence = NA) {
 
   # Base confidence from data source
   base_confidence <- get_database_weight(source)
@@ -195,6 +254,11 @@ calculate_trait_confidence <- function(trait_value, raw_value = NA, source = "Un
   # Adjust for ML probability if available
   if (!is.null(ml_probability) && length(ml_probability) == 1 && !is.na(ml_probability)) {
     base_confidence <- base_confidence * ml_probability
+  }
+
+  # Adjust for the phylogenetic vote if available
+  if (!is.null(phylo_confidence) && length(phylo_confidence) == 1 && !is.na(phylo_confidence)) {
+    base_confidence <- base_confidence * phylo_confidence
   }
 
   # Adjust for threshold distance (for size traits)
@@ -209,14 +273,9 @@ calculate_trait_confidence <- function(trait_value, raw_value = NA, source = "Un
   interval_lower <- max(0, final_confidence - interval_width)
   interval_upper <- min(1, final_confidence + interval_width)
 
-  # Categorize confidence level
-  if (final_confidence >= 0.7) {
-    category <- "high"
-  } else if (final_confidence >= 0.5) {
-    category <- "medium"
-  } else {
-    category <- "low"
-  }
+  # Categorize confidence level: the canonical bands (0.34 / 0.67), never a
+  # private copy (spec C3.2).
+  category <- confidence_to_label(final_confidence)
 
   # Generate notes
   notes <- paste0(
@@ -395,12 +454,20 @@ map_confidence_to_opacity <- function(confidence, min_opacity = 0.3, max_opacity
 
 #' Calculate Confidence for All Traits in a Species Record
 #'
-#' Wrapper function to calculate confidence for all 5 traits (MS, FS, MB, EP, PR)
-#' given a complete trait record with sources and raw measurements.
+#' Scores every non-NA trait of MS, FS, MB, EP, PR, RS, TT and ST (spec C3.1:
+#' `T_confidence` is NA if and only if `T` is NA). The weight of `T_source` is
+#' multiplied by `T_ml_probability` only when the source is "ML", and by
+#' `T_phylo_confidence` only when it is "Phylogenetic" (C3.3): the ML block
+#' predicts every missing trait, but its probability says nothing about a
+#' trait FishBase supplied. MS is also scaled by its boundary distance when
+#' `size_cm` is given. A trait whose scoring fails gets a warning and an NA
+#' confidence; it never aborts the lookup (C3.8).
 #'
-#' @param trait_record List. Must contain: MS, FS, MB, EP, PR (trait values),
-#'   and optionally: MS_source, size_cm, MS_ml_probability, etc.
-#' @return List with confidence metadata for all traits.
+#' @param trait_record List with the trait codes and, per trait,
+#'   `<T>_source`, `<T>_ml_probability`, `<T>_phylo_confidence`; optionally
+#'   `size_cm` (the measured size MS was harmonised from).
+#' @return List with `<T>_confidence`, `<T>_interval_lower`,
+#'   `<T>_interval_upper` and `<T>_confidence_category` for each scored trait.
 #'
 #' @examples
 #' record <- list(MS = "MS4", size_cm = 15, MS_source = "FishBase",
@@ -408,88 +475,52 @@ map_confidence_to_opacity <- function(confidence, min_opacity = 0.3, max_opacity
 #' calculate_all_trait_confidence(record)
 #'
 calculate_all_trait_confidence <- function(trait_record) {
-
   result <- list()
+  scalar <- function(x) if (length(x) >= 1L) x[[1]] else NA
 
-  # MS - Max Size
-  if (!is.null(trait_record$MS) && !is.na(trait_record$MS)) {
-    threshold_dist <- if (!is.null(trait_record$size_cm)) {
-      calculate_threshold_distance(trait_record$size_cm, trait_record$MS)
-    } else {
-      1.0
+  for (trait in c("MS", "FS", "MB", "EP", "PR", "RS", "TT", "ST")) {
+    value <- scalar(trait_record[[trait]])
+    if (is.null(value) || is.na(value)) next
+    source <- scalar(trait_record[[paste0(trait, "_source")]])
+    if (is.null(source)) source <- NA_character_
+
+    scored <- tryCatch({
+      ml_p <- if (identical(source, "ML")) scalar(trait_record[[paste0(trait, "_ml_probability")]]) else NA
+      phylo_p <- if (identical(source, "Phylogenetic")) {
+        scalar(trait_record[[paste0(trait, "_phylo_confidence")]])
+      } else {
+        NA
+      }
+      dist <- 1.0
+      if (trait == "MS" && !is.null(trait_record$size_cm)) {
+        dist <- calculate_threshold_distance(trait_record$size_cm, value)
+        if (is.na(dist)) dist <- 1.0
+      }
+      calculate_trait_confidence(
+        trait_value = value,
+        raw_value = if (trait == "MS") trait_record$size_cm %||% NA else NA,
+        source = source,
+        threshold_distance = dist,
+        ml_probability = ml_p %||% NA,
+        phylo_confidence = phylo_p %||% NA
+      )
+    }, error = function(e) {
+      warning(sprintf("[uq] %s confidence failed (source '%s'): %s",
+                      trait, source, conditionMessage(e)), call. = FALSE)
+      NULL
+    })
+
+    if (is.null(scored) || !isTRUE(is.finite(scored$confidence))) {
+      result[[paste0(trait, "_confidence")]] <- NA_real_
+      next
     }
-
-    ms_conf <- calculate_trait_confidence(
-      trait_value = trait_record$MS,
-      raw_value = trait_record$size_cm,
-      source = trait_record$MS_source %||% "Unknown",
-      threshold_distance = threshold_dist,
-      ml_probability = trait_record$MS_ml_probability
-    )
-
-    result$MS_confidence <- ms_conf$confidence
-    result$MS_interval_lower <- ms_conf$interval_lower
-    result$MS_interval_upper <- ms_conf$interval_upper
-    result$MS_confidence_category <- ms_conf$category
+    result[[paste0(trait, "_confidence")]] <- scored$confidence
+    result[[paste0(trait, "_interval_lower")]] <- scored$interval_lower
+    result[[paste0(trait, "_interval_upper")]] <- scored$interval_upper
+    result[[paste0(trait, "_confidence_category")]] <- scored$category
   }
 
-  # FS - Foraging Strategy
-  if (!is.null(trait_record$FS) && !is.na(trait_record$FS)) {
-    fs_conf <- calculate_trait_confidence(
-      trait_value = trait_record$FS,
-      source = trait_record$FS_source %||% "Unknown",
-      ml_probability = trait_record$FS_ml_probability
-    )
-
-    result$FS_confidence <- fs_conf$confidence
-    result$FS_interval_lower <- fs_conf$interval_lower
-    result$FS_interval_upper <- fs_conf$interval_upper
-    result$FS_confidence_category <- fs_conf$category
-  }
-
-  # MB - Mobility
-  if (!is.null(trait_record$MB) && !is.na(trait_record$MB)) {
-    mb_conf <- calculate_trait_confidence(
-      trait_value = trait_record$MB,
-      source = trait_record$MB_source %||% "Unknown",
-      ml_probability = trait_record$MB_ml_probability
-    )
-
-    result$MB_confidence <- mb_conf$confidence
-    result$MB_interval_lower <- mb_conf$interval_lower
-    result$MB_interval_upper <- mb_conf$interval_upper
-    result$MB_confidence_category <- mb_conf$category
-  }
-
-  # EP - Environmental Position
-  if (!is.null(trait_record$EP) && !is.na(trait_record$EP)) {
-    ep_conf <- calculate_trait_confidence(
-      trait_value = trait_record$EP,
-      source = trait_record$EP_source %||% "Unknown",
-      ml_probability = trait_record$EP_ml_probability
-    )
-
-    result$EP_confidence <- ep_conf$confidence
-    result$EP_interval_lower <- ep_conf$interval_lower
-    result$EP_interval_upper <- ep_conf$interval_upper
-    result$EP_confidence_category <- ep_conf$category
-  }
-
-  # PR - Protection
-  if (!is.null(trait_record$PR) && !is.na(trait_record$PR)) {
-    pr_conf <- calculate_trait_confidence(
-      trait_value = trait_record$PR,
-      source = trait_record$PR_source %||% "Unknown",
-      ml_probability = trait_record$PR_ml_probability
-    )
-
-    result$PR_confidence <- pr_conf$confidence
-    result$PR_interval_lower <- pr_conf$interval_lower
-    result$PR_interval_upper <- pr_conf$interval_upper
-    result$PR_confidence_category <- pr_conf$category
-  }
-
-  return(result)
+  result
 }
 
 
