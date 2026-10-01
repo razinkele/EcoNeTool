@@ -645,6 +645,63 @@ harmonize_size_class <- function(size_cm) {
 }
 
 
+#' Harmonised code plus how it was decided (spec C3.1 T_method)
+#'
+#' The *_detail() harmonisers return this shape; the classic harmonize_*()
+#' functions return only `$code`.
+#'
+#' @param code Trait code, or NA_character_.
+#' @param method "observed" (trait-database text or a measured value), "rule"
+#'   (a taxonomic or depth rule), "default" (the harmoniser's fall-through
+#'   code, no evidence), or NA_character_ when `code` is NA.
+#' @param basis What decided it: "text", "trophic_level", "taxon", "depth",
+#'   "default" or "none".
+#' @return list(code, method, basis)
+harmonized_code <- function(code, method, basis) {
+  list(code = code, method = method, basis = basis)
+}
+
+
+#' Convert feeding mode/type to FS foraging strategy, with its method
+#'
+#' Same codes as before C-8; it now also says how the code was decided. A
+#' trophic level is a database value, so a code read from it is "observed".
+#' The conservative FS6 with no feeding text and no usable trophic level is
+#' "default".
+#'
+#' @param feeding_info Character vector with feeding information
+#' @param trophic_level Numeric trophic level (if available)
+#' @return harmonized_code() list; `basis` is "trophic_level", "text",
+#'   "default" or "none".
+#' @export
+harmonize_foraging_detail <- function(feeding_info = NULL, trophic_level = NULL) {
+  tl <- suppressWarnings(as.numeric(trophic_level)[1])
+  has_tl <- length(tl) == 1L && !is.na(tl)
+
+  if (has_tl && tl < 1.5) return(harmonized_code("FS0", "observed", "trophic_level"))
+
+  if (is.null(feeding_info) || all(is.na(feeding_info))) {
+    if (has_tl && tl > 2.5) return(harmonized_code("FS1", "observed", "trophic_level"))
+    return(harmonized_code("FS6", "default", "default"))
+  }
+
+  feeding_lower <- tolower(paste(feeding_info, collapse = " "))
+  patterns <- (get_harm_config() %||% list())$foraging_patterns
+  if (is.null(patterns)) return(harmonized_code(NA_character_, NA_character_, "none"))
+
+  for (key in c("FS0_primary_producer", "FS1_predator", "FS2_scavenger", "FS3_omnivore",
+                "FS4_grazer", "FS5_deposit", "FS6_filter")) {
+    pattern <- patterns[[key]]
+    if (is.null(pattern)) next
+    if (grepl(pattern, feeding_lower, ignore.case = TRUE)) {
+      return(harmonized_code(sub("_.*$", "", key), "observed", "text"))
+    }
+  }
+
+  if (has_tl) return(harmonized_code(if (tl > 2.0) "FS1" else "FS6", "observed", "trophic_level"))
+  harmonized_code("FS6", "default", "default")
+}
+
 #' Convert feeding mode/type to FS foraging strategy
 #'
 #' @param feeding_info Character vector with feeding information
@@ -652,73 +709,30 @@ harmonize_size_class <- function(size_cm) {
 #' @return FS code (FS0-FS6)
 #' @export
 harmonize_foraging_strategy <- function(feeding_info = NULL, trophic_level = NULL) {
-
-  # Default based on trophic level
-  if (!is.null(trophic_level) && !is.na(trophic_level)) {
-    if (trophic_level < 1.5) {
-      return("FS0")  # Primary producer
-    }
-  }
-
-  if (is.null(feeding_info) || all(is.na(feeding_info))) {
-    # Default: predator if TL > 2, else filter feeder
-    if (!is.null(trophic_level) && !is.na(trophic_level) && trophic_level > 2.5) {
-      return("FS1")  # Predator
-    }
-    return("FS6")  # Filter feeder (conservative)
-  }
-
-  # Convert to lowercase for matching
-  feeding_lower <- tolower(paste(feeding_info, collapse = " "))
-
-  # Get patterns from configuration
-  patterns <- (get_harm_config() %||% list())$foraging_patterns
-  if (is.null(patterns)) return(NA_character_)
-
-  # Pattern matching (using configurable patterns)
-  if (grepl(patterns$FS0_primary_producer, feeding_lower, ignore.case = TRUE)) {
-    return("FS0")  # None (primary producer)
-  }
-
-  if (grepl(patterns$FS1_predator, feeding_lower, ignore.case = TRUE)) {
-    return("FS1")  # Predator
-  }
-
-  if (grepl(patterns$FS2_scavenger, feeding_lower, ignore.case = TRUE)) {
-    return("FS2")  # Scavenger
-  }
-
-  if (grepl(patterns$FS3_omnivore, feeding_lower, ignore.case = TRUE)) {
-    return("FS3")  # Omnivore
-  }
-
-  if (grepl(patterns$FS4_grazer, feeding_lower, ignore.case = TRUE)) {
-    return("FS4")  # Grazer
-  }
-
-  if (grepl(patterns$FS5_deposit, feeding_lower, ignore.case = TRUE)) {
-    return("FS5")  # Deposit feeder
-  }
-
-  if (grepl(patterns$FS6_filter, feeding_lower, ignore.case = TRUE)) {
-    return("FS6")  # Filter feeder
-  }
-
-  # Default based on trophic level if no match
-  if (!is.null(trophic_level) && !is.na(trophic_level)) {
-    if (trophic_level > 3.0) {
-      return("FS1")  # Predator
-    } else if (trophic_level > 2.0) {
-      return("FS1")  # Predator
-    } else {
-      return("FS6")  # Filter feeder
-    }
-  }
-
-  # Conservative default
-  return("FS6")
+  harmonize_foraging_detail(feeding_info, trophic_level)$code
 }
 
+
+#' Convert mobility information to MB class, with its method
+#'
+#' @param mobility_info Character vector with mobility information
+#' @param body_shape Body shape code (for fish; not used for the code)
+#' @param taxonomic_info Taxonomic classification
+#' @return harmonized_code(); basis "text", "taxon" or "default" (MB4).
+#' @export
+harmonize_mobility_detail <- function(mobility_info = NULL, body_shape = NULL, taxonomic_info = NULL) {
+  # 1. Explicit text, through the shared vocabulary patterns.
+  code <- classify_by_patterns(mobility_info, "mobility")
+  if (!is.na(code)) return(harmonized_code(code, "observed", "text"))
+
+  # 2. Taxonomic rules (TRAIT_VOCAB$taxon_rules$mobility, switchable in the
+  #    harmonization settings).
+  code <- apply_taxon_rules(taxonomic_info, "mobility", text = mobility_info)
+  if (!is.na(code)) return(harmonized_code(code, "rule", "taxon"))
+
+  # Default: facultative swimmer
+  harmonized_code("MB4", "default", "default")
+}
 
 #' Convert mobility information to MB class
 #'
@@ -728,20 +742,48 @@ harmonize_foraging_strategy <- function(feeding_info = NULL, trophic_level = NUL
 #' @return MB code (MB1-MB5)
 #' @export
 harmonize_mobility <- function(mobility_info = NULL, body_shape = NULL, taxonomic_info = NULL) {
-
-  # 1. Explicit text, through the shared vocabulary patterns.
-  code <- classify_by_patterns(mobility_info, "mobility")
-  if (!is.na(code)) return(code)
-
-  # 2. Taxonomic rules (TRAIT_VOCAB$taxon_rules$mobility, switchable in the
-  #    harmonization settings).
-  code <- apply_taxon_rules(taxonomic_info, "mobility", text = mobility_info)
-  if (!is.na(code)) return(code)
-
-  # Default: facultative swimmer
-  return("MB4")
+  harmonize_mobility_detail(mobility_info, body_shape, taxonomic_info)$code
 }
 
+
+#' Convert habitat/depth information to EP environmental position, with its method
+#'
+#' @param depth_min Minimum depth (m)
+#' @param depth_max Maximum depth (m)
+#' @param habitat_info Character vector with habitat information
+#' @param taxonomic_info Taxonomic classification
+#' @return harmonized_code(); basis "text", "taxon", "depth" or "default" (EP3).
+#' @export
+harmonize_environmental_detail <- function(depth_min = NULL, depth_max = NULL,
+                                           habitat_info = NULL, taxonomic_info = NULL) {
+
+  # 1. Explicit habitat text, through the shared vocabulary patterns.
+  code <- classify_by_patterns(habitat_info, "environmental")
+  if (!is.na(code)) return(harmonized_code(code, "observed", "text"))
+
+  # 2. Pelagic taxa (phyto- and zooplankton, medusae) and infaunal bivalves.
+  #    Before the depth rule: a copepod caught at 10-20 m is pelagic, not
+  #    epibenthic (F36), and a shallow Mya is endobenthic (C-6a).
+  code <- apply_taxon_rules(taxonomic_info, "environmental_pelagic", text = habitat_info)
+  if (!is.na(code)) return(harmonized_code(code, "rule", "taxon"))
+
+  # 3. Depth range
+  avg_depth <- suppressWarnings(mean(as.numeric(c(depth_min[1], depth_max[1]))))
+  if (length(depth_min) > 0 && length(depth_max) > 0 && isTRUE(is.finite(avg_depth))) {
+    # Very shallow species are likely epibenthic (burrowers were caught by
+    # the habitat text in step 1)
+    if (avg_depth < 50) return(harmonized_code("EP3", "rule", "depth"))
+    # Deep species often benthopelagic
+    if (avg_depth > 200) return(harmonized_code("EP2", "rule", "depth"))
+  }
+
+  # 4. Other taxonomic rules (fish by order)
+  code <- apply_taxon_rules(taxonomic_info, "environmental", text = habitat_info)
+  if (!is.na(code)) return(harmonized_code(code, "rule", "taxon"))
+
+  # Default: epibenthic (conservative)
+  harmonized_code("EP3", "default", "default")
+}
 
 #' Convert habitat/depth information to EP environmental position
 #'
@@ -753,61 +795,47 @@ harmonize_mobility <- function(mobility_info = NULL, body_shape = NULL, taxonomi
 #' @export
 harmonize_environmental_position <- function(depth_min = NULL, depth_max = NULL,
                                             habitat_info = NULL, taxonomic_info = NULL) {
-
-  # 1. Explicit habitat text, through the shared vocabulary patterns.
-  code <- classify_by_patterns(habitat_info, "environmental")
-  if (!is.na(code)) return(code)
-
-  # 2. Pelagic taxa (phyto- and zooplankton, medusae) and infaunal bivalves.
-  #    Before the depth rule: a copepod caught at 10-20 m is pelagic, not
-  #    epibenthic (F36), and a shallow Mya is endobenthic (C-6a).
-  code <- apply_taxon_rules(taxonomic_info, "environmental_pelagic", text = habitat_info)
-  if (!is.na(code)) return(code)
-
-  # 3. Depth range
-  avg_depth <- suppressWarnings(mean(as.numeric(c(depth_min[1], depth_max[1]))))
-  if (length(depth_min) > 0 && length(depth_max) > 0 && isTRUE(is.finite(avg_depth))) {
-    # Very shallow species are likely epibenthic (burrowers were caught by
-    # the habitat text in step 1)
-    if (avg_depth < 50) return("EP3")
-    # Deep species often benthopelagic
-    if (avg_depth > 200) return("EP2")
-  }
-
-  # 4. Other taxonomic rules (fish by order)
-  code <- apply_taxon_rules(taxonomic_info, "environmental", text = habitat_info)
-  if (!is.na(code)) return(code)
-
-  # Default: epibenthic (conservative)
-  return("EP3")
+  harmonize_environmental_detail(depth_min, depth_max, habitat_info, taxonomic_info)$code
 }
 
+
+#' Convert protection information to PR code, with its method
+#'
+#' No protection text and no taxon rule gives NA (F26), not "PR0": a guessed
+#' PR0 was labelled "Taxonomy", and because PR was never NA, ML and
+#' phylogenetic imputation could never fill it.
+#'
+#' @param skeleton_info Skeleton/protection information
+#' @param taxonomic_info Taxonomic classification
+#' @return harmonized_code(); basis "taxon", "text" or "none" (code NA).
+#' @export
+harmonize_protection_detail <- function(skeleton_info = NULL, taxonomic_info = NULL) {
+
+  # 1. Taxon rules that outrank any text (echinoderm ossicles, F38).
+  code <- apply_taxon_rules(taxonomic_info, "protection", text = skeleton_info, override_only = TRUE)
+  if (!is.na(code)) return(harmonized_code(code, "rule", "taxon"))
+
+  # 2. Explicit text, through the shared vocabulary patterns.
+  code <- classify_by_patterns(skeleton_info, "protection")
+  if (!is.na(code)) return(harmonized_code(code, "observed", "text"))
+
+  # 3. Taxonomic rules (TRAIT_VOCAB$taxon_rules$protection).
+  code <- apply_taxon_rules(taxonomic_info, "protection", text = skeleton_info)
+  if (!is.na(code)) return(harmonized_code(code, "rule", "taxon"))
+
+  harmonized_code(NA_character_, NA_character_, "none")
+}
 
 #' Convert protection information to PR code
 #'
 #' @param skeleton_info Skeleton/protection information
 #' @param taxonomic_info Taxonomic classification
-#' @return PR code (PR0-PR8). Pre-PR1b PR1 and PR4 had no branches and
-#'   any matching input silently produced NA; both gaps now closed and
-#'   the labels come from the trait vocabulary (TRAIT_VOCAB, via
-#'   trait_code_label()).
+#' @return PR code (PR0-PR8), or NA_character_ when neither the text nor a
+#'   taxon rule decides (F26). The labels come from the trait vocabulary
+#'   (TRAIT_VOCAB, via trait_code_label()).
 #' @export
 harmonize_protection <- function(skeleton_info = NULL, taxonomic_info = NULL) {
-
-  # 1. Taxon rules that outrank any text (echinoderm ossicles, F38).
-  code <- apply_taxon_rules(taxonomic_info, "protection", text = skeleton_info, override_only = TRUE)
-  if (!is.na(code)) return(code)
-
-  # 2. Explicit text, through the shared vocabulary patterns.
-  code <- classify_by_patterns(skeleton_info, "protection")
-  if (!is.na(code)) return(code)
-
-  # 3. Taxonomic rules (TRAIT_VOCAB$taxon_rules$protection).
-  code <- apply_taxon_rules(taxonomic_info, "protection", text = skeleton_info)
-  if (!is.na(code)) return(code)
-
-  # Default: no protection
-  return("PR0")
+  harmonize_protection_detail(skeleton_info, taxonomic_info)$code
 }
 
 #' Harmonize Reproductive Strategy

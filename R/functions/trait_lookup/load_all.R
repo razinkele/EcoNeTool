@@ -26,7 +26,10 @@ source("R/functions/trait_lookup/api_trait_databases.R")
 # Harmonization rules (raw traits -> MS/FS/MB/EP/PR codes)
 source("R/functions/trait_lookup/harmonization.R")
 
+# Provenance and confidence contract (T_source / T_method / T_confidence)
+source("R/functions/trait_lookup/provenance.R")
+
 # Main orchestrator (lookup_species_traits + batch_lookup_traits)
 source("R/functions/trait_lookup/orchestrator.R")
 
-message("\u2713 Trait lookup module loaded (5 files)")
+message("\u2713 Trait lookup module loaded (6 files)")

@@ -105,3 +105,104 @@ test_that("an ML probability only scales an ML-sourced trait; RS/TT/ST are score
   expect_null(out$MB_confidence)
 })
 
+# ---------------------------------------------------------------------------
+# Task 2 - harmonisers say how they decided; PR has no PR0 default (F26)
+# ---------------------------------------------------------------------------
+
+test_that("harmonize_protection with no text and no taxon rule is NA (F26)", {
+  expect_identical(harmonize_protection(character(), NULL), NA_character_)
+  expect_identical(harmonize_protection(NULL, list(phylum = "Chordata", class = "Mammalia")), NA_character_)
+  d <- harmonize_protection_detail(character(), NULL)
+  expect_identical(d$method, NA_character_)
+  # Rules and text still decide.
+  expect_identical(harmonize_protection(NULL, list(phylum = "Mollusca", class = "Bivalvia")), "PR6")
+  expect_identical(harmonize_protection("mucus"), "PR1")
+})
+
+test_that("each harmoniser reports observed / rule / default (C3.1)", {
+  fish <- list(phylum = "Chordata", class = "Actinopteri", order = "Gadiformes")
+  expect_identical(harmonize_mobility_detail("burrowing", NULL, NULL)[c("code", "method")],
+                   list(code = "MB3", method = "observed"))
+  expect_identical(harmonize_mobility_detail(NULL, NULL, fish)[c("code", "method")],
+                   list(code = "MB5", method = "rule"))
+  expect_identical(harmonize_mobility_detail(NULL, NULL, NULL)[c("code", "method")],
+                   list(code = "MB4", method = "default"))
+
+  expect_identical(harmonize_environmental_detail(NULL, NULL, "benthopelagic", NULL)$method, "observed")
+  expect_identical(harmonize_environmental_detail(5, 15, NULL, NULL)[c("code", "method", "basis")],
+                   list(code = "EP3", method = "rule", basis = "depth"))
+  expect_identical(harmonize_environmental_detail(NULL, NULL, NULL, fish)[c("code", "method", "basis")],
+                   list(code = "EP2", method = "rule", basis = "taxon"))
+  expect_identical(harmonize_environmental_detail(NULL, NULL, NULL, NULL)$method, "default")
+
+  expect_identical(harmonize_protection_detail("spines", NULL)$method, "observed")
+  expect_identical(harmonize_protection_detail(NULL, fish)[c("code", "method")],
+                   list(code = "PR0", method = "rule"))
+
+  expect_identical(harmonize_foraging_detail(NULL, 1.2)[c("code", "method", "basis")],
+                   list(code = "FS0", method = "observed", basis = "trophic_level"))
+  expect_identical(harmonize_foraging_detail("predator", NULL)[c("code", "method", "basis")],
+                   list(code = "FS1", method = "observed", basis = "text"))
+  expect_identical(harmonize_foraging_detail(NULL, NULL)[c("code", "method")],
+                   list(code = "FS6", method = "default"))
+})
+
+test_that("the classic harmonisers return the same codes as their detail versions", {
+  inputs <- list(list(NULL, NULL), list("predator", 3.2), list(NULL, 2.0), list("nothing known", 2.2))
+  for (x in inputs) {
+    expect_identical(harmonize_foraging_strategy(x[[1]], x[[2]]), harmonize_foraging_detail(x[[1]], x[[2]])$code)
+  }
+  expect_identical(harmonize_mobility("swimming"), harmonize_mobility_detail("swimming")$code)
+  expect_identical(harmonize_environmental_position(300, 500), "EP2")
+})
+
+test_that("size precedence: FishBase > SeaLifeBase > WoRMS > BIOTIC > MAREDAT > PTDB > BVOL (F28)", {
+  expect_identical(select_size_by_precedence(list(WoRMS = 20, SeaLifeBase = 12)),
+                   list(size_cm = 12, source = "SeaLifeBase"))
+  expect_identical(select_size_by_precedence(list(BVOL = 0.001, MAREDAT = 0.15, PTDB = 0.002))$source, "MAREDAT")
+  expect_identical(select_size_by_precedence(list(WoRMS = NA, BIOTIC = 3))$source, "BIOTIC")
+  expect_null(select_size_by_precedence(list(WoRMS = NULL, Other = 4))$size_cm)
+})
+
+test_that("a text-derived code names the first database that supplied that input (F28)", {
+  raw <- list(worms = list(phylum = "Mollusca"), biotic = list(feeding_mode = "suspension"),
+              cefas = list(feeding_mode = "filter"), fishbase = list(trophic_level = 3.1))
+  expect_identical(text_input_source(raw, "feeding"), "BIOTIC")
+  expect_identical(text_input_source(raw, "trophic_level"), "FishBase")
+  expect_identical(text_input_source(raw, "protection"), "Harmonized")
+})
+
+test_that("offline source labels, methods and confidences (F20)", {
+  expect_identical(offline_source_label("biotic"), "BIOTIC")
+  expect_identical(offline_source_label("species_enriched"), "SpeciesEnriched")
+  expect_identical(offline_source_label(NA), "OfflineDB")
+  expect_identical(offline_trait_method("ontology"), "rule")
+  expect_identical(offline_trait_method("ptdb"), "observed")
+  row <- data.frame(primary_source = "ontology", PR_confidence = 0, MS_confidence = 0.4)
+  expect_identical(offline_trait_confidence(row, "MS"), 0.4)
+  # A stored 0.0 is "unknown": the source's weight instead.
+  expect_identical(offline_trait_confidence(row, "PR"), DATABASE_WEIGHTS[["Ontology"]])
+})
+
+test_that("imputation_method aggregates the per-trait methods (C3.1)", {
+  r <- data.frame(MS = "MS3", MS_method = "observed", FS = "FS1", FS_method = "rule",
+                  MB = NA_character_, MB_method = NA_character_, EP = "EP2", EP_method = "phylo",
+                  PR = "PR0", PR_method = "ml", RS = NA_character_, TT = NA_character_, ST = NA_character_)
+  expect_identical(aggregate_imputation_method(r), "ml+phylo")
+  r$EP_method <- "observed"
+  r$PR_method <- "rule"
+  expect_identical(aggregate_imputation_method(r), "observed")
+  r$PR_method <- "default"
+  expect_identical(aggregate_imputation_method(r), "default")
+})
+
+test_that("the overall confidence is the geometric mean, labelled with the canonical bands (C3.2)", {
+  r <- data.frame(MS_confidence = 0.5, FS_confidence = 0.8, MB_confidence = 0.8,
+                  EP_confidence = 0.8, PR_confidence = 0.3)
+  o <- overall_trait_confidence(r)
+  expect_equal(o$value, exp(mean(log(c(0.5, 0.8, 0.8, 0.8, 0.3)))))
+  expect_identical(o$label, "medium")
+  expect_identical(overall_trait_confidence(data.frame(MS_confidence = NA_real_))$label, "none")
+  expect_identical(overall_trait_confidence(data.frame(MS_confidence = -1))$label, "none")
+})
+

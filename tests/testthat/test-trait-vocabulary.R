@@ -408,7 +408,7 @@ grepl_literals <- function(code) {
 }
 
 test_that("no vocabulary regex is left in the MB/EP/PR cascades (C1.5)", {
-  fns <- c("harmonize_mobility", "harmonize_environmental_position", "harmonize_protection",
+  fns <- c("harmonize_mobility_detail", "harmonize_environmental_detail", "harmonize_protection_detail",
            "harmonize_fuzzy_mobility", "harmonize_fuzzy_habitat", "classify_by_patterns", "apply_taxon_rules",
            "harmonize_bvol_traits", "harmonize_species_enriched_traits")
   for (fn in fns) {
