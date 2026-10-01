@@ -144,7 +144,8 @@ test_that("find_closest_relatives skips envelopes from a different config_hash",
     saveRDS(list(
       species = species,
       traits = list(MS = ms, FS = NA, MB = NA, EP = NA, PR = NA),
-      worms_taxonomy = target_taxonomy, # same genus -> distance 0
+      # C-8: relatives are read from the harmonized block, with a per-trait method.
+      harmonized = c(list(species = species, MS = ms, MS_method = "observed"), target_taxonomy),
       timestamp = Sys.time(),
       config_hash = hash
     ), file.path(cache_dir, file))
@@ -152,11 +153,13 @@ test_that("find_closest_relatives skips envelopes from a different config_hash",
   write_relative("Relative_A.rds", "Relative A", "MS3", "A")
   write_relative("Relative_B.rds", "Relative B", "MS6", "B")
 
-  with_hash <- find_closest_relatives(target_taxonomy, target_traits, cache_dir, config_hash = "A")
+  with_hash <- find_closest_relatives(target_taxonomy, target_traits, cache_dir, min_matches = 1,
+                                      config_hash = "A")
   expect_equal(nrow(with_hash), 1L)
   expect_equal(with_hash$MS, "MS3")
 
-  without_hash <- find_closest_relatives(target_taxonomy, target_traits, cache_dir, config_hash = NULL)
+  without_hash <- find_closest_relatives(target_taxonomy, target_traits, cache_dir, min_matches = 1,
+                                         config_hash = NULL)
   expect_equal(nrow(without_hash), 2L) # old behaviour: unkeyed, both considered
 })
 
@@ -171,18 +174,19 @@ test_that("apply_phylogenetic_imputation only imputes from the matching config_h
   current_traits <- list(MS = NA, FS = "FS1", MB = "MB1", EP = "EP1", PR = "PR1")
 
   saveRDS(list(species = "Relative A", traits = list(MS = "MS3", FS = NA, MB = NA, EP = NA, PR = NA),
-               worms_taxonomy = target_taxonomy, timestamp = Sys.time(), config_hash = "A"),
+               harmonized = c(list(species = "Relative A", MS = "MS3", MS_method = "observed"), target_taxonomy),
+               timestamp = Sys.time(), config_hash = "A"),
           file.path(cache_dir, "Relative_A.rds"))
 
   imputed <- apply_phylogenetic_imputation(
     species_name = "Gadus morhua", current_traits = current_traits, taxonomy = target_taxonomy,
-    cache_dir = cache_dir, config_hash = "A"
+    cache_dir = cache_dir, min_relatives = 1, config_hash = "A"
   )
   expect_equal(imputed$MS, "MS3")
 
   imputed_wrong_hash <- apply_phylogenetic_imputation(
     species_name = "Gadus morhua", current_traits = current_traits, taxonomy = target_taxonomy,
-    cache_dir = cache_dir, config_hash = "B"
+    cache_dir = cache_dir, min_relatives = 1, config_hash = "B"
   )
   expect_true(is.na(imputed_wrong_hash$MS)) # relative filtered out: no relatives, MS stays NA
 })

@@ -63,8 +63,8 @@ test_that("orchestrator ML block checks expanded traits and sets imputation_meth
               info = "ML block should check TT for gaps")
   expect_true(grepl("is.na\\(result\\$ST\\)", orch_joined),
               info = "ML block should check ST for gaps")
-  expect_true(grepl("rf_predicted", orch_joined),
-              info = "ML block should set imputation_method to rf_predicted")
+  expect_true(grepl("result$imputation_method <- aggregate_imputation_method(result)", orch_joined, fixed = TRUE),
+              info = "imputation_method is the aggregate of the per-trait methods (C3.1)")
 })
 
 test_that("orchestrator ML block checks RS/TT/ST and sets imputation_method", {
@@ -74,6 +74,6 @@ test_that("orchestrator ML block checks RS/TT/ST and sets imputation_method", {
               info = "ML block should check RS for gaps")
   expect_true(grepl("is.na\\(result\\$TT\\)", orch_joined),
               info = "ML block should check TT for gaps")
-  expect_true(grepl("rf_predicted", orch_joined),
-              info = "ML block should set imputation_method")
+  expect_true(grepl("result$imputation_method <- aggregate_imputation_method(result)", orch_joined, fixed = TRUE),
+              info = "imputation_method is the aggregate of the per-trait methods (C3.1)")
 })

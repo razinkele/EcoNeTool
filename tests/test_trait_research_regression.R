@@ -24,6 +24,7 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 source("R/functions/validation_utils.R")
+source("R/functions/trait_lookup/provenance.R")  # cached_relative_traits() (C-8)
 source("R/functions/phylogenetic_imputation.R")
 source("R/functions/ml_trait_prediction.R")
 
@@ -162,17 +163,20 @@ cat("\nBug 5: phylo accepts relatives with partial trait coverage\n")
 tmp <- tempfile("phylo_test_", fileext = "")
 dir.create(tmp); on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-# Build a tiny cache: one Anatidae species with ONLY MS (FS, MB, EP, PR all NA)
+# Build a tiny cache: one Anatidae species with ONLY MS (FS, MB, EP, PR all NA),
+# as a C-8 envelope: MS is an observed code carrying its _method / _source.
 saveRDS(list(
-  species   = "Anas platyrhynchos",
   traits    = data.frame(species = "Anas platyrhynchos",
                          MS = "MS4", FS = NA, MB = NA, EP = NA, PR = NA,
                          stringsAsFactors = FALSE),
   harmonized = list(species = "Anas platyrhynchos",
                     phylum = "Chordata", class = "Aves", order = "Anseriformes",
                     family = "Anatidae", genus = "Anas",
-                    MS = "MS4", FS = NA, MB = NA, EP = NA, PR = NA),
-  timestamp = Sys.time()
+                    MS = "MS4", MS_source = "WoRMS", MS_method = "observed",
+                    FS = NA, MB = NA, EP = NA, PR = NA),
+  species   = "Anas platyrhynchos",
+  timestamp = Sys.time(),
+  config_hash = "h"
 ), file.path(tmp, "Anas_platyrhynchos.rds"))
 
 target_tax <- list(phylum = "Chordata", class = "Aves",
@@ -182,7 +186,9 @@ target_tr  <- list(MS = NA, FS = NA, MB = NA, EP = NA, PR = NA)
 rels <- find_closest_relatives(target_taxonomy = target_tax,
                                target_traits   = target_tr,
                                cache_dir       = tmp,
-                               max_distance    = 3)
+                               max_distance    = 3,
+                               min_matches     = 1,
+                               config_hash     = "h")
 record_test("find_closest_relatives returns a partial-coverage relative",
             if (nrow(rels) == 1 && rels$species[1] == "Anas platyrhynchos") "PASS" else "FAIL",
             sprintf("got %d relatives", nrow(rels)))

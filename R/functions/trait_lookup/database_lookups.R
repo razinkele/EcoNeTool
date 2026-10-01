@@ -43,10 +43,21 @@ lookup_fishbase_traits <- function(species_name, timeout = 20) {
     # collect step is interruptible, so the deadline fires within ~1s of the
     # set value (verified at 3.7s for a 2s deadline). The previous code took the
     # `timeout` parameter but never applied it.
+    # `fetch_failure` records WHY species_data is NULL: a connection error or a
+    # timeout is a transient failure (reported via result$error so the row is
+    # marked degraded); a successful query with 0 rows is a genuine "not found".
+    fetch_failure <- NULL
     species_data <- tryCatch(
       with_timeout(rfishbase::species(species_name),
-                   timeout = timeout, on_timeout = NULL),
+                   timeout = timeout,
+                   on_timeout = {
+                     fetch_failure <- "timeout"
+                     warning(sprintf("[fishbase] timeout for '%s' after %ss",
+                                     species_name, timeout), call. = FALSE)
+                     NULL
+                   }),
       error = function(e) {
+        fetch_failure <<- conditionMessage(e)
         if (grepl("open|connection|timeout|time limit", e$message, ignore.case = TRUE)) {
           warning(sprintf("[fishbase] connection error or timeout for '%s': %s",
                           species_name, conditionMessage(e)), call. = FALSE)
@@ -57,21 +68,35 @@ lookup_fishbase_traits <- function(species_name, timeout = 20) {
         return(NULL)
       })
 
+    if (is.null(species_data) && !is.null(fetch_failure)) {
+      result$error <- paste0("FishBase connection error or timeout: ", fetch_failure)
+      result$note <- "Connection error, timeout, or species not found"
+      return(result)
+    }
     if (is.null(species_data) || nrow(species_data) == 0) {
       result$note <- "Connection error, timeout, or species not found"
       return(result)
     }
 
-    # Optional auxiliary lookups; on timeout treat as missing data.
+    # Optional auxiliary lookups; on timeout treat as missing data. The main
+    # record already succeeded, so these warn but never set result$error.
     morph_data <- tryCatch(
       with_timeout(rfishbase::morphology(species_name),
                    timeout = timeout, on_timeout = NULL),
-      error = function(e) NULL)
+      error = function(e) {
+        warning(sprintf("[fishbase] morphology() failed for '%s': %s",
+                        species_name, conditionMessage(e)), call. = FALSE)
+        NULL
+      })
 
     ecology_data <- tryCatch(
       with_timeout(rfishbase::ecology(species_name),
                    timeout = timeout, on_timeout = NULL),
-      error = function(e) NULL)
+      error = function(e) {
+        warning(sprintf("[fishbase] ecology() failed for '%s': %s",
+                        species_name, conditionMessage(e)), call. = FALSE)
+        NULL
+      })
 
     # Extract relevant traits using safe_get() for consistent NULL/NA handling
     traits <- list()
@@ -156,10 +181,20 @@ lookup_sealifebase_traits <- function(species_name, timeout = 20) {
     # SeaLifeBase shares rfishbase's duckdbfs+parquet backend. Same timeout
     # rationale as lookup_fishbase_traits \u2014 wrap each rfishbase call in
     # with_timeout() so a slow CDN day is bounded.
+    # `fetch_failure` records WHY species_data is NULL (see lookup_fishbase_traits):
+    # a connection error / timeout sets result$error, a 0-row result does not.
+    fetch_failure <- NULL
     species_data <- tryCatch(
       with_timeout(rfishbase::species(species_name, server = "sealifebase"),
-                   timeout = timeout, on_timeout = NULL),
+                   timeout = timeout,
+                   on_timeout = {
+                     fetch_failure <- "timeout"
+                     warning(sprintf("[sealifebase] timeout for '%s' after %ss",
+                                     species_name, timeout), call. = FALSE)
+                     NULL
+                   }),
       error = function(e) {
+        fetch_failure <<- conditionMessage(e)
         if (grepl("open|connection|timeout|time limit", e$message, ignore.case = TRUE)) {
           warning(sprintf("[sealifebase] connection error or timeout for '%s': %s",
                           species_name, conditionMessage(e)), call. = FALSE)
@@ -170,6 +205,11 @@ lookup_sealifebase_traits <- function(species_name, timeout = 20) {
         return(NULL)
       })
 
+    if (is.null(species_data) && !is.null(fetch_failure)) {
+      result$error <- paste0("SeaLifeBase connection error or timeout: ", fetch_failure)
+      result$note <- "Connection error, timeout, or species not found in SeaLifeBase"
+      return(result)
+    }
     if (is.null(species_data) || nrow(species_data) == 0) {
       result$note <- "Connection error, timeout, or species not found in SeaLifeBase"
       return(result)
@@ -200,7 +240,11 @@ lookup_sealifebase_traits <- function(species_name, timeout = 20) {
     morph_data <- tryCatch(
       with_timeout(rfishbase::morphology(species_name, server = "sealifebase"),
                    timeout = timeout, on_timeout = NULL),
-      error = function(e) NULL)
+      error = function(e) {
+        warning(sprintf("[sealifebase] morphology() failed for '%s': %s",
+                        species_name, conditionMessage(e)), call. = FALSE)
+        NULL
+      })
 
     if (!is.null(v <- pick_scalar(morph_data, "BodyShapeI"))) traits$body_shape <- v
 
@@ -410,6 +454,9 @@ lookup_freshwaterecology_traits <- function(species_name) {
 
     if (httr::http_error(response)) {
       result$note <- paste0("API request failed with status: ", httr::status_code(response))
+      result$error <- paste0("freshwaterecology.info HTTP error ", httr::status_code(response))
+      warning(sprintf("[freshwaterecology] HTTP error %s for '%s'",
+                      httr::status_code(response), species_name), call. = FALSE)
       return(result)
     }
 
@@ -440,6 +487,8 @@ lookup_freshwaterecology_traits <- function(species_name) {
   }, error = function(e) {
     # <<- so the error surfaces on the returned result; `<-` would only
     # mutate the closure-local copy and silently drop the failure.
+    warning(sprintf("[freshwaterecology] lookup failed for '%s': %s",
+                    species_name, conditionMessage(e)), call. = FALSE)
     result$error <<- conditionMessage(e)
   })
 

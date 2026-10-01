@@ -136,6 +136,7 @@ source("R/functions/trait_lookup/load_all.R")  # Automated trait lookup from dat
 # would re-source the file.
 source("R/functions/ml_trait_prediction.R")          # apply_ml_fallback()
 source("R/functions/phylogenetic_imputation.R")      # apply_phylogenetic_imputation()
+source("R/functions/uncertainty_quantification.R")    # get_database_weight(), confidence scoring
 
 # Rphylopars imputation (optional — requires Rphylopars package)
 if (file.exists("R/functions/rphylopars_imputation.R")) {

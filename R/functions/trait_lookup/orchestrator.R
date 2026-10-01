@@ -90,9 +90,10 @@ offline_db_vocab_status <- function(db_path) {
 #' process - until it is rebuilt; lookups then fall back to the live APIs.
 #'
 #' @param species_name Scientific name
-#' @param db_path Path to offline SQLite database
+#' @param db_path Path to the offline SQLite database. The default resolves
+#'   through app_path(), so it is found from any working directory (F24).
 #' @return Data frame row with trait codes, or NULL if not found
-lookup_offline_traits <- function(species_name, db_path = "cache/offline_traits.db") {
+lookup_offline_traits <- function(species_name, db_path = app_path("cache/offline_traits.db")) {
   if (!file.exists(db_path)) return(NULL)
 
   if (!requireNamespace("RSQLite", quietly = TRUE)) {
@@ -170,21 +171,26 @@ lookup_offline_traits <- function(species_name, db_path = "cache/offline_traits.
 #' provenance for a value that source never produced.
 #'
 #' Last-writer-wins still holds between sources that DO resolve; only
-#' unresolved writes are suppressed.
+#' unresolved writes are suppressed. Every trait code in the pipeline is
+#' assigned through here, so `<trait>_source` and `<trait>_method` are set at
+#' assignment time (spec C3.1), never inferred afterwards.
 #'
 #' @param result The one-row result frame being assembled.
 #' @param trait Trait column name, e.g. "RS".
 #' @param value The harmonised value; NULL, NA, "" or length != 1 count as
 #'   unresolved.
 #' @param source Provenance label to record alongside a resolved value.
+#' @param method How the value was decided: "observed", "rule", "default",
+#'   "ml" or "phylo" (see R/functions/trait_lookup/provenance.R).
 #' @return `result`, modified only when `value` resolved.
 #' @export
-assign_trait_if_resolved <- function(result, trait, value, source) {
+assign_trait_if_resolved <- function(result, trait, value, source, method = "observed") {
   if (length(value) != 1L || is.na(value) || !nzchar(as.character(value))) {
     return(result)
   }
-  result[[trait]] <- value
+  result[[trait]] <- as.character(value)
   result[[paste0(trait, "_source")]] <- source
+  result[[paste0(trait, "_method")]] <- method
   result
 }
 
@@ -341,6 +347,10 @@ lookup_species_traits <- function(species_name,
     MB_source = NA_character_, EP_source = NA_character_,
     PR_source = NA_character_, RS_source = NA_character_,
     TT_source = NA_character_, ST_source = NA_character_,
+    MS_method = NA_character_, FS_method = NA_character_,
+    MB_method = NA_character_, EP_method = NA_character_,
+    PR_method = NA_character_, RS_method = NA_character_,
+    TT_method = NA_character_, ST_method = NA_character_,
     imputation_method = "observed",
     stringsAsFactors = FALSE
   )
@@ -375,6 +385,21 @@ lookup_species_traits <- function(species_name,
   db_start <- Sys.time()
   worms_data <- lookup_worms_traits(species_name)
   db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
+  worms_ok <- !is.null(worms_data) && isTRUE(worms_data$success)
+  # WoRMS can succeed (isMarine / AphiaID) without a classification when the
+  # classification call timed out; such a row is degraded too.
+  worms_classified <- worms_ok && !is.na(.scalar_chr(worms_data$traits$phylum))
+
+  # Network lookups that failed with an error (not "not found"). A lookup
+  # with any, or without a WoRMS classification, is degraded: it is cached
+  # for 1 day instead of 30 and flagged in the results (spec C3.7). The
+  # local files and the ontology also set `error` for "not found", so they
+  # are not tracked.
+  lookup_errors <- character()
+  note_lookup <- function(label, res) {
+    if (!is.null(res$error)) lookup_errors <<- c(lookup_errors, label)
+    res
+  }
 
   if (!is.null(worms_data) && isTRUE(worms_data$success)) {
     raw_traits$worms <- worms_data$traits
@@ -435,10 +460,14 @@ lookup_species_traits <- function(species_name,
   }
 
   # Initialize variables for trait merging
-  # Start with WoRMS Traits Portal data if available
+  # Start with WoRMS Traits Portal data if available. Every size a database
+  # reports is also recorded in size_candidates; before harmonisation one is
+  # picked by database precedence (F28), whatever order the lookups ran in.
   size_cm <- NULL
+  size_candidates <- list()
   if (!is.null(worms_data) && isTRUE(worms_data$success) && !is.null(raw_traits$worms$max_length_cm)) {
     size_cm <- raw_traits$worms$max_length_cm
+    size_candidates$WoRMS <- size_cm
   }
   trophic_level <- NULL
   feeding_mode <- character()
@@ -459,35 +488,57 @@ lookup_species_traits <- function(species_name,
   # STEP 0: Offline pre-computed trait database (instant lookup)
   # ═══════════════════════════════════════════════════════════════════════
   message("\n[0/12] Offline trait database check...")
-  offline <- lookup_offline_traits(species_name)
+  # The offline codes were harmonised at build time with the default
+  # settings. A session with its own thresholds or patterns must not be
+  # served them, so it skips the offline DB and harmonises live.
+  offline <- if (identical(harm_config_hash(), harm_default_config_hash())) {
+    lookup_offline_traits(species_name)
+  } else {
+    message("  Skipped: this session's harmonization settings differ from the offline DB's defaults")
+    NULL
+  }
   offline_prefilled <- character()  # Track which traits came from offline
 
-  if (!is.null(offline)) {
-    has_all <- !is.na(offline$MS) && !is.na(offline$FS) && !is.na(offline$MB) && !is.na(offline$EP) && !is.na(offline$PR)
+  # Live RS / TT / ST assignments must not replace an offline-prefilled trait:
+  # the scoring step blanks every prefilled trait's confidence, so a live code
+  # would otherwise carry the offline row's stored confidence.
+  assign_live_trait <- function(result, trait, value, source, method = "observed") {
+    if (trait %in% offline_prefilled) return(result)
+    assign_trait_if_resolved(result, trait, value, source, method)
+  }
 
-    if (has_all) {
+  if (!is.null(offline)) {
+    # Every code the row holds, with the row's database as its source, the
+    # stored confidence (0.0 = unknown -> the source's weight) and its method
+    # (F20). RS / TT / ST are read too (F22).
+    offline_label <- offline_source_label(offline$primary_source)
+    offline_method <- offline_trait_method(offline$primary_source)
+    for (trait in TRAIT_COLUMNS) {
+      if (!trait %in% names(offline) || is.na(offline[[trait]][1])) next
+      result <- assign_trait_if_resolved(result, trait, offline[[trait]][1], offline_label, offline_method)
+      result[[paste0(trait, "_confidence")]] <- offline_trait_confidence(offline, trait)
+      offline_prefilled <- c(offline_prefilled, trait)
+    }
+
+    if (all(CORE_TRAIT_COLUMNS %in% offline_prefilled)) {
       message("  Complete traits found offline (source: ", offline$primary_source, ")")
-      result$MS <- offline$MS
-      result$FS <- offline$FS
-      result$MB <- offline$MB
-      result$EP <- offline$EP
-      result$PR <- offline$PR
-      result$MS_source <- "OfflineDB"
-      result$FS_source <- "OfflineDB"
-      result$MB_source <- "OfflineDB"
-      result$EP_source <- "OfflineDB"
-      result$PR_source <- "OfflineDB"
       result$source <- paste0("offline:", offline$primary_source)
-      result$confidence <- "high"
+      overall <- overall_trait_confidence(result)
+      result$overall_confidence <- overall$value
+      result$confidence <- overall$label
+      result$imputation_method <- aggregate_imputation_method(result)
+      degraded <- !worms_classified
+      result$degraded <- degraded
 
       # Cache result
       if (!is.null(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
         cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species_name), ".rds"))
         # Offline-DB codes were harmonized at build time with the defaults.
-        saveRDS(list(traits = result, timestamp = Sys.time(),
-                     config_hash = harm_default_config_hash(),
-                     trait_vocab_version = current_trait_vocab_version()), cache_file)
+        saveRDS(build_trait_cache_envelope(
+          result, build_harmonized_block(result, raw_traits$worms, degraded),
+          config_hash = harm_default_config_hash(), degraded = degraded
+        ), cache_file)
       }
 
       total_time <- round(as.numeric(difftime(Sys.time(), total_start, units = "secs")), 2)
@@ -495,11 +546,6 @@ lookup_species_traits <- function(species_name,
       return(result)
     } else {
       message("  Partial traits found offline - will fill gaps via API lookups")
-      if (!is.na(offline$MS)) { result$MS <- offline$MS; result$MS_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "MS") }
-      if (!is.na(offline$FS)) { result$FS <- offline$FS; result$FS_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "FS") }
-      if (!is.na(offline$MB)) { result$MB <- offline$MB; result$MB_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "MB") }
-      if (!is.na(offline$EP)) { result$EP <- offline$EP; result$EP_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "EP") }
-      if (!is.na(offline$PR)) { result$PR <- offline$PR; result$PR_source <- "OfflineDB"; offline_prefilled <- c(offline_prefilled, "PR") }
       message("  Pre-filled: ", paste(offline_prefilled, collapse = ", "))
     }
   } else {
@@ -532,7 +578,6 @@ lookup_species_traits <- function(species_name,
   query_obis <- FALSE
   query_traitbank <- FALSE
 
-  worms_ok <- !is.null(worms_data) && isTRUE(worms_data$success)
   route_flags <- route_trait_databases(
     phylum = raw_traits$worms$phylum,
     class = raw_traits$worms$class,
@@ -573,7 +618,7 @@ lookup_species_traits <- function(species_name,
   if (query_fishbase) {
     message("\n[3/12] \U0001f41f FishBase - Fish morphology & ecology...")
     db_start <- Sys.time()
-    fishbase_data <- lookup_fishbase_traits(species_name)
+    fishbase_data <- note_lookup("FishBase", lookup_fishbase_traits(species_name))
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
     if (!is.null(fishbase_data) && isTRUE(fishbase_data$success)) {
@@ -583,6 +628,7 @@ lookup_species_traits <- function(species_name,
 
       if (!is.null(fishbase_data$traits$max_length_cm)) {
         size_cm <- fishbase_data$traits$max_length_cm
+        size_candidates$FishBase <- size_cm
         message("    \u2192 Max Length: ", size_cm, " cm [\u2192 MS]")
       }
       if (!is.null(fishbase_data$traits$trophic_level)) {
@@ -622,7 +668,7 @@ lookup_species_traits <- function(species_name,
   if (query_sealifebase) {
     message("\n[4/12] \U0001f41a SeaLifeBase - Marine invertebrate traits...")
     db_start <- Sys.time()
-    sealifebase_data <- lookup_sealifebase_traits(species_name)
+    sealifebase_data <- note_lookup("SeaLifeBase", lookup_sealifebase_traits(species_name))
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
     if (isTRUE(sealifebase_data$success)) {
@@ -630,9 +676,10 @@ lookup_species_traits <- function(species_name,
       sources_used <- c(sources_used, "SeaLifeBase")
       message("  \u2713 SUCCESS (", db_time, "s)")
 
-      if (is.null(size_cm) && !is.null(sealifebase_data$traits$max_length_cm)) {
-        size_cm <- sealifebase_data$traits$max_length_cm
-        message("    \u2192 Max Length: ", size_cm, " cm [\u2192 MS]")
+      if (!is.null(sealifebase_data$traits$max_length_cm)) {
+        size_candidates$SeaLifeBase <- sealifebase_data$traits$max_length_cm
+        if (is.null(size_cm)) size_cm <- sealifebase_data$traits$max_length_cm
+        message("    \u2192 Max Length: ", sealifebase_data$traits$max_length_cm, " cm [\u2192 MS]")
       }
       if (is.null(trophic_level) && !is.null(sealifebase_data$traits$trophic_level)) {
         trophic_level <- sealifebase_data$traits$trophic_level
@@ -658,6 +705,11 @@ lookup_species_traits <- function(species_name,
       sources_used <- c(sources_used, "BIOTIC")
       message("  \u2713 SUCCESS (", db_time, "s)")
 
+      if (!is.null(biotic_data$traits$max_length_cm)) {
+        size_candidates$BIOTIC <- biotic_data$traits$max_length_cm
+        if (is.null(size_cm)) size_cm <- biotic_data$traits$max_length_cm
+        message("    \u2192 Max Length: ", biotic_data$traits$max_length_cm, " cm [\u2192 MS]")
+      }
       if (!is.null(biotic_data$traits$mobility)) {
         mobility_info <- c(mobility_info, biotic_data$traits$mobility)
         message("    \u2192 Mobility: ", biotic_data$traits$mobility, " [\u2192 MB]")
@@ -706,6 +758,7 @@ lookup_species_traits <- function(species_name,
       message("  \u2713 SUCCESS (", db_time, "s)")
 
       if (!is.null(bvol_traits$size_cm)) {
+        size_candidates$BVOL <- bvol_traits$size_cm
         if (is.null(size_cm)) {
           size_cm <- bvol_traits$size_cm
         }
@@ -752,6 +805,7 @@ lookup_species_traits <- function(species_name,
       message("  \u2713 SUCCESS (", db_time, "s)")
 
       if (!is.null(enriched_traits$size_cm)) {
+        size_candidates$SpeciesEnriched <- enriched_traits$size_cm
         if (is.null(size_cm)) {
           size_cm <- enriched_traits$size_cm
         }
@@ -779,7 +833,7 @@ lookup_species_traits <- function(species_name,
   if (query_freshwater) {
     message("\n[8/12] \U0001f30a freshwaterecology.info - Freshwater species...")
     db_start <- Sys.time()
-    freshwater_data <- lookup_freshwaterecology_traits(species_name)
+    freshwater_data <- note_lookup("freshwaterecology.info", lookup_freshwaterecology_traits(species_name))
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
     if (isTRUE(freshwater_data$success)) {
@@ -787,9 +841,10 @@ lookup_species_traits <- function(species_name,
       sources_used <- c(sources_used, "freshwaterecology.info")
       message("  \u2713 SUCCESS (", db_time, "s)")
 
-      if (is.null(size_cm) && !is.null(freshwater_data$traits$max_length_mm)) {
-        size_cm <- freshwater_data$traits$max_length_mm / 10
-        message("    \u2192 Max Length: ", freshwater_data$traits$max_length_mm, " mm (", size_cm, " cm) [\u2192 MS]")
+      if (!is.null(freshwater_data$traits$max_length_mm)) {
+        size_candidates[["freshwaterecology.info"]] <- freshwater_data$traits$max_length_mm / 10
+        if (is.null(size_cm)) size_cm <- freshwater_data$traits$max_length_mm / 10
+        message("    \u2192 Max Length: ", freshwater_data$traits$max_length_mm, " mm [\u2192 MS]")
       }
       if (!is.null(freshwater_data$traits$locomotion)) {
         mobility_info <- c(mobility_info, freshwater_data$traits$locomotion)
@@ -814,6 +869,11 @@ lookup_species_traits <- function(species_name,
       raw_traits$maredat <- maredat_data$traits
       sources_used <- c(sources_used, "MAREDAT")
       message("  \u2713 SUCCESS (", db_time, "s)")
+      if (!is.null(maredat_data$traits$max_length_cm)) {
+        size_candidates$MAREDAT <- maredat_data$traits$max_length_cm
+        if (is.null(size_cm)) size_cm <- maredat_data$traits$max_length_cm
+        message("    \u2192 Size (ESD): ", maredat_data$traits$max_length_cm, " cm [\u2192 MS]")
+      }
       message("    \u2192 Provides: Zooplankton size and feeding data [\u2192 MS, FS]")
     } else {
       message("  \u2717 FAILED (", db_time, "s) - Not in local MAREDAT database")
@@ -833,6 +893,11 @@ lookup_species_traits <- function(species_name,
       raw_traits$ptdb <- ptdb_data$traits
       sources_used <- c(sources_used, "PTDB")
       message("  \u2713 SUCCESS (", db_time, "s)")
+      if (!is.null(ptdb_data$traits$max_length_cm)) {
+        size_candidates$PTDB <- ptdb_data$traits$max_length_cm
+        if (is.null(size_cm)) size_cm <- ptdb_data$traits$max_length_cm
+        message("    \u2192 Cell size: ", ptdb_data$traits$max_length_cm, " cm [\u2192 MS]")
+      }
       message("    \u2192 Provides: Phytoplankton cell size [\u2192 MS, FS=FS0]")
     } else {
       message("  \u2717 FAILED (", db_time, "s) - Not in local PTDB database")
@@ -845,7 +910,7 @@ lookup_species_traits <- function(species_name,
   if (query_algaebase) {
     message("\n[11/12] \U0001f331 AlgaeBase - Algae taxonomy...")
     db_start <- Sys.time()
-    algaebase_data <- lookup_algaebase_traits(species_name)
+    algaebase_data <- note_lookup("AlgaeBase", lookup_algaebase_traits(species_name))
     db_time <- round(as.numeric(difftime(Sys.time(), db_start, units = "secs")), 2)
 
     if (isTRUE(algaebase_data$success)) {
@@ -869,8 +934,8 @@ lookup_species_traits <- function(species_name,
 
   } # End of else block for early exit
 
-  # If no data found
-  if (length(raw_traits) == 0) {
+  # If no data found (offline-prefilled codes still go through the pipeline)
+  if (length(raw_traits) == 0 && length(offline_prefilled) == 0) {
     message("\n\u274c NO DATA FOUND - No databases contained information for this species")
     result$confidence <- "none"
     total_time <- round(as.numeric(difftime(Sys.time(), total_start, units = "secs")), 2)
@@ -946,17 +1011,17 @@ lookup_species_traits <- function(species_name,
       if (!is.null(blacksea_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, blacksea_data$traits$feeding_mode)
       if (!is.null(blacksea_data$traits$mobility_info)) mobility_info <- c(mobility_info, blacksea_data$traits$mobility_info)
       if (!is.null(blacksea_data$traits$reproductive_mode)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "RS", harmonize_reproductive_strategy(blacksea_data$traits$reproductive_mode),
           "BlackSea")
       }
       if (!is.null(blacksea_data$traits$temperature_affinity)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "TT", harmonize_temperature_tolerance(blacksea_data$traits$temperature_affinity),
           "BlackSea")
       }
       if (!is.null(blacksea_data$traits$salinity_affinity)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "ST", harmonize_salinity_tolerance(blacksea_data$traits$salinity_affinity),
           "BlackSea")
       }
@@ -976,12 +1041,12 @@ lookup_species_traits <- function(species_name,
       if (!is.null(arctic_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, arctic_data$traits$feeding_mode)
       if (!is.null(arctic_data$traits$mobility_info)) mobility_info <- c(mobility_info, arctic_data$traits$mobility_info)
       if (!is.null(arctic_data$traits$reproductive_mode)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "RS", harmonize_reproductive_strategy(arctic_data$traits$reproductive_mode),
           "ArcticTraits")
       }
       if (!is.null(arctic_data$traits$temperature_preference)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "TT", harmonize_temperature_tolerance(arctic_data$traits$temperature_preference),
           "ArcticTraits")
       }
@@ -1002,7 +1067,7 @@ lookup_species_traits <- function(species_name,
       if (!is.null(cefas_data$traits$mobility_info)) mobility_info <- c(mobility_info, cefas_data$traits$mobility_info)
       if (!is.null(cefas_data$traits$longevity_years)) result$longevity_years <- cefas_data$traits$longevity_years
       if (!is.null(cefas_data$traits$reproductive_mode)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "RS", harmonize_reproductive_strategy(cefas_data$traits$reproductive_mode),
           "Cefas")
       }
@@ -1020,15 +1085,12 @@ lookup_species_traits <- function(species_name,
       raw_traits$coral <- coral_data$traits
       sources_used <- c(sources_used, "CoralTraits")
       if (!is.null(coral_data$traits$reproductive_mode)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "RS", harmonize_reproductive_strategy(coral_data$traits$reproductive_mode),
           "CoralTraits")
       }
-      tt_code <- coral_thermal_to_tt(coral_data$traits$thermal_tolerance)
-      if (!is.na(tt_code)) {
-        result$TT <- tt_code
-        result$TT_source <- "CoralTraits"
-      }
+      result <- assign_live_trait(
+        result, "TT", coral_thermal_to_tt(coral_data$traits$thermal_tolerance), "CoralTraits")
       if (!is.null(coral_data$traits$depth_min)) result$depth_min <- coral_data$traits$depth_min
       if (!is.null(coral_data$traits$depth_max)) result$depth_max <- coral_data$traits$depth_max
       message("    Found: ", paste(names(coral_data$traits), collapse = ", "))
@@ -1045,8 +1107,9 @@ lookup_species_traits <- function(species_name,
       raw_traits$pelagic <- pelagic_data$traits
       sources_used <- c(sources_used, "PelagicTraits")
       if (!is.null(pelagic_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, pelagic_data$traits$feeding_mode)
-      if (!is.null(pelagic_data$traits$body_length_cm) && is.null(size_cm)) {
-        size_cm <- pelagic_data$traits$body_length_cm
+      if (!is.null(pelagic_data$traits$body_length_cm)) {
+        size_candidates$PelagicTraits <- pelagic_data$traits$body_length_cm
+        if (is.null(size_cm)) size_cm <- pelagic_data$traits$body_length_cm
       }
       message("    Found: ", paste(names(pelagic_data$traits), collapse = ", "))
     }
@@ -1063,17 +1126,17 @@ lookup_species_traits <- function(species_name,
     if (!completeness$complete) {
       message("\n[API] WoRMS Traits API...")
       db_start <- Sys.time()
-      worms_attr_data <- lookup_worms_traits_api(
+      worms_attr_data <- note_lookup("WoRMS_Traits", lookup_worms_traits_api(
         species_name = species_name,
         aphia_id = raw_traits$worms$aphia_id
-      )
+      ))
       if (isTRUE(worms_attr_data$success)) {
         raw_traits$worms_attrs <- worms_attr_data$traits
         sources_used <- c(sources_used, "WoRMS_Traits")
         if (!is.null(worms_attr_data$traits$feeding_type)) feeding_mode <- c(feeding_mode, worms_attr_data$traits$feeding_type)
         if (!is.null(worms_attr_data$traits$zone)) habitat_info <- c(habitat_info, worms_attr_data$traits$zone)
         if (!is.null(worms_attr_data$traits$salinity)) {
-          result <- assign_trait_if_resolved(
+          result <- assign_live_trait(
             result, "ST", harmonize_salinity_tolerance(worms_attr_data$traits$salinity),
             "WoRMS_Traits")
         }
@@ -1089,14 +1152,14 @@ lookup_species_traits <- function(species_name,
   if (query_polytraits) {
     message("\n[API] PolyTraits...")
     db_start <- Sys.time()
-    poly_data <- lookup_polytraits(species_name)
+    poly_data <- note_lookup("PolyTraits", lookup_polytraits(species_name))
     if (isTRUE(poly_data$success)) {
       raw_traits$polytraits <- poly_data$traits
       sources_used <- c(sources_used, "PolyTraits")
       if (!is.null(poly_data$traits$feeding_mode)) feeding_mode <- c(feeding_mode, poly_data$traits$feeding_mode)
       if (!is.null(poly_data$traits$mobility_info)) mobility_info <- c(mobility_info, poly_data$traits$mobility_info)
       if (!is.null(poly_data$traits$reproductive_mode)) {
-        result <- assign_trait_if_resolved(
+        result <- assign_live_trait(
           result, "RS", harmonize_reproductive_strategy(poly_data$traits$reproductive_mode),
           "PolyTraits")
       }
@@ -1109,7 +1172,7 @@ lookup_species_traits <- function(species_name,
   if (query_emodnet) {
     message("\n[API] EMODnet Btrait...")
     db_start <- Sys.time()
-    emodnet_data <- lookup_emodnet_traits(species_name)
+    emodnet_data <- note_lookup("EMODnet", lookup_emodnet_traits(species_name))
     if (isTRUE(emodnet_data$success)) {
       raw_traits$emodnet <- emodnet_data$traits
       sources_used <- c(sources_used, "EMODnet")
@@ -1124,7 +1187,7 @@ lookup_species_traits <- function(species_name,
   if (query_obis) {
     message("\n[API] OBIS MoF...")
     db_start <- Sys.time()
-    obis_data <- lookup_obis_traits(species_name)
+    obis_data <- note_lookup("OBIS", lookup_obis_traits(species_name))
     if (isTRUE(obis_data$success)) {
       raw_traits$obis <- obis_data$traits
       sources_used <- c(sources_used, "OBIS")
@@ -1143,7 +1206,7 @@ lookup_species_traits <- function(species_name,
   if (query_traitbank) {
     message("\n[API] TraitBank/EOL...")
     db_start <- Sys.time()
-    tb_data <- lookup_traitbank(species_name)
+    tb_data <- note_lookup("TraitBank", lookup_traitbank(species_name))
     if (isTRUE(tb_data$success)) {
       raw_traits$traitbank <- tb_data$traits
       sources_used <- c(sources_used, "TraitBank")
@@ -1161,18 +1224,21 @@ lookup_species_traits <- function(species_name,
   message("\u2551 HARMONIZATION - Converting raw data to categorical traits     \u2551")
   message("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d")
 
+  # One body size, by database precedence (F28): FishBase > SeaLifeBase >
+  # WoRMS > BIOTIC > MAREDAT > PTDB > BVOL > SpeciesEnriched / freshwater /
+  # pelagic. Its source is MS_source; no more inferring it from field presence.
+  size_pick <- select_size_by_precedence(size_candidates)
+  size_cm <- size_pick$size_cm
+  size_source <- size_pick$source
+  ms_from_size <- FALSE  # TRUE when MS below was harmonised from size_cm
+
   # 1. MS - Max Size Class
   message("\n[MS] Max Size Class:")
   if (!is.null(size_cm)) {
-    message("  \U0001f4cf Input: ", size_cm, " cm")
+    message("  \U0001f4cf Input: ", size_cm, " cm (", size_source, ")")
     if (!"MS" %in% offline_prefilled) {
-      result$MS <- harmonize_size_class(size_cm)
-      if (!is.null(raw_traits$fishbase$max_length_cm)) result$MS_source <- "FishBase"
-      else if (!is.null(raw_traits$sealifebase$max_length_cm)) result$MS_source <- "SeaLifeBase"
-      else if (!is.null(raw_traits$biotic$max_length_cm)) result$MS_source <- "BIOTIC"
-      else if (!is.null(raw_traits$ptdb$cell_volume)) result$MS_source <- "PTDB"
-      else if (!is.null(raw_traits$worms$max_length_cm)) result$MS_source <- "WoRMS"
-      else result$MS_source <- "Harmonized"
+      result <- assign_trait_if_resolved(result, "MS", harmonize_size_class(size_cm), size_source, "observed")
+      ms_from_size <- !is.na(result$MS)
     } else {
       message("  Kept offline value: ", result$MS)
     }
@@ -1184,30 +1250,26 @@ lookup_species_traits <- function(species_name,
     else if (size_cm < 50.0) message("     (20-50 cm = Large - MS5)")
     else if (size_cm < 150.0) message("     (50-150 cm = Very Large - MS6)")
     else message("     (> 150 cm = Giant - MS7)")
+  } else if ("MS" %in% offline_prefilled) {
+    message("  Kept offline value: ", result$MS)
   } else {
     message("  \u274c No size data available")
-    # Guard mirrors the size_cm branch above. Without it, a species whose MS
-    # came from the offline DB had that value cleared here whenever the online
-    # sources returned no size, while MS_source stayed "OfflineDB" - a row
-    # claiming an offline provenance for a value it no longer held.
-    if (!"MS" %in% offline_prefilled) {
-      result$MS <- NA_character_
-    } else {
-      message("  Kept offline value: ", result$MS)
-    }
   }
 
-  # 2. FS - Foraging Strategy
+  # 2. FS - Foraging Strategy. The source is the database of the input that
+  # decided it (trophic level or feeding text), recorded here (F28). The
+  # ontology fallback only runs when the offline DB did not prefill FS (F27).
   message("\n[FS] Foraging Strategy:")
   if (length(feeding_mode) > 0 || !is.null(trophic_level)) {
     if (!is.null(trophic_level)) message("  \U0001f374 Trophic Level: ", trophic_level)
     if (length(feeding_mode) > 0) message("  \U0001f374 Feeding Modes: ", paste(feeding_mode, collapse = ", "))
     if (!"FS" %in% offline_prefilled) {
-      result$FS <- harmonize_foraging_strategy(feeding_mode, trophic_level)
-      if (!is.null(raw_traits$fishbase$trophic_level)) result$FS_source <- "FishBase"
-      else if (!is.null(raw_traits$biotic$feeding_mode)) result$FS_source <- "BIOTIC"
-      else if (length(feeding_mode) > 0) result$FS_source <- sources_used[length(sources_used)]
-      else result$FS_source <- "Harmonized"
+      fs <- harmonize_foraging_detail(feeding_mode, trophic_level)
+      fs_source <- switch(fs$basis,
+                          trophic_level = text_input_source(raw_traits, "trophic_level"),
+                          text = text_input_source(raw_traits, "feeding"),
+                          "Default")
+      result <- assign_trait_if_resolved(result, "FS", fs$code, fs_source, fs$method)
     } else {
       message("  Kept offline value: ", result$FS)
     }
@@ -1216,33 +1278,25 @@ lookup_species_traits <- function(species_name,
     if (!is.na(fs_label)) {
       message("     (", fs_label, ")")
     }
-  } else {
-    # Try fuzzy harmonization from ontology traits
-    if (!is.null(raw_traits$ontology)) {
-      message("  \U0001f50d Trying fuzzy harmonization from ontology...")
-      fuzzy_fs <- harmonize_fuzzy_foraging(raw_traits$ontology)
-      if (!is.na(fuzzy_fs$class)) {
-        result$FS <- fuzzy_fs$class
-        result$FS_source <- "Ontology"
-        sources_used <- c(sources_used, "Fuzzy")
-        message("  \u2713 Output: ", result$FS, " (from fuzzy ontology, confidence=", fuzzy_fs$confidence, ")")
-        fs_label <- if (!is.na(result$FS)) trait_code_label(result$FS) else NA_character_
-        if (!is.na(fs_label)) {
-          message("     (", fs_label, ")")
-        }
-        message("     Modalities: ", paste(fuzzy_fs$modalities, collapse = ", "))
-      } else if (!"FS" %in% offline_prefilled) {
-        message("  \u274c No feeding/trophic data available (including ontology)")
-        result$FS <- NA_character_
-      } else {
-        message("  Kept offline value: ", result$FS)
+  } else if ("FS" %in% offline_prefilled) {
+    message("  Kept offline value: ", result$FS)
+  } else if (!is.null(raw_traits$ontology)) {
+    message("  \U0001f50d Trying fuzzy harmonization from ontology...")
+    fuzzy_fs <- harmonize_fuzzy_foraging(raw_traits$ontology)
+    if (!is.na(fuzzy_fs$class)) {
+      result <- assign_trait_if_resolved(result, "FS", fuzzy_fs$class, "Ontology", "rule")
+      sources_used <- c(sources_used, "Fuzzy")
+      message("  \u2713 Output: ", result$FS, " (from fuzzy ontology, confidence=", fuzzy_fs$confidence, ")")
+      fs_label <- if (!is.na(result$FS)) trait_code_label(result$FS) else NA_character_
+      if (!is.na(fs_label)) {
+        message("     (", fs_label, ")")
       }
-    } else if (!"FS" %in% offline_prefilled) {
-      message("  \u274c No feeding/trophic data available")
-      result$FS <- NA_character_
+      message("     Modalities: ", paste(fuzzy_fs$modalities, collapse = ", "))
     } else {
-      message("  Kept offline value: ", result$FS)
+      message("  \u274c No feeding/trophic data available (including ontology)")
     }
+  } else {
+    message("  \u274c No feeding/trophic data available")
   }
 
   # 3. MB - Mobility
@@ -1251,39 +1305,33 @@ lookup_species_traits <- function(species_name,
     if (!is.null(body_shape)) message("  \U0001f3ca Body Shape: ", body_shape)
     if (length(mobility_info) > 0) message("  \U0001f3ca Mobility Info: ", paste(mobility_info, collapse = ", "))
     if (!"MB" %in% offline_prefilled) {
-      result$MB <- harmonize_mobility(mobility_info, body_shape, raw_traits$worms)
-      if (!is.null(raw_traits$fishbase$body_shape)) result$MB_source <- "FishBase"
-      else if (!is.null(raw_traits$biotic$mobility)) result$MB_source <- "BIOTIC"
-      else result$MB_source <- "Harmonized"
+      mb <- harmonize_mobility_detail(mobility_info, body_shape, raw_traits$worms)
+      mb_source <- switch(mb$basis,
+                          text = text_input_source(raw_traits, "mobility"),
+                          taxon = "Taxonomy",
+                          "Default")
+      result <- assign_trait_if_resolved(result, "MB", mb$code, mb_source, mb$method)
     } else {
       message("  Kept offline value: ", result$MB)
     }
     message("  \u2713 Output: ", result$MB)
     if (!is.na(trait_code_label(result$MB))) message("     (", trait_code_label(result$MB), ")")
-  } else {
-    # Try fuzzy harmonization from ontology traits
-    if (!is.null(raw_traits$ontology)) {
-      message("  \U0001f50d Trying fuzzy harmonization from ontology...")
-      fuzzy_mb <- harmonize_fuzzy_mobility(raw_traits$ontology)
-      if (!is.na(fuzzy_mb$class)) {
-        result$MB <- fuzzy_mb$class
-        result$MB_source <- "Ontology"
-        sources_used <- c(sources_used, "Fuzzy")
-        message("  \u2713 Output: ", result$MB, " (from fuzzy ontology, confidence=", fuzzy_mb$confidence, ")")
-        if (!is.na(trait_code_label(result$MB))) message("     (", trait_code_label(result$MB), ")")
-        message("     Modalities: ", paste(fuzzy_mb$modalities, collapse = ", "))
-      } else if (!"MB" %in% offline_prefilled) {
-        message("  \u274c No mobility data available (including ontology)")
-        result$MB <- NA_character_
-      } else {
-        message("  Kept offline value: ", result$MB)
-      }
-    } else if (!"MB" %in% offline_prefilled) {
-      message("  \u274c No mobility data available")
-      result$MB <- NA_character_
+  } else if ("MB" %in% offline_prefilled) {
+    message("  Kept offline value: ", result$MB)
+  } else if (!is.null(raw_traits$ontology)) {
+    message("  \U0001f50d Trying fuzzy harmonization from ontology...")
+    fuzzy_mb <- harmonize_fuzzy_mobility(raw_traits$ontology)
+    if (!is.na(fuzzy_mb$class)) {
+      result <- assign_trait_if_resolved(result, "MB", fuzzy_mb$class, "Ontology", "rule")
+      sources_used <- c(sources_used, "Fuzzy")
+      message("  \u2713 Output: ", result$MB, " (from fuzzy ontology, confidence=", fuzzy_mb$confidence, ")")
+      if (!is.na(trait_code_label(result$MB))) message("     (", trait_code_label(result$MB), ")")
+      message("     Modalities: ", paste(fuzzy_mb$modalities, collapse = ", "))
     } else {
-      message("  Kept offline value: ", result$MB)
+      message("  \u274c No mobility data available (including ontology)")
     }
+  } else {
+    message("  \u274c No mobility data available")
   }
 
   # 4. EP - Environmental Position
@@ -1292,62 +1340,56 @@ lookup_species_traits <- function(species_name,
     if (!is.null(depth_min)) message("  \U0001f30a Depth Range: ", depth_min, "-", depth_max, " m")
     if (length(habitat_info) > 0) message("  \U0001f30a Habitat Info: ", paste(habitat_info, collapse = ", "))
     if (!"EP" %in% offline_prefilled) {
-      result$EP <- harmonize_environmental_position(depth_min, depth_max, habitat_info, raw_traits$worms)
-      if (!is.null(depth_min)) result$EP_source <- "Depth-based"
-      else result$EP_source <- "Taxonomy"
+      ep <- harmonize_environmental_detail(depth_min, depth_max, habitat_info, raw_traits$worms)
+      ep_source <- switch(ep$basis,
+                          text = text_input_source(raw_traits, "habitat"),
+                          taxon = "Taxonomy",
+                          depth = "Depth-based",
+                          "Default")
+      result <- assign_trait_if_resolved(result, "EP", ep$code, ep_source, ep$method)
     } else {
       message("  Kept offline value: ", result$EP)
     }
     message("  \u2713 Output: ", result$EP)
     if (!is.na(trait_code_label(result$EP))) message("     (", trait_code_label(result$EP), ")")
-  } else {
-    # Try fuzzy harmonization from ontology traits
-    if (!is.null(raw_traits$ontology)) {
-      message("  \U0001f50d Trying fuzzy harmonization from ontology...")
-      fuzzy_ep <- harmonize_fuzzy_habitat(raw_traits$ontology)
-      if (!is.na(fuzzy_ep$class)) {
-        result$EP <- fuzzy_ep$class
-        result$EP_source <- "Ontology"
-        sources_used <- c(sources_used, "Fuzzy")
-        message("  \u2713 Output: ", result$EP, " (from fuzzy ontology, confidence=", fuzzy_ep$confidence, ")")
-        if (!is.na(trait_code_label(result$EP))) message("     (", trait_code_label(result$EP), ")")
-        message("     Modalities: ", paste(fuzzy_ep$modalities, collapse = ", "))
-      } else if (!"EP" %in% offline_prefilled) {
-        message("  \u274c No depth/habitat data available (including ontology)")
-        result$EP <- NA_character_
-      } else {
-        message("  Kept offline value: ", result$EP)
-      }
-    } else if (!"EP" %in% offline_prefilled) {
-      message("  \u274c No depth/habitat data available")
-      result$EP <- NA_character_
+  } else if ("EP" %in% offline_prefilled) {
+    message("  Kept offline value: ", result$EP)
+  } else if (!is.null(raw_traits$ontology)) {
+    message("  \U0001f50d Trying fuzzy harmonization from ontology...")
+    fuzzy_ep <- harmonize_fuzzy_habitat(raw_traits$ontology)
+    if (!is.na(fuzzy_ep$class)) {
+      result <- assign_trait_if_resolved(result, "EP", fuzzy_ep$class, "Ontology", "rule")
+      sources_used <- c(sources_used, "Fuzzy")
+      message("  \u2713 Output: ", result$EP, " (from fuzzy ontology, confidence=", fuzzy_ep$confidence, ")")
+      if (!is.na(trait_code_label(result$EP))) message("     (", trait_code_label(result$EP), ")")
+      message("     Modalities: ", paste(fuzzy_ep$modalities, collapse = ", "))
     } else {
-      message("  Kept offline value: ", result$EP)
+      message("  \u274c No depth/habitat data available (including ontology)")
     }
+  } else {
+    message("  \u274c No depth/habitat data available")
   }
 
-  # 5. PR - Predator Resistance
+  # 5. PR - Predator Resistance. No protection text and no taxon rule leaves
+  # PR NA (F26), so ML and phylogenetic imputation can fill it below.
   message("\n[PR] Predator Resistance:")
   if (length(protection_info) > 0) {
     message("  \U0001f6e1\ufe0f  Protection Info: ", paste(protection_info, collapse = ", "))
-    if (!"PR" %in% offline_prefilled) {
-      result$PR <- harmonize_protection(protection_info, raw_traits$worms)
-      result$PR_source <- "Taxonomy"
-    } else {
-      message("  Kept offline value: ", result$PR)
-    }
-    message("  \u2713 Output: ", result$PR)
-    if (!is.na(trait_code_label(result$PR))) message("     (", trait_code_label(result$PR), ")")
   } else {
     message("  \U0001f6e1\ufe0f  Using taxonomic inference from WoRMS")
-    if (!"PR" %in% offline_prefilled) {
-      result$PR <- harmonize_protection(protection_info, raw_traits$worms)
-      result$PR_source <- "Taxonomy"
-    } else {
-      message("  Kept offline value: ", result$PR)
-    }
-    message("  \u2713 Output: ", result$PR)
   }
+  if (!"PR" %in% offline_prefilled) {
+    pr <- harmonize_protection_detail(protection_info, raw_traits$worms)
+    pr_source <- switch(pr$basis,
+                        text = text_input_source(raw_traits, "protection"),
+                        taxon = "Taxonomy",
+                        NA_character_)
+    result <- assign_trait_if_resolved(result, "PR", pr$code, pr_source, pr$method)
+  } else {
+    message("  Kept offline value: ", result$PR)
+  }
+  message("  \u2713 Output: ", result$PR)
+  if (!is.na(trait_code_label(result$PR))) message("     (", trait_code_label(result$PR), ")")
 
   # ═══════════════════════════════════════════════════════════════════════
   # ML FALLBACK - Predict missing traits using Random Forest models
@@ -1403,62 +1445,17 @@ lookup_species_traits <- function(species_name,
         # Apply ML fallback (function defined in ml_trait_prediction.R)
         result_with_ml <- apply_ml_fallback(harmonized_for_ml, raw_traits, verbose = TRUE)
 
-        # Update result with ML predictions
-        if (!is.na(result_with_ml$MS) && is.na(result$MS)) {
-          result$MS <- result_with_ml$MS
-          result$MS_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-        if (!is.na(result_with_ml$FS) && is.na(result$FS)) {
-          result$FS <- result_with_ml$FS
-          result$FS_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-        if (!is.na(result_with_ml$MB) && is.na(result$MB)) {
-          result$MB <- result_with_ml$MB
-          result$MB_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-        if (!is.na(result_with_ml$EP) && is.na(result$EP)) {
-          result$EP <- result_with_ml$EP
-          result$EP_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-        if (!is.na(result_with_ml$PR) && is.na(result$PR)) {
-          result$PR <- result_with_ml$PR
-          result$PR_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-        if (!is.na(result_with_ml$RS) && is.na(result$RS)) {
-          result$RS <- result_with_ml$RS
-          result$RS_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-        if (!is.na(result_with_ml$TT) && is.na(result$TT)) {
-          result$TT <- result_with_ml$TT
-          result$TT_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-        if (!is.na(result_with_ml$ST) && is.na(result$ST)) {
-          result$ST <- result_with_ml$ST
-          result$ST_source <- "ML"
-          sources_used <- c(sources_used, "ML")
-        }
-
-        # Set imputation metadata for ML-filled traits
-        if ("ML" %in% sources_used) {
-          result$imputation_method <- "rf_predicted"
-        }
-
-        # Store ML metadata if available
-        for (trait in c("MS", "FS", "MB", "EP", "PR")) {
-          conf_field <- paste0(trait, "_ml_confidence")
-          prob_field <- paste0(trait, "_ml_probability")
-          if (!is.null(result_with_ml[[conf_field]])) {
-            result[[conf_field]] <- result_with_ml[[conf_field]]
-          }
-          if (!is.null(result_with_ml[[prob_field]])) {
-            result[[prob_field]] <- result_with_ml[[prob_field]]
+        # Fill each missing code from its ML prediction, as method "ml"
+        # (C3.1). The ML metadata is kept only for the traits ML filled, so
+        # a probability never scales a code another database supplied.
+        for (trait in TRAIT_COLUMNS) {
+          predicted <- result_with_ml[[trait]]
+          if (is.na(result[[trait]]) && length(predicted) == 1L && !is.na(predicted)) {
+            result <- assign_trait_if_resolved(result, trait, predicted, "ML", "ml")
+            sources_used <- c(sources_used, "ML")
+            for (field in paste0(trait, c("_ml_confidence", "_ml_probability"))) {
+              if (!is.null(result_with_ml[[field]])) result[[field]] <- result_with_ml[[field]]
+            }
           }
         }
 
@@ -1466,118 +1463,6 @@ lookup_species_traits <- function(species_name,
         warning(sprintf("[orchestrator] ML prediction failed for '%s': %s",
                         species_name, conditionMessage(e)), call. = FALSE)
       })
-    }
-  }
-
-  # =================================================================
-  # UNCERTAINTY QUANTIFICATION - Calculate probabilistic confidence
-  # =================================================================
-
-  # Source uncertainty quantification functions
-  # Note: Using local = FALSE (default) so that %||% operator from validation_utils.R is available
-  if (!exists("calculate_all_trait_confidence")) {
-    message("  [DEBUG] Sourcing uncertainty_quantification.R...")
-    tryCatch({
-      source(app_path("R/functions/uncertainty_quantification.R"))
-      message("  [DEBUG] uncertainty_quantification.R sourced successfully")
-    }, error = function(e) {
-      warning(sprintf("[orchestrator] uncertainty_quantification.R source failed: %s",
-                      conditionMessage(e)), call. = FALSE)
-    })
-  } else {
-    message("  [DEBUG] calculate_all_trait_confidence already exists in environment")
-  }
-
-  # Calculate confidence for all traits
-  if (exists("calculate_all_trait_confidence")) {
-    message("\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557")
-    message("\u2551 UNCERTAINTY QUANTIFICATION                                     \u2551")
-    message("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d")
-
-    # Prepare trait record with sources and raw values
-    trait_record <- list(
-      MS = result$MS,
-      size_cm = size_cm,
-      MS_source = result$MS_source,
-      MS_ml_probability = result$MS_ml_probability,
-
-      FS = result$FS,
-      FS_source = result$FS_source,
-      FS_ml_probability = result$FS_ml_probability,
-
-      MB = result$MB,
-      MB_source = result$MB_source,
-      MB_ml_probability = result$MB_ml_probability,
-
-      EP = result$EP,
-      EP_source = result$EP_source,
-      EP_ml_probability = result$EP_ml_probability,
-
-      PR = result$PR,
-      PR_source = result$PR_source,
-      PR_ml_probability = result$PR_ml_probability
-    )
-
-    # Calculate confidence for all traits
-    message("  [DEBUG] Calling calculate_all_trait_confidence...")
-    confidence_data <- tryCatch(
-      calculate_all_trait_confidence(trait_record),
-      error = function(e) {
-        warning(sprintf("[orchestrator] confidence calc failed for '%s' (falling back to count-based): %s",
-                        species_name, conditionMessage(e)), call. = FALSE)
-        list()
-      }
-    )
-    message("  [DEBUG] calculate_all_trait_confidence completed")
-
-    # Merge confidence data into result
-    for (field in names(confidence_data)) {
-      result[[field]] <- confidence_data[[field]]
-    }
-
-    # Display confidence summary
-    if (!is.null(result$MS_confidence)) {
-      message("  MS confidence: ", round(result$MS_confidence * 100, 1), "% (",
-              result$MS_confidence_category, ")")
-    }
-    if (!is.null(result$FS_confidence)) {
-      message("  FS confidence: ", round(result$FS_confidence * 100, 1), "% (",
-              result$FS_confidence_category, ")")
-    }
-    if (!is.null(result$MB_confidence)) {
-      message("  MB confidence: ", round(result$MB_confidence * 100, 1), "% (",
-              result$MB_confidence_category, ")")
-    }
-    if (!is.null(result$EP_confidence)) {
-      message("  EP confidence: ", round(result$EP_confidence * 100, 1), "% (",
-              result$EP_confidence_category, ")")
-    }
-    if (!is.null(result$PR_confidence)) {
-      message("  PR confidence: ", round(result$PR_confidence * 100, 1), "% (",
-              result$PR_confidence_category, ")")
-    }
-
-    # Calculate overall confidence (geometric mean)
-    confidence_values <- c(
-      result$MS_confidence, result$FS_confidence, result$MB_confidence,
-      result$EP_confidence, result$PR_confidence
-    )
-    valid_confidence <- confidence_values[!is.na(confidence_values)]
-
-    if (length(valid_confidence) > 0) {
-      overall_confidence <- exp(mean(log(valid_confidence)))  # Geometric mean
-      result$overall_confidence <- overall_confidence
-
-      if (overall_confidence >= 0.7) {
-        overall_category <- "high"
-      } else if (overall_confidence >= 0.5) {
-        overall_category <- "medium"
-      } else {
-        overall_category <- "low"
-      }
-
-      message("\n  Overall confidence: ", round(overall_confidence * 100, 1), "% (",
-              overall_category, ")")
     }
   }
 
@@ -1652,31 +1537,77 @@ lookup_species_traits <- function(species_name,
     }
   }
 
-  # Set source and confidence
-  result$source <- paste(unique(sources_used), collapse = "+")
+  # ML- and phylo-filled codes carry their method (C3.1).
+  result <- mark_imputed_methods(result)
 
-  # Set categorical confidence (backward compatibility)
-  n_traits_found <- sum(!is.na(c(result$MS, result$FS, result$MB, result$EP, result$PR)))
+  # A PR that neither the text, a taxon rule, ML nor phylogenetic imputation
+  # decided falls back to PR0, labelled for what it is: a default without
+  # evidence (method "default", source "Default"), never a taxonomic finding.
+  # It is not offered to relatives or ML training. (C-8 user decision 1.)
+  if (is.na(result$PR)) {
+    result <- assign_trait_if_resolved(result, "PR", "PR0", "Default", "default")
+  }
 
-  # Use probabilistic confidence if available, otherwise fallback to count-based
-  if (!is.null(result$overall_confidence)) {
-    if (result$overall_confidence >= 0.7) {
-      result$confidence <- "high"
-    } else if (result$overall_confidence >= 0.5) {
-      result$confidence <- "medium"
-    } else {
-      result$confidence <- "low"
+  # =================================================================
+  # UNCERTAINTY QUANTIFICATION - score every code, imputed ones included
+  # =================================================================
+  # Runs after ML and phylogenetic imputation (C3.2), so imputed codes are
+  # scored too (C3.3).
+
+  # Source uncertainty quantification functions (app.R sources it at startup)
+  if (!exists("calculate_all_trait_confidence")) {
+    tryCatch({
+      source(app_path("R/functions/uncertainty_quantification.R"))
+    }, error = function(e) {
+      warning(sprintf("[orchestrator] uncertainty_quantification.R source failed: %s",
+                      conditionMessage(e)), call. = FALSE)
+    })
+  }
+
+  if (exists("calculate_all_trait_confidence")) {
+    message("\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557")
+    message("\u2551 UNCERTAINTY QUANTIFICATION                                     \u2551")
+    message("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d")
+
+    trait_record <- as.list(result)
+    # Codes read from the offline DB keep the confidence the DB stored (F20).
+    for (trait in offline_prefilled) trait_record[[trait]] <- NA_character_
+    # The boundary distance applies only to an MS harmonised from that size.
+    trait_record$size_cm <- if (isTRUE(ms_from_size)) size_cm else NULL
+
+    confidence_data <- tryCatch(
+      calculate_all_trait_confidence(trait_record),
+      error = function(e) {
+        warning(sprintf("[orchestrator] confidence calc failed for '%s': %s",
+                        species_name, conditionMessage(e)), call. = FALSE)
+        list()
+      }
+    )
+    for (field in names(confidence_data)) {
+      result[[field]] <- confidence_data[[field]]
     }
-  } else {
-    # Fallback: count-based confidence
-    if (n_traits_found == 5) {
-      result$confidence <- "high"
-    } else if (n_traits_found >= 3) {
-      result$confidence <- "medium"
-    } else {
-      result$confidence <- "low"
+    for (trait in TRAIT_COLUMNS) {
+      conf <- result[[paste0(trait, "_confidence")]]
+      if (length(conf) == 1L && !is.na(conf)) {
+        message("  ", trait, " confidence: ", round(conf * 100, 1), "% (", confidence_to_label(conf), ")")
+      }
     }
   }
+
+  # Overall confidence: the geometric mean of the MS..PR confidences, with
+  # the canonical 0.34 / 0.67 bands; "none" when there is nothing to average.
+  overall <- overall_trait_confidence(result)
+  result$overall_confidence <- overall$value
+  result$confidence <- overall$label
+  result$imputation_method <- aggregate_imputation_method(result)
+  message("\n  Overall confidence: ",
+          if (is.na(overall$value)) "none" else paste0(round(overall$value * 100, 1), "%"),
+          " (", overall$label, ")")
+
+  # Set source
+  result$source <- paste(unique(sources_used), collapse = "+")
+
+  n_traits_found <- sum(!is.na(c(result$MS, result$FS, result$MB, result$EP, result$PR)))
 
   # FINAL SUMMARY
   message("\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557")
@@ -1712,6 +1643,14 @@ lookup_species_traits <- function(species_name,
     message("\u274c INCOMPLETE: Only ", n_traits_found, "/5 traits assigned (insufficient data)")
   }
 
+  # A degraded lookup (no WoRMS classification, or a database failed with an
+  # error) is flagged in the results and cached for 1 day only (spec C3.7).
+  degraded <- !worms_classified || length(lookup_errors) > 0
+  result$degraded <- degraded
+  if (length(lookup_errors) > 0) {
+    message("  Degraded lookup: ", paste(unique(lookup_errors), collapse = ", "), " failed")
+  }
+
   # Cache result
   if (!is.null(cache_dir)) {
     if (!dir.exists(cache_dir)) {
@@ -1719,80 +1658,16 @@ lookup_species_traits <- function(species_name,
     }
     cache_file <- file.path(cache_dir, paste0(gsub(" ", "_", species_name), ".rds"))
 
-    # Prepare harmonized data structure (for ML model training)
-    harmonized_data <- list(
-      species = species_name,
-      MS = result$MS,
-      FS = result$FS,
-      MB = result$MB,
-      EP = result$EP,
-      PR = result$PR
+    # The harmonized block carries T, T_source, T_method and T_confidence for
+    # every trait (phylogenetic imputation and ML training read it), plus the
+    # taxonomy, the vocabulary version and the degraded flag.
+    extra <- list()
+    if (!is.null(raw_traits$ontology)) extra$ontology_traits <- raw_traits$ontology
+    if (!is.null(raw_traits$worms)) extra$worms_taxonomy <- raw_traits$worms
+    cache_data <- build_trait_cache_envelope(
+      result, build_harmonized_block(result, raw_traits$worms, degraded),
+      config_hash = harm_config_hash(), degraded = degraded, extra = extra
     )
-
-    # Add taxonomy from WoRMS for ML training
-    if (!is.null(raw_traits$worms)) {
-      harmonized_data$phylum <- raw_traits$worms$phylum
-      harmonized_data$class <- raw_traits$worms$class
-      harmonized_data$order <- raw_traits$worms$order
-      harmonized_data$family <- raw_traits$worms$family
-      harmonized_data$genus <- raw_traits$worms$genus
-    }
-
-    # Add ML metadata if available
-    for (trait in c("MS", "FS", "MB", "EP", "PR")) {
-      conf_field <- paste0(trait, "_ml_confidence")
-      prob_field <- paste0(trait, "_ml_probability")
-      if (!is.null(result[[conf_field]])) {
-        harmonized_data[[conf_field]] <- result[[conf_field]]
-      }
-      if (!is.null(result[[prob_field]])) {
-        harmonized_data[[prob_field]] <- result[[prob_field]]
-      }
-    }
-
-    # Add uncertainty quantification metadata if available
-    for (trait in c("MS", "FS", "MB", "EP", "PR")) {
-      confidence_field <- paste0(trait, "_confidence")
-      interval_lower_field <- paste0(trait, "_interval_lower")
-      interval_upper_field <- paste0(trait, "_interval_upper")
-      category_field <- paste0(trait, "_confidence_category")
-
-      if (!is.null(result[[confidence_field]])) {
-        harmonized_data[[confidence_field]] <- result[[confidence_field]]
-      }
-      if (!is.null(result[[interval_lower_field]])) {
-        harmonized_data[[interval_lower_field]] <- result[[interval_lower_field]]
-      }
-      if (!is.null(result[[interval_upper_field]])) {
-        harmonized_data[[interval_upper_field]] <- result[[interval_upper_field]]
-      }
-      if (!is.null(result[[category_field]])) {
-        harmonized_data[[category_field]] <- result[[category_field]]
-      }
-    }
-
-    # Add overall confidence if available
-    if (!is.null(result$overall_confidence)) {
-      harmonized_data$overall_confidence <- result$overall_confidence
-    }
-
-    # Build cache data structure
-    cache_data <- list(
-      traits = result,
-      harmonized = harmonized_data,
-      species = species_name,
-      timestamp = Sys.time(),
-      config_hash = harm_config_hash(),
-      trait_vocab_version = current_trait_vocab_version()
-    )
-
-    # Include raw traits for reference
-    if (!is.null(raw_traits$ontology)) {
-      cache_data$ontology_traits <- raw_traits$ontology
-    }
-    if (!is.null(raw_traits$worms)) {
-      cache_data$worms_taxonomy <- raw_traits$worms
-    }
 
     saveRDS(cache_data, cache_file)
   }

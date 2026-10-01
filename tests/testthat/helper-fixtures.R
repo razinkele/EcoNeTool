@@ -26,6 +26,8 @@ source_app_dependencies <- function() {
   source(file.path(app_root, "R/functions/taxonomic_api_utils.R"), local = FALSE)
   source(file.path(app_root, "R/functions/trait_lookup/database_lookups.R"), local = FALSE)
   source(file.path(app_root, "R/functions/trait_lookup/harmonization.R"), local = FALSE)
+  source(file.path(app_root, "R/functions/trait_lookup/provenance.R"), local = FALSE)
+  source(file.path(app_root, "R/functions/uncertainty_quantification.R"), local = FALSE)
   source(file.path(app_root, "R/functions/trait_lookup/orchestrator.R"), local = FALSE)
   source(file.path(app_root, "R/functions/local_trait_databases.R"), local = FALSE)
   source(file.path(app_root, "R/functions/cache_sqlite.R"), local = FALSE)

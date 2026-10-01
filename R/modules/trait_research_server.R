@@ -102,7 +102,7 @@ source_badge_color <- function(source) {
     "PolyTraits" = "#1b5e20", "EMODnet" = "#0d47a1", "OBIS" = "#01579b",
     "OfflineDB" = "#37474f", "ML" = "#ff6f00",
     "Depth-based" = "#5d4037", "Taxonomy" = "#455a64",
-    "Harmonized" = "#616161"
+    "Harmonized" = "#616161", "Phylogenetic" = "#6a1b9a", "Default" = "#9e9e9e"
   )
   col <- colors[source]
   if (is.na(col)) "#9e9e9e" else col
@@ -132,6 +132,22 @@ format_trait_badge <- function(value, source) {
     )
   } else ""
   paste0("<strong>", safe_value, "</strong>", badge)
+}
+
+#' Badge for a degraded lookup
+#'
+#' A degraded row (no WoRMS classification, or a database failed with an
+#' error) is cached for one day only and refreshed on the next lookup (spec
+#' C3.7). The markup is a constant; nothing user-supplied is interpolated.
+#'
+#' @param degraded Logical vector (NA counts as FALSE).
+#' @return Character vector: the badge HTML or "".
+#' @export
+format_degraded_badge <- function(degraded) {
+  badge <- paste0('<span style="background:#ef6c00;color:white;padding:1px 4px;border-radius:3px;',
+                  'font-size:9px" title="WoRMS gave no classification or a database could not be reached; ',
+                  'looked up again after one day">partial</span>')
+  ifelse(vapply(as.list(degraded), isTRUE, logical(1)), badge, "")
 }
 
 #' Column indices that must be HTML-escaped in the trait results table
@@ -797,6 +813,8 @@ trait_research_server <- function(input, output, session, shared_data) {
     if ("source" %in% names(df)) display_df$sources <- df$source
     # A species whose lookup failed (F33) shows why; escaped like `sources`.
     if ("error" %in% names(df)) display_df$error <- df$error
+    # A degraded lookup (a database failed) shows a constant badge (C3.7).
+    if ("degraded" %in% names(df)) display_df$status <- format_degraded_badge(df$degraded)
 
     # Confidence columns (keep numeric for color-coding)
     conf_cols <- c("MS_confidence", "FS_confidence", "MB_confidence",
@@ -811,20 +829,21 @@ trait_research_server <- function(input, output, session, shared_data) {
     # executed in the browser of anyone who viewed this table.
     dt <- DT::datatable(
       display_df,
-      escape = badge_escape_columns(display_df, trait_badge_cols),
+      escape = badge_escape_columns(display_df, c(trait_badge_cols, "status")),
       options = list(pageLength = 15, scrollX = TRUE, dom = 'Bfrtip',
                      buttons = c('copy', 'csv', 'excel')),
       rownames = FALSE, class = 'stripe hover compact'
     )
 
-    # Color-code confidence columns: green >0.8, yellow 0.5-0.8, red <0.5
+    # Color-code confidence columns with the canonical label bands:
+    # low < 0.34 <= medium < 0.67 <= high (confidence_to_label())
     conf_cols_present <- conf_cols[conf_cols %in% names(display_df)]
     if (length(conf_cols_present) > 0) {
       dt <- dt %>%
         DT::formatStyle(
           columns = conf_cols_present,
           backgroundColor = DT::styleInterval(
-            c(0.5, 0.8),
+            c(0.34, 0.67),
             c("#ffcdd2", "#fff9c4", "#c8e6c9")
           )
         ) %>%
@@ -1130,7 +1149,7 @@ trait_research_server <- function(input, output, session, shared_data) {
   # refresh) — same data, three round-trips.
   offline_db_summary <- reactive({
     offline_db_trigger()  # invalidate on rebuild
-    db_path <- "cache/offline_traits.db"
+    db_path <- app_path("cache/offline_traits.db")
     default <- list(
       count = 0,
       age_text = "Not built", age_color = "danger",
@@ -1352,7 +1371,7 @@ trait_research_server <- function(input, output, session, shared_data) {
 
   output$offline_db_contents <- DT::renderDataTable({
     req(input$view_offline_db > 0)
-    db_path <- "cache/offline_traits.db"
+    db_path <- app_path("cache/offline_traits.db")
     if (!file.exists(db_path) || !requireNamespace("RSQLite", quietly = TRUE)) {
       return(DT::datatable(data.frame(Message = "Database not available")))
     }
