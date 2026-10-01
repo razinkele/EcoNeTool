@@ -18,8 +18,11 @@ name: Nightly live tests
 
 on:
   schedule:
-    # 04:00 UTC daily — quiet hour in EU/US, low contention with day jobs
-    - cron: '0 4 * * *'
+    # 06:30 UTC daily. Not 04:00: from 2026-09-28 the ICES GeoServer WFS
+    # answered HTTP 400 at 04:00 UTC on three nights running, while the same
+    # request from this runner returned 200 in the daytime (see the probe
+    # step below), so 04:00 looks like an ICES maintenance window.
+    - cron: '30 6 * * *'
   workflow_dispatch:
 
 concurrency:
