@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.7.0] - 2026-10-01
 
+### Added — Network Comparison tab
+
+A new sidebar entry, **Network Comparison**, places two food webs side by side: before and after a change, two
+regions, or an ECOPATH model against a trait-built web.
+
+- **Two snapshot slots.** Store the currently loaded web as Network A or Network B, or load one of the bundled
+  example webs straight into a slot. Slots keep their copy for the session, so importing the second web never
+  overwrites the first.
+- **What is compared.** Topological indicators (S, C, G, V, mean shortest path, mean trophic level, omnivory)
+  side by side with the difference B − A, plus the biomass-weighted indicators when both webs carry biomass;
+  species shared, only in A and only in B with a Jaccard similarity; trophic links among the shared species
+  (prey → predator) shared, only in A and only in B; and, for every shared species, its prey count, predator
+  count and trophic level in each web.
+- **Matching rule.** Species are matched by name, ignoring case and surrounding spaces. Links that touch a species
+  the other web lacks are counted separately rather than treated as lost.
+- **Export.** The per-species table and the link differences download as CSV.
+
 ### Changed — trait confidence and provenance
 
 Every trait value now says where it came from and how sure EcoNeTool is about it. **Confidence labels
