@@ -23,10 +23,13 @@ comparison_server <- function(input, output, session, net_reactive, info_reactiv
   # --------------------------------------------------------------------------
   # Example web choices (computed once per session)
   # --------------------------------------------------------------------------
+  # The select carries only example NAMES; the server resolves a name to a path
+  # from this list, so a client can never hand an arbitrary filesystem path to load().
   example_files <- list_example_networks()
-  example_choices <- stats::setNames(example_files, tools::file_path_sans_ext(basename(example_files)))
+  example_names <- tools::file_path_sans_ext(basename(example_files))
+  example_files <- stats::setNames(example_files, example_names)
   for (slot in c("a", "b")) {
-    updateSelectInput(session, paste0("cmp_example_", slot), choices = example_choices)
+    updateSelectInput(session, paste0("cmp_example_", slot), choices = example_names)
   }
 
   # --------------------------------------------------------------------------
@@ -52,9 +55,14 @@ comparison_server <- function(input, output, session, net_reactive, info_reactiv
     })
 
     observeEvent(input[[paste0("cmp_load_example_", slot)]], {
-      path <- input[[paste0("cmp_example_", slot)]]
-      if (is.null(path) || !nzchar(path)) {
+      name <- input[[paste0("cmp_example_", slot)]]
+      if (is.null(name) || !nzchar(name)) {
         showNotification("Choose an example web first.", type = "warning")
+        return()
+      }
+      path <- if (name %in% names(example_files)) example_files[[name]] else NULL
+      if (is.null(path)) {
+        showNotification("Unknown example web.", type = "error")
         return()
       }
       web <- tryCatch(

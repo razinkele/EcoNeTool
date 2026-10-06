@@ -84,11 +84,29 @@ test_that("an example web can be loaded into slot B", {
   app <- make_app(reactiveVal(live$net), reactiveVal(live$info))
   testServer(app, {
     session$setInputs(cmp_use_current_a = 1)
-    session$setInputs(cmp_example_b = example, cmp_load_example_b = 1)
+    # The select carries the example NAME, never a path.
+    session$setInputs(cmp_example_b = "Simple_3Species", cmp_load_example_b = 1)
     cmp <- mod$comparison()
     expect_identical(unname(cmp$labels[["b"]]), "Simple_3Species")
     expect_equal(nrow(cmp$metrics), 11)  # both webs carry meanB -> nw* rows present
     expect_match(output$cmp_slot_summary_b, "Simple_3Species")
+  })
+})
+
+test_that("a client-supplied path is never loaded: only known example names resolve", {
+  skip_if_not_installed("shiny")
+  rogue <- tempfile(fileext = ".Rdata")
+  net <- make_graph(c("X", "Y"), directed = TRUE)
+  info <- data.frame(species = c("X", "Y"), stringsAsFactors = FALSE)
+  save(net, info, file = rogue)
+  on.exit(unlink(rogue), add = TRUE)
+  live <- chain_web(c("Phyto", "Zoo", "Fish"))
+  app <- make_app(reactiveVal(live$net), reactiveVal(live$info))
+  testServer(app, {
+    session$setInputs(cmp_example_b = rogue, cmp_load_example_b = 1)
+    expect_null(mod$slot_b())
+    session$setInputs(cmp_example_b = "../examples/Simple_3Species", cmp_load_example_b = 2)
+    expect_null(mod$slot_b())
   })
 })
 
