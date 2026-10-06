@@ -63,6 +63,14 @@ AVAILABLE_PLUGINS <- list(
       enabled = TRUE,
       category = "analysis"
     ),
+    comparison = list(
+      name = "Network Comparison",
+      description = "Compare two food webs: metrics, species and links",
+      icon = "code-compare",
+      required = FALSE,
+      enabled = TRUE,
+      category = "analysis"
+    ),
     keystoneness = list(
       name = "Keystoneness Analysis",
       description = "Identify keystone species",
