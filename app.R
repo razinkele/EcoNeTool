@@ -118,6 +118,7 @@ source("R/functions/network_visualization.R")
 source("R/functions/topological_metrics.R")
 source("R/functions/flux_calculations.R")
 source("R/functions/keystoneness.R")
+source("R/functions/network_comparison.R")  # compare_networks(): two-web comparison
 source("R/functions/metaweb_core.R")
 source("R/functions/metaweb_io.R")
 source("R/functions/spatial_analysis.R")
@@ -161,6 +162,7 @@ source("R/ui/topological_ui.R")
 source("R/ui/biomass_ui.R")
 source("R/ui/fluxes_ui.R")
 source("R/ui/keystoneness_ui.R")
+source("R/ui/comparison_ui.R")  # Network Comparison UI
 source("R/ui/dataeditor_ui.R")
 source("R/ui/metaweb_ui.R")
 source("R/ui/spatial_ui.R")
@@ -180,6 +182,7 @@ source("R/modules/ecopath_import_server.R")  # ECOPATH import server logic
 source("R/modules/data_import_server.R")  # Data import handler
 source("R/modules/visualization_server.R")  # Visualization outputs
 source("R/modules/analysis_server.R")  # Flux + Keystoneness analysis
+source("R/modules/comparison_server.R")  # Network Comparison (two snapshot slots)
 source("R/modules/download_server.R")  # Download handlers + export
 source("R/modules/dataeditor_inline_server.R")  # Internal data editor
 source("R/modules/metaweb_manager_server.R")  # Metaweb manager
@@ -290,6 +293,12 @@ ui <- dashboardPage(
       ),
 
       menuItem(
+        text = "Network Comparison",
+        tabName = "comparison",
+        icon = icon("code-compare")
+      ),
+
+      menuItem(
         text = "Internal Data Editor",
         tabName = "dataeditor",
         icon = icon("table")
@@ -378,6 +387,7 @@ ui <- dashboardPage(
       biomass_ui(),
       fluxes_ui(),
       keystoneness_ui(),
+      comparison_ui(),
       dataeditor_ui(),
       metaweb_ui(),
       trait_research_ui(),  # Trait Research (NEW)
@@ -474,6 +484,7 @@ ui <- dashboardPage(
             tags$li("Biomass distribution analysis"),
             tags$li("Energy flux modeling"),
             tags$li("Keystoneness analysis"),
+            tags$li("Side-by-side comparison of two food webs"),
             tags$li("Metaweb library management"),
             tags$li("Spatial analysis capabilities"),
             tags$li("EcoBase database integration"),
@@ -764,6 +775,11 @@ server <- function(input, output, session) {
   # DOWNLOAD + EXPORT
   # ============================================================================
   download_server(input, output, session, net_reactive, info_reactive)
+
+  # ============================================================================
+  # NETWORK COMPARISON (two snapshot slots A / B)
+  # ============================================================================
+  comparison_server(input, output, session, net_reactive, info_reactive)
 
   # ============================================================================
   # METAWEB MANAGER
