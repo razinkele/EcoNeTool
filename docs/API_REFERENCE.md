@@ -963,7 +963,7 @@ Convert protection information to PR code
 | `skeleton_info` | `NULL` | Skeleton/protection information |
 | `taxonomic_info` | `NULL` | Taxonomic classification |
 
-**Returns:** PR code (PR0, PR2, PR3, PR5-PR8)
+**Returns:** PR code (PR0-PR8), or NA when neither the protection text nor a taxonomic rule decides (since 1.7.0; the lookup then offers PR to ML and relatives and falls back to PR0 labelled "Default")
 
 **Source:** `R/functions/trait_lookup/harmonization.R:714`
 
