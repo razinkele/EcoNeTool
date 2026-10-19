@@ -434,6 +434,10 @@ feedback_server <- function(input, output, session, net_reactive = NULL) {
     }
   }, ignoreInit = TRUE)
 
+  # The context panel sits in a closed <details> inside a hidden modal; Shiny
+  # never re-checks visibility when <details> opens, so it would stay blank.
+  outputOptions(output, "feedback_context_display", suspendWhenHidden = FALSE)
+
   invisible(list(data = fb_data, filtered = filtered, summary = fb_summary,
                  dup_pairs = dup_pairs, is_admin = is_admin))
 }
