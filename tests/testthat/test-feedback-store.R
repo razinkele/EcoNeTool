@@ -135,3 +135,126 @@ test_that(".feedback_con creates a group-writable store (shared-writer invariant
                                as.character(as.octmode(mode_i))))
   }
 })
+
+# ---- Feedback Dashboard (port of the MarineSABRES feedback management) ------
+
+test_that(".feedback_con migrates a pre-dashboard DB in place, keeping old rows", {
+  # The live store predates the title/steps/github_url/duplicate_of columns.
+  # CREATE TABLE IF NOT EXISTS never adds columns, so the store must ALTER.
+  skip_if_not_installed("RSQLite")
+  source(file.path(app_root, "R/functions/feedback_store.R"), local = TRUE)
+  db <- local_db()
+  old <- DBI::dbConnect(RSQLite::SQLite(), db)
+  DBI::dbExecute(old, paste(
+    "CREATE TABLE feedback (id INTEGER PRIMARY KEY AUTOINCREMENT,",
+    "created_at TEXT NOT NULL, type TEXT NOT NULL, description TEXT NOT NULL,",
+    "submitter_email TEXT DEFAULT NULL, app_version TEXT DEFAULT NULL,",
+    "tab TEXT DEFAULT NULL, session_id TEXT DEFAULT NULL,",
+    "status TEXT NOT NULL DEFAULT 'open', addressed_at TEXT DEFAULT NULL,",
+    "addressed_by TEXT DEFAULT NULL, fix_commit TEXT DEFAULT NULL,",
+    "resolution_note TEXT DEFAULT NULL )"))
+  DBI::dbExecute(old, paste("INSERT INTO feedback (created_at, type, description)",
+                            "VALUES ('2026-06-01T00:00:00Z', 'bug', 'legacy row')"))
+  DBI::dbDisconnect(old)
+
+  con <- .feedback_con(db)
+  fields <- DBI::dbListFields(con, "feedback")
+  DBI::dbDisconnect(con)
+  expect_true(all(c("title", "steps", "github_url", "duplicate_of") %in% fields))
+
+  got <- feedback_list(db_path = db)
+  expect_equal(got$description, "legacy row")
+  expect_true(is.na(got$title))
+  expect_true(feedback_insert("bug", "new row", title = "New", db_path = db)$success)
+  expect_equal(nrow(feedback_list(db_path = db)), 2L)
+})
+
+test_that("feedback_insert stores title, steps and the 'general' type, capping lengths", {
+  skip_if_not_installed("RSQLite")
+  source(file.path(app_root, "R/functions/feedback_store.R"), local = TRUE)
+  db <- local_db()
+  ins <- feedback_insert("general", "desc", title = strrep("t", 300),
+                         steps = strrep("s", 2500), db_path = db)
+  expect_true(ins$success)
+  got <- feedback_list(db_path = db)
+  expect_equal(got$type, "general")
+  expect_equal(nchar(got$title), 200)
+  expect_equal(nchar(got$steps), 2000)
+})
+
+test_that("feedback_mark_resolved whitelists status and fails loudly on a missing id", {
+  skip_if_not_installed("RSQLite")
+  source(file.path(app_root, "R/functions/feedback_store.R"), local = TRUE)
+  db <- local_db()
+  id <- feedback_insert("bug", "x", db_path = db)$id
+
+  bad <- feedback_mark_resolved(id, status = "deleted", db_path = db)
+  expect_false(bad$success)
+  expect_match(bad$error, "invalid status")
+  expect_equal(feedback_list(db_path = db)$status, "open")
+
+  ok <- feedback_mark_resolved(id, status = "wont_fix", note = "by design",
+                               fix_ref = "PR #9", resolved_by = "admin", db_path = db)
+  expect_true(ok$success)
+  row <- feedback_list(db_path = db)
+  expect_equal(row$status, "wont_fix")
+  expect_equal(row$resolution_note, "by design")
+  expect_equal(row$fix_commit, "PR #9")
+  expect_equal(row$addressed_by, "admin")
+
+  expect_false(feedback_mark_resolved(99999L, db_path = db)$success)
+})
+
+test_that("feedback_mark_duplicate records the original and sets status 'duplicate'", {
+  skip_if_not_installed("RSQLite")
+  source(file.path(app_root, "R/functions/feedback_store.R"), local = TRUE)
+  db <- local_db()
+  a <- feedback_insert("bug", "plot blank", db_path = db)$id
+  b <- feedback_insert("bug", "plot is blank", db_path = db)$id
+  expect_true(feedback_mark_duplicate(b, duplicate_of = a, db_path = db)$success)
+  row <- feedback_list(db_path = db)
+  row <- row[row$id == b, ]
+  expect_equal(row$status, "duplicate")
+  expect_equal(row$duplicate_of, paste0("id:", a))
+  expect_false(feedback_mark_duplicate(b, duplicate_of = b, db_path = db)$success)
+  expect_false(feedback_mark_duplicate(99999L, duplicate_of = a, db_path = db)$success)
+})
+
+test_that("feedback_set_github_url only accepts https URLs", {
+  skip_if_not_installed("RSQLite")
+  source(file.path(app_root, "R/functions/feedback_store.R"), local = TRUE)
+  db <- local_db()
+  id <- feedback_insert("bug", "x", db_path = db)$id
+  expect_false(feedback_set_github_url(id, "javascript:alert(1)", db_path = db)$success)
+  url <- "https://github.com/razinkele/EcoNeTool/issues/1"
+  expect_true(feedback_set_github_url(id, url, db_path = db)$success)
+  expect_equal(feedback_list(db_path = db)$github_url, url)
+})
+
+test_that("feedback_summary returns the dashboard counts", {
+  skip_if_not_installed("RSQLite")
+  source(file.path(app_root, "R/functions/feedback_store.R"), local = TRUE)
+  db <- local_db()
+  b1 <- feedback_insert("bug", "a", db_path = db)$id
+  feedback_insert("bug", "b", db_path = db)
+  s1 <- feedback_insert("suggestion", "c", db_path = db)$id
+  feedback_insert("general", "d", db_path = db)
+  feedback_mark_resolved(b1, status = "wont_fix", db_path = db)
+  feedback_set_github_url(s1, "https://github.com/o/r/issues/2", db_path = db)
+  # Back-date one row past the 7-day window.
+  con <- DBI::dbConnect(RSQLite::SQLite(), db)
+  DBI::dbExecute(con, "UPDATE feedback SET created_at = '2020-01-01T00:00:00Z' WHERE id = ?",
+                 params = list(s1))
+  DBI::dbDisconnect(con)
+
+  s <- feedback_summary(db_path = db)
+  expect_equal(s$total, 4L)
+  expect_equal(s$bugs, 2L)
+  expect_equal(s$suggestions, 1L)
+  expect_equal(s$recent, 3L)
+  expect_equal(s$github, 1L)
+  expect_equal(s$local_only, 3L)
+  expect_equal(s$open, 3L)
+  expect_equal(s$resolved, 1L)
+  expect_equal(s$addressed, 0L)
+})

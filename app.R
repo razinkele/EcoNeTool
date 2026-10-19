@@ -151,6 +151,8 @@ source("R/functions/ecopath/load_all.R")
 source("R/functions/rpath/load_all.R")
 source("R/functions/auxillary_parser.R")  # Auxillary data parser for comments/tooltips
 source("R/functions/feedback_store.R")  # bug/suggestion feedback store
+source("R/functions/feedback_analyzer.R")  # Feedback Dashboard duplicate detection
+source("R/functions/feedback_reporter.R")  # Feedback submit + optional GitHub issue
 source("R/ui/rpath_ui.R")  # Rpath module UI component
 source("R/modules/rpath_server.R")  # Rpath module server logic
 
@@ -171,6 +173,7 @@ source("R/ui/shark_ui.R")
 source("R/ui/trait_research_ui.R")  # Trait Research UI
 source("R/ui/foodweb_construction_ui.R")  # Food Web Construction UI
 source("R/ui/harmonization_settings_ui.R")  # Harmonization settings UI
+source("R/ui/feedback_ui.R")  # Feedback Dashboard tab
 
 # Server modules
 source("R/modules/trait_research_server.R")  # Trait Research server logic
@@ -189,7 +192,7 @@ source("R/modules/metaweb_manager_server.R")  # Metaweb manager
 source("R/modules/spatial_server.R")  # Spatial analysis
 source("R/modules/ecobase_server.R")  # EcoBase connection
 source("R/modules/shark_server.R")  # SHARK4R integration
-source("R/modules/feedback_server.R")  # Feedback submit modal handler
+source("R/modules/feedback_server.R")  # Feedback submit modal + Feedback Dashboard
 
 # Data loading and validation (loads net and info objects)
 source("R/data_loading.R")
@@ -346,7 +349,7 @@ ui <- dashboardPage(
         icon = icon("fish")
       ),
 
-      menuItem("Feedback admin", tabName = "feedback_admin", icon = icon("comments"))
+      menuItem("Feedback", tabName = "feedback_admin", icon = icon("comments"))
     )
   ),
 
@@ -402,9 +405,7 @@ ui <- dashboardPage(
         rpathModuleUI("rpath_module")
       ),
 
-      tabItem(tabName = "feedback_admin",
-              h3(icon("comments"), " Feedback management"),
-              uiOutput("feedback_admin_ui"))
+      feedback_ui()  # Feedback Dashboard (list for all; admin tools gated)
 
     ),    # End of tabItems()
 
@@ -416,19 +417,38 @@ ui <- dashboardPage(
     shinyBS::bsModal(
       id = "feedback_modal", title = tagList(icon("comment-dots"), " Send feedback"),
       trigger = "feedback_open", size = "medium",
+      tags$script(HTML(paste0(
+        "$(document).on('shiny:connected', function() {",
+        " Shiny.setInputValue('feedback_browser_info', navigator.userAgent); });"))),
       radioButtons("feedback_type", "Type:",
-                   choices = c("Bug" = "bug", "Suggestion" = "suggestion"),
+                   choices = c("Bug" = "bug", "Suggestion" = "suggestion", "General" = "general"),
                    selected = "bug", inline = TRUE),
+      htmltools::tagAppendAttributes(
+        textInput("feedback_title", "Title:", placeholder = "Short summary", width = "100%"),
+        .cssSelector = "input", maxlength = "200"),
+      tags$small(class = "text-muted",
+                 "The title is shown to other users in the Feedback list; the description is not."),
       htmltools::tagAppendAttributes(
         textAreaInput("feedback_description", "What happened / your idea:",
                       rows = 5, placeholder = "Describe it...", width = "100%"),
         .cssSelector = "textarea", maxlength = "5000"),
+      conditionalPanel(
+        condition = "input.feedback_type == 'bug'",
+        htmltools::tagAppendAttributes(
+          textAreaInput("feedback_steps", "Steps to reproduce:", rows = 3,
+                        placeholder = "1. Open ...  2. Click ...", width = "100%"),
+          .cssSelector = "textarea", maxlength = "2000")),
       tags$small(class = "text-muted",
                  "Optional: leave your email if you'd like a follow-up."),
       textInput("feedback_email", NULL, placeholder = "you@example.org (optional)",
                 width = "100%"),
       tags$small(class = "text-muted",
                  "Stored to follow up on your report; please don't include sensitive personal data."),
+      tags$details(
+        style = "margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px;",
+        tags$summary(style = "cursor: pointer; font-weight: bold;",
+                     icon("info-circle"), " System information sent with your report"),
+        tags$div(style = "margin-top: 10px; color: #666;", uiOutput("feedback_context_display"))),
       tags$hr(),
       actionButton("feedback_submit", "Submit", icon = icon("paper-plane"),
                    class = "btn-success")
@@ -809,7 +829,7 @@ server <- function(input, output, session) {
   # ============================================================================
   # FEEDBACK MODULE
   # ============================================================================
-  feedback_server(input, output, session)
+  feedback_server(input, output, session, net_reactive = net_reactive)
 
   # Ensure dashboard outputs are not suspended when hidden (load by default)
   outputOptions(output, "box_species", suspendWhenHidden = FALSE)
