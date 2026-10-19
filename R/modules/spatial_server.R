@@ -1173,7 +1173,8 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
         return()
       }
 
-      metaweb <- readRDS(metaweb_file)
+      metaweb <- safe_read_rds(metaweb_file, expected_class = "metaweb",
+                               expected_names = c("species", "interactions", "metadata"))
       spatial_metaweb(metaweb)
 
       output$spatial_extraction_info <- renderPrint({

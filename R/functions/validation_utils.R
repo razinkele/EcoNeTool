@@ -139,6 +139,96 @@ safe_get <- function(data, key, default = NULL) {
   if (is_valid_value(value)) value else default
 }
 
+#' Objects an EcoNeTool .Rdata web may contain: the network and species table,
+#' plus the helper functions bundled with the original Baltic web
+#' (examples/BalticFW.Rdata). They are loaded but never called. Every loader
+#' (startup, Data Import upload, Network Comparison examples) uses this one
+#' list, so an example the app ships can always be re-uploaded.
+RDATA_ALLOWED_OBJECTS <- c("net", "info", "fluxind", "plotfw", "trophiclevels")
+
+#' Safely load a user-supplied .Rdata/.rda file into a clean environment.
+#'
+#' Rejects unexpected object names before exposing the data to the app. This is
+#' important for uploaded networks, where arbitrary objects in an .RData file can
+#' be used to smuggle unexpected code or data into the application state.
+#'
+#' @param path Path to the .Rdata/.rda file.
+#' @param required Character vector of required object names.
+#' @param allowed Character vector listing objects that are permitted to exist.
+#' @return New environment containing the loaded objects.
+#' @export
+safe_load_rdata <- function(path, required = c("net", "info"),
+                            allowed = required) {
+  if (!file.exists(path)) {
+    stop(sprintf("RData file not found: %s", path), call. = FALSE)
+  }
+
+  env <- new.env(parent = emptyenv())
+  load(path, envir = env)
+
+  present <- ls(env, all.names = TRUE)
+  missing <- setdiff(required, present)
+  if (length(missing) > 0L) {
+    stop(sprintf("RData file must contain required object(s): %s",
+                 paste(missing, collapse = ", ")), call. = FALSE)
+  }
+
+  unexpected <- setdiff(present, allowed)
+  if (length(unexpected) > 0L) {
+    stop(sprintf("Refusing RData upload: unexpected object(s) present (%s)",
+                 paste(unexpected, collapse = ", ")), call. = FALSE)
+  }
+
+  env
+}
+
+#' Safely read an RDS file and validate the object type/shape before accepting it.
+#'
+#' A malicious .RDS payload can still be deserialized by base R, so the app must
+#' validate the result immediately and reject anything that does not match the
+#' shape expected from the current workflow. This is intentionally stricter than
+#' a raw readRDS() and keeps user-uploaded data within the app's allowed object
+#' contract.
+#'
+#' @param path Path to the .rds file.
+#' @param expected_class Optional class to require (e.g. "metaweb").
+#' @param expected_names Optional names to require when the object is a list.
+#' @return The deserialized object if it passes validation.
+#' @export
+safe_read_rds <- function(path, expected_class = NULL, expected_names = NULL) {
+  if (!file.exists(path)) {
+    stop(sprintf("RDS file not found: %s", path), call. = FALSE)
+  }
+
+  obj <- tryCatch(
+    readRDS(path),
+    error = function(e) {
+      stop(sprintf("Failed to read RDS file '%s': %s", path, conditionMessage(e)),
+           call. = FALSE)
+    }
+  )
+
+  if (!is.null(expected_class) && !inherits(obj, expected_class)) {
+    stop(sprintf("Refusing RDS upload: expected class '%s', got '%s'",
+                 expected_class, paste(class(obj), collapse = ", ") %||% "NULL"),
+         call. = FALSE)
+  }
+
+  if (!is.null(expected_names)) {
+    if (!is.list(obj) || is.null(names(obj))) {
+      stop(sprintf("Refusing RDS upload: object is not a named list; expected fields: %s",
+                   paste(expected_names, collapse = ", ")), call. = FALSE)
+    }
+    missing <- setdiff(expected_names, names(obj))
+    if (length(missing) > 0L) {
+      stop(sprintf("Refusing RDS upload: object is missing required field(s): %s",
+                   paste(missing, collapse = ", ")), call. = FALSE)
+    }
+  }
+
+  obj
+}
+
 #' First value of a lookup field as a character scalar
 #'
 #' A taxonomic rank that a database does not report comes back as

@@ -111,7 +111,11 @@ comparison_server <- function(input, output, session, net_reactive, info_reactiv
   }
 
   output$cmp_box_shared_species <- renderValueBox({
-    cmp <- tryCatch(comparison(), error = function(e) NULL)
+    cmp <- tryCatch(comparison(), error = function(e) {
+      warning(sprintf("[comparison_server] shared-species comparison failed: %s",
+                      conditionMessage(e)), call. = FALSE)
+      NULL
+    })
     if (is.null(cmp)) return(empty_box("Shared species", "handshake", "primary"))
     valueBox(value = length(cmp$species$shared),
              subtitle = sprintf("Shared species (Jaccard %.2f)", cmp$species$jaccard),
@@ -119,21 +123,33 @@ comparison_server <- function(input, output, session, net_reactive, info_reactiv
   })
 
   output$cmp_box_only_a <- renderValueBox({
-    cmp <- tryCatch(comparison(), error = function(e) NULL)
+    cmp <- tryCatch(comparison(), error = function(e) {
+      warning(sprintf("[comparison_server] only-A comparison failed: %s",
+                      conditionMessage(e)), call. = FALSE)
+      NULL
+    })
     if (is.null(cmp)) return(empty_box("Only in A", "arrow-left", "info"))
     valueBox(value = length(cmp$species$only_a), subtitle = "Species only in A",
              icon = icon("arrow-left"), color = "info")
   })
 
   output$cmp_box_only_b <- renderValueBox({
-    cmp <- tryCatch(comparison(), error = function(e) NULL)
+    cmp <- tryCatch(comparison(), error = function(e) {
+      warning(sprintf("[comparison_server] only-B comparison failed: %s",
+                      conditionMessage(e)), call. = FALSE)
+      NULL
+    })
     if (is.null(cmp)) return(empty_box("Only in B", "arrow-right", "warning"))
     valueBox(value = length(cmp$species$only_b), subtitle = "Species only in B",
              icon = icon("arrow-right"), color = "warning")
   })
 
   output$cmp_box_link_jaccard <- renderValueBox({
-    cmp <- tryCatch(comparison(), error = function(e) NULL)
+    cmp <- tryCatch(comparison(), error = function(e) {
+      warning(sprintf("[comparison_server] link-jaccard comparison failed: %s",
+                      conditionMessage(e)), call. = FALSE)
+      NULL
+    })
     if (is.null(cmp)) return(empty_box("Link similarity", "link", "success"))
     valueBox(value = sprintf("%.2f", cmp$links$jaccard),
              subtitle = sprintf("Link Jaccard (%d shared links)", nrow(cmp$links$shared)),

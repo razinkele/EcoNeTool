@@ -65,7 +65,8 @@ metaweb_manager_server <- function(input, output, session, current_metaweb,
         return()
       }
 
-      metaweb <- readRDS(metaweb_file)
+      metaweb <- safe_read_rds(metaweb_file, expected_class = "metaweb",
+                               expected_names = c("species", "interactions", "metadata"))
       current_metaweb(metaweb)
 
       showNotification(
