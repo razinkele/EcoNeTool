@@ -291,13 +291,13 @@ load_version_info <- function() {
 
   # Default version info (fallback)
   version_info <- list(
-    VERSION = "1.7.0",
-    VERSION_NAME = "Trait Provenance",
-    RELEASE_DATE = "2026-10-01",
+    VERSION = "1.7.1",
+    VERSION_NAME = "Feedback Dashboard",
+    RELEASE_DATE = "2026-10-19",
     STATUS = "stable",
     MAJOR = 1,
     MINOR = 7,
-    PATCH = 0
+    PATCH = 1
   )
 
   # Try to read VERSION file
