@@ -29,14 +29,17 @@ load_baltic_foodweb <- function(data_file = DATA_FILE) {
     # Some .Rdata files may contain functions (trophiclevels, plotfw, fluxind).
     # We extract only data objects and use our own analysis functions
     suppressMessages({
-      data_env <- new.env()
-      load(data_file, envir = data_env)
+      data_env <- safe_load_rdata(
+        data_file,
+        required = c("net", "info"),
+        allowed = RDATA_ALLOWED_OBJECTS
+      )
 
       # Validate required objects exist
-      if (!exists("net", envir = data_env)) {
+      if (!exists("net", envir = data_env, inherits = FALSE)) {
         stop("'net' object not found in data file")
       }
-      if (!exists("info", envir = data_env)) {
+      if (!exists("info", envir = data_env, inherits = FALSE)) {
         stop("'info' object not found in data file")
       }
 

@@ -76,18 +76,31 @@
   c(topo, nw)
 }
 
-#' Split "prey\rpredator" ids back into display names taken from web A
+#' Split "prey\rpredator" ids back into display names, preferring the web that
+#' owns each species so only_B links are rendered with B's names instead of A's.
 #' @keywords internal
-.cmp_display_links <- function(ids, nodes_a) {
+.cmp_display_links <- function(ids, nodes_a, nodes_b = nodes_a) {
   if (length(ids) == 0) {
     return(data.frame(prey = character(0), predator = character(0), stringsAsFactors = FALSE))
   }
   parts <- strsplit(ids, "\r", fixed = TRUE)
   prey_key <- vapply(parts, function(p) p[1], character(1))
   pred_key <- vapply(parts, function(p) p[2], character(1))
+
+  prey <- nodes_a$name[match(prey_key, nodes_a$key)]
+  pred <- nodes_a$name[match(pred_key, nodes_a$key)]
+  prey_missing <- is.na(prey)
+  pred_missing <- is.na(pred)
+  if (any(prey_missing)) {
+    prey[prey_missing] <- nodes_b$name[match(prey_key[prey_missing], nodes_b$key)]
+  }
+  if (any(pred_missing)) {
+    pred[pred_missing] <- nodes_b$name[match(pred_key[pred_missing], nodes_b$key)]
+  }
+
   data.frame(
-    prey = nodes_a$name[match(prey_key, nodes_a$key)],
-    predator = nodes_a$name[match(pred_key, nodes_a$key)],
+    prey = prey,
+    predator = pred,
     stringsAsFactors = FALSE
   )
 }
@@ -154,9 +167,9 @@ compare_networks <- function(net_a, info_a, net_b, info_b,
   ids_a <- unique(paste(edges_a$prey[in_shared_a], edges_a$predator[in_shared_a], sep = "\r"))
   ids_b <- unique(paste(edges_b$prey[in_shared_b], edges_b$predator[in_shared_b], sep = "\r"))
   links <- list(
-    shared = .cmp_display_links(intersect(ids_a, ids_b), nodes_a),
-    only_a = .cmp_display_links(setdiff(ids_a, ids_b), nodes_a),
-    only_b = .cmp_display_links(setdiff(ids_b, ids_a), nodes_a),
+    shared = .cmp_display_links(intersect(ids_a, ids_b), nodes_a, nodes_b),
+    only_a = .cmp_display_links(setdiff(ids_a, ids_b), nodes_a, nodes_a),
+    only_b = .cmp_display_links(setdiff(ids_b, ids_a), nodes_b, nodes_b),
     jaccard = .cmp_jaccard(ids_a, ids_b),
     n_unshared_species_a = sum(!in_shared_a),
     n_unshared_species_b = sum(!in_shared_b)
@@ -207,8 +220,11 @@ list_example_networks <- function(dir = app_path("examples")) {
 #' @export
 load_example_network <- function(path) {
   if (!file.exists(path)) stop(sprintf("Example file not found: %s", path), call. = FALSE)
-  env <- new.env()
-  load(path, envir = env)
+  env <- safe_load_rdata(
+    path,
+    required = c("net", "info"),
+    allowed = RDATA_ALLOWED_OBJECTS
+  )
   if (!exists("net", envir = env, inherits = FALSE) || !igraph::is_igraph(env$net)) {
     stop("Example file must contain an igraph object named 'net'", call. = FALSE)
   }

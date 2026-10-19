@@ -307,12 +307,12 @@ data_import_server <- function(input, output, session, net_reactive, info_reacti
 
       # --- RData: load directly, no proportion/disconnected flow ---
       if (file_ext %in% c("Rdata", "rda")) {
-        env <- new.env()
-        load(file_path, envir = env)
+        env <- safe_load_rdata(file_path, required = c("net", "info"),
+                               allowed = RDATA_ALLOWED_OBJECTS)
 
-        if (!exists("net", envir = env))
+        if (!exists("net", envir = env, inherits = FALSE))
           stop("RData file must contain 'net' object (igraph network)")
-        if (!exists("info", envir = env))
+        if (!exists("info", envir = env, inherits = FALSE))
           stop("RData file must contain 'info' data frame")
 
         loaded_net <- igraph::upgrade_graph(env$net)

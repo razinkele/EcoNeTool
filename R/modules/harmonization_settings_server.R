@@ -248,7 +248,11 @@ harmonization_settings_server <- function(input, output, session) {
       sizes <- numeric()
 
       for (file in sample_files) {
-        data <- tryCatch(readRDS(file), error = function(e) NULL)
+        data <- tryCatch(readRDS(file), error = function(e) {
+          warning(sprintf("[harmonization_settings_server] failed to read cache '%s': %s",
+                          file, conditionMessage(e)), call. = FALSE)
+          NULL
+        })
         if (!is.null(data) && !is.null(data$max_length_cm)) {
           sizes <- c(sizes, data$max_length_cm)
         }

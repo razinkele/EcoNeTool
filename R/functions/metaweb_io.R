@@ -100,13 +100,9 @@ import_metaweb_rds <- function(file) {
   validate_file_exists(file, "file")
 
   tryCatch({
-    # Load RDS file
-    metaweb <- readRDS(file)
-
-    # Validate it's a metaweb object
-    if (!inherits(metaweb, "metaweb")) {
-      stop("File does not contain a valid metaweb object")
-    }
+    # Load RDS file and validate the object shape before accepting it into the app.
+    metaweb <- safe_read_rds(file, expected_class = "metaweb",
+                             expected_names = c("species", "interactions", "metadata"))
 
     # Validate metaweb structure
     validate_metaweb(metaweb)

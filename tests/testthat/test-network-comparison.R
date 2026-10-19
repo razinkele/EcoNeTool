@@ -121,6 +121,27 @@ test_that("species names match after trimming and case folding", {
   expect_setequal(cmp$per_species$species, c("Phyto", "Zoo", "Fish"))
 })
 
+test_that("only_b links keep B's display names when shared-species edges differ", {
+  net_a <- make_graph(c("Alpha", "Beta"), directed = TRUE)
+  info_a <- data.frame(species = c("Alpha", "Beta"), stringsAsFactors = FALSE)
+
+  net_b <- make_graph(c("beta", "alpha"), directed = TRUE)
+  info_b <- data.frame(species = c("beta", "alpha"), stringsAsFactors = FALSE)
+
+  cmp <- compare_networks(net_a, info_a, net_b, info_b)
+
+  expect_equal(cmp$links$only_b, data.frame(
+    prey = c("beta"),
+    predator = c("alpha"),
+    stringsAsFactors = FALSE
+  ))
+  expect_equal(cmp$links$only_a, data.frame(
+    prey = c("Alpha"),
+    predator = c("Beta"),
+    stringsAsFactors = FALSE
+  ))
+})
+
 test_that("node-weighted metrics are skipped when either web lacks biomass", {
   a <- web_a()
   info_no_b <- a$info[, "species", drop = FALSE]

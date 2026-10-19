@@ -221,19 +221,96 @@ API_KEYS_FILE <- .config_file("config/api_keys.R")
 API_KEYS_JSON <- .config_file("config/api_keys.json")
 API_KEYS_TEMPLATE <- .config_file("config/api_keys.R.template")
 
-# Legacy .R key file. DEPRECATED: it is source()d, so whatever it contains is
-# executed at startup. plugin_server.R writes JSON precisely to remove that
-# path. Still read so existing installs keep working; re-saving the keys from
-# the Plugins tab migrates them and deletes this file.
+# Legacy .R key file. DEPRECATED: it is never executed. We parse only a tiny
+# whitelist of assignments so a stale config cannot run arbitrary R code at
+# startup (a historical root cause in this project). plugin_server.R writes
+# JSON and deletes the legacy file, so a single migration to the JSON format is
+# enough; the parser is only for compatibility while older installs catch up.
+.read_legacy_api_keys <- function(path) {
+  if (!file.exists(path)) {
+    return(list())
+  }
+
+  known <- c(
+    "algaebase_username",
+    "algaebase_password",
+    "freshwaterecology_key",
+    "traitbank_key",
+    "worms_key"
+  )
+
+  lines <- readLines(path, warn = FALSE)
+  result <- list()
+
+  for (line in lines) {
+    txt <- trimws(line)
+    if (!nzchar(txt) || grepl("^#", txt)) {
+      next
+    }
+
+    expr <- tryCatch(parse(text = txt, keep.source = FALSE), error = function(e) NULL)
+    if (is.null(expr) || length(expr) != 1L || !is.call(expr[[1L]])) {
+      next
+    }
+
+    # expr is an expression vector; the call is its single element, and for
+    # `key <- "value"` the call is (`<-`, key, "value").
+    assign_call <- expr[[1L]]
+    if (!(identical(assign_call[[1L]], as.name("<-")) || identical(assign_call[[1L]], as.name("=")))) {
+      next
+    }
+    if (length(assign_call) != 3L) {
+      next
+    }
+    # Left side: a bare name (`worms_key <- ...`) or the template's form
+    # `API_KEYS$worms_key <- ...`. Anything else is not a key assignment.
+    lhs <- assign_call[[2L]]
+    if (is.call(lhs) && identical(lhs[[1L]], as.name("$")) && length(lhs) == 3L &&
+        identical(lhs[[2L]], as.name("API_KEYS")) && is.name(lhs[[3L]])) {
+      lhs <- lhs[[3L]]
+    }
+    if (!is.name(lhs)) {
+      next
+    }
+
+    key <- as.character(lhs)
+    if (!(key %in% known)) {
+      warning(sprintf("[config] ignoring unsafe legacy API key assignment '%s' in %s", key, path), call. = FALSE)
+      next
+    }
+
+    rhs <- assign_call[[3L]]
+    if (is.null(rhs) || is.call(rhs) || is.name(rhs) || is.symbol(rhs) || is.expression(rhs)) {
+      warning(sprintf("[config] ignoring non-literal legacy value for '%s' in %s", key, path), call. = FALSE)
+      next
+    }
+
+    value <- tryCatch({
+      if (is.character(rhs)) rhs[1L] else as.character(rhs)
+    }, error = function(e) NULL)
+    if (is.null(value) || length(value) != 1L || is.na(value)) {
+      next
+    }
+
+    result[[key]] <- value
+  }
+
+  result
+}
+
 if (file.exists(API_KEYS_FILE)) {
-  tryCatch({
-    source(API_KEYS_FILE, local = TRUE)
+  legacy_keys <- .read_legacy_api_keys(API_KEYS_FILE)
+  if (length(legacy_keys) > 0L) {
+    for (key in names(legacy_keys)) {
+      API_KEYS[[key]] <- legacy_keys[[key]]
+    }
     message("⚠ Loaded API keys from the deprecated ", API_KEYS_FILE,
-            " (executed as R code). Re-save them from the Plugins tab to ",
+            " (parsed as a small literal assignment whitelist). Re-save them from the Plugins tab to ",
             "migrate to config/api_keys.json.")
-  }, error = function(e) {
-    warning("Failed to load API keys from ", API_KEYS_FILE, ": ", e$message)
-  })
+  } else {
+    warning("[config] legacy ", API_KEYS_FILE, " exists but contains no safe key assignments; it was ignored for security.",
+            call. = FALSE)
+  }
 }
 
 # Also load from JSON format (safer, preferred)
