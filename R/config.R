@@ -368,13 +368,13 @@ load_version_info <- function() {
 
   # Default version info (fallback)
   version_info <- list(
-    VERSION = "1.7.2",
-    VERSION_NAME = "Startup Order",
+    VERSION = "1.7.3",
+    VERSION_NAME = "Safe Loaders",
     RELEASE_DATE = "2026-10-19",
     STATUS = "stable",
     MAJOR = 1,
     MINOR = 7,
-    PATCH = 2
+    PATCH = 3
   )
 
   # Try to read VERSION file
