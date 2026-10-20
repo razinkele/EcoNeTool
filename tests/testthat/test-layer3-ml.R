@@ -92,3 +92,24 @@ test_that("load_ml_models() finds the bundled models regardless of the working d
   .ml_cache$models <- NULL
   expect_false(is.null(load_ml_models()))
 })
+
+test_that("ml_models_available() agrees with load_ml_models() from any working directory", {
+  # apply_ml_fallback() asks ml_models_available() first; it still used the
+  # wd-relative path after load_ml_models() was fixed, so ML imputation stayed
+  # off outside the repo root.
+  skip_if(!file.exists(file.path(app_root, "models", "trait_ml_models.rds")),
+          "models/trait_ml_models.rds missing; run scripts/train_trait_models.R")
+  withr::local_options(econetool.app_root = app_root)
+  withr::local_dir(tempdir())
+  expect_true(ml_models_available())
+  expect_identical(normalizePath(ml_models_path(), winslash = "/"),
+                   normalizePath(file.path(app_root, "models", "trait_ml_models.rds"), winslash = "/"))
+})
+
+test_that("missing ML models warn instead of a message production never shows", {
+  withr::local_options(econetool.app_root = withr::local_tempdir())
+  old <- .ml_cache$models
+  withr::defer(.ml_cache$models <- old)
+  .ml_cache$models <- NULL
+  expect_warning(expect_null(load_ml_models()), "ML models not found")
+})

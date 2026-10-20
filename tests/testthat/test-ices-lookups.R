@@ -550,3 +550,17 @@ test_that("[live] min_age=2 abundance does not exceed all-ages (BITS cod)", {
   expect_lte(sum(aged$data$abundance_index, na.rm = TRUE),
              sum(all_ages$data$abundance_index, na.rm = TRUE))
 })
+
+test_that("fetch_sag_ssb reports its own 'no assessment' error, not 'object not found' (F15)", {
+  # result$error <<- in the tryCatch BODY (the function frame, not a closure)
+  # looked for `result` above the function and failed with "object 'result'
+  # not found", which then became the reported error.
+  skip_if_not_installed("icesSAG")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  with_timeout <- function(expr, ...) NULL  # findAssessmentKey() finds nothing
+  .ices_cache[["sag_ssb_test.27.99"]] <- NULL
+  res <- fetch_sag_ssb("test.27.99")
+  expect_false(res$success)
+  expect_identical(res$error, "no SAG assessment for 'test.27.99'")
+})

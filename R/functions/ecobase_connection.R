@@ -264,7 +264,7 @@ get_ecobase_model_metadata <- function(model_id) {
     }
 
   }, error = function(e) {
-    message("  → Could not read metadata: ", e$message)
+    warning(paste0("[ecobase] could not read metadata: ", conditionMessage(e)), call. = FALSE)
     return(NULL)
   })
 }
@@ -692,6 +692,7 @@ test_ecobase_connection <- function() {
     return(TRUE)
 
   }, error = function(e) {
+    # swallow-ok: connection-test diagnostic; returning FALSE is the answer
     message("✗ Connection test failed: ", e$message)
     return(FALSE)
   })

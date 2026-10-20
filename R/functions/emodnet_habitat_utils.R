@@ -779,6 +779,7 @@ test_emodnet_integration <- function(euseamap_path = "data/euseamap/EUSeaMap_Bal
   euseamap <- tryCatch({
     load_euseamap(euseamap_path)
   }, error = function(e) {
+    # swallow-ok: test_emodnet_integration() CLI harness reports via cat()
     cat("✗ FAILED:", conditionMessage(e), "\n")
     return(NULL)
   })

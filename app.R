@@ -57,7 +57,6 @@ source("R/config/harmonization_config.R")  # Harmonization configuration for tra
 # - Error logging system for debugging and monitoring
 # - API rate limiting to prevent bans during batch operations
 # - SQLite indexed cache for 90× faster phylogenetic searches
-# - Parallel database queries for 3-5× faster lookups
 #
 # All features are backward compatible
 # =============================================================================
@@ -89,19 +88,13 @@ if (ENABLE_PHASE6) {
       message("✓ Phase 6: SQLite cache enabled")
     }
 
-    # Parallel database queries (3-5× faster lookups)
-    if (file.exists("R/functions/parallel_lookup.R")) {
-      source("R/functions/parallel_lookup.R")
-      # Initialize with 4 workers (adjust based on server CPU cores)
-      # Each worker uses ~200-300MB RAM
-      init_parallel_lookup(workers = 4)
-      message("✓ Phase 6: Parallel processing enabled (4 workers)")
-    }
+    # R/functions/parallel_lookup.R is not loaded: nothing calls it, and its
+    # 4-worker future plan cost ~1 GB at startup while any session's end reset
+    # the process-wide plan for every other session (deep-analysis F31).
   })
 
   message("═══════════════════════════════════════════════════════════")
   message("✓ PHASE 6 LOADED - Performance & Robustness Active")
-  message("  - 3-5× faster lookups (parallel queries)")
   message("  - 90× faster phylogenetic searches (SQLite cache)")
   message("  - Zero API bans (rate limiting with automatic retry)")
   message("  - Comprehensive error tracking and health monitoring")
@@ -613,20 +606,6 @@ ui <- dashboardPage(
 # ============================================================================
 
 server <- function(input, output, session) {
-  # ============================================================================
-  # SESSION CLEANUP - Release parallel workers on session end
-  # ============================================================================
-  session$onSessionEnded(function() {
-    tryCatch({
-      if (exists("shutdown_parallel_lookup") && is.function(shutdown_parallel_lookup)) {
-        shutdown_parallel_lookup()
-        message("Session ended: parallel workers released")
-      }
-    }, error = function(e) {
-      # Silent fail - session is ending anyway
-    })
-  })
-
   # ============================================================================
   # GLOBAL REACTIVE VALUES (Shared across phases)
   # ============================================================================

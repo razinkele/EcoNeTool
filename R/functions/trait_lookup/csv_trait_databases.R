@@ -21,14 +21,19 @@
   # Use normalised file_path as effective cache key so different files
   # (e.g. tempfiles in tests) are never confused, while still accepting the
   # cache_key parameter for API compatibility.
-  effective_key <- tryCatch(normalizePath(file_path, mustWork = FALSE),
-                             error = function(e) file_path)
+  effective_key <- tryCatch(
+    normalizePath(file_path, mustWork = FALSE),
+    error = function(e) {
+      # swallow-ok: normalizePath() fallback; the raw path is still a valid cache key
+      file_path
+    }
+  )
   if (!is.null(.csv_cache[[effective_key]])) return(.csv_cache[[effective_key]])
   if (!file.exists(file_path)) return(NULL)
   data <- tryCatch(
     read.csv(file_path, stringsAsFactors = FALSE, fileEncoding = "UTF-8"),
     error = function(e) {
-      message("Error reading ", file_path, ": ", e$message)
+      warning(sprintf("[csv traits] error reading %s: %s", file_path, conditionMessage(e)), call. = FALSE)
       NULL
     }
   )

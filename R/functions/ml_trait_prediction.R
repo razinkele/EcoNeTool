@@ -80,17 +80,13 @@ load_ml_models <- function() {
     return(.ml_cache$models)
   }
 
-  # app_path() (validation_utils.R) resolves against the repo root, not getwd();
-  # a bare relative path is "not found" from any other wd (e.g. under testthat).
-  models_file <- if (exists("app_path", mode = "function")) {
-    app_path("models", "trait_ml_models.rds")
-  } else {
-    "models/trait_ml_models.rds"
-  }
+  models_file <- ml_models_path()
 
+  # warning(), not message(): production keeps no message() output, so ML
+  # imputation used to switch off invisibly (F39).
   if (!file.exists(models_file)) {
-    message("⚠️  ML models not found at: ", models_file)
-    message("    Run scripts/train_trait_models.R to generate models")
+    warning(sprintf("[ML] ML models not found at %s; run scripts/train_trait_models.R", models_file),
+            call. = FALSE)
     return(NULL)
   }
 
@@ -103,7 +99,7 @@ load_ml_models <- function() {
   # applied to an object of class 'c(randomForest.formula, randomForest)'",
   # silently dropping every ML-imputed trait.
   if (!requireNamespace("randomForest", quietly = TRUE)) {
-    message("⚠️  Package 'randomForest' not installed — ML prediction unavailable")
+    warning("[ML] package 'randomForest' not installed; ML prediction unavailable", call. = FALSE)
     return(NULL)
   }
 
@@ -128,7 +124,7 @@ load_ml_models <- function() {
     return(models)
 
   }, error = function(e) {
-    message("⚠️  Error loading ML models: ", e$message)
+    warning(sprintf("[ML] error loading ML models: %s", conditionMessage(e)), call. = FALSE)
     return(NULL)
   })
 }
@@ -309,7 +305,7 @@ predict_trait_ml <- function(trait_name, taxonomic_info, models_package = NULL) 
     ))
 
   }, error = function(e) {
-    message("    ⚠️  ML prediction failed for ", trait_name, ": ", e$message)
+    warning(sprintf("[ML] prediction failed for %s: %s", trait_name, conditionMessage(e)), call. = FALSE)
     return(NULL)
   })
 }
@@ -465,7 +461,22 @@ get_ml_model_diagnostics <- function() {
 #' @return TRUE if models are loaded/available, FALSE otherwise
 #' @export
 ml_models_available <- function() {
-  return(file.exists("models/trait_ml_models.rds"))
+  file.exists(ml_models_path())
+}
+
+#' Path of the bundled ML trait models (F39)
+#'
+#' app_path() (validation_utils.R) resolves against the repo root, not
+#' getwd(); a bare relative path is "not found" from any other working
+#' directory (testthat runs in tests/testthat), which switched ML off.
+#'
+#' @return Character path to models/trait_ml_models.rds.
+ml_models_path <- function() {
+  if (exists("app_path", mode = "function")) {
+    app_path("models", "trait_ml_models.rds")
+  } else {
+    "models/trait_ml_models.rds"
+  }
 }
 
 #' Get list of traits that can be predicted

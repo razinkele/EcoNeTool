@@ -2,6 +2,10 @@
 # Parallel Database Lookup
 # =============================================================================
 #
+# NOT LOADED AT STARTUP; NO CALLERS (deep-analysis F31/F13). app.R no longer
+# sources this file or starts its future plan. Kept because tests read it and
+# tests/test_phase6_performance.R sources it directly.
+#
 # This module implements parallel execution of database queries to dramatically
 # reduce lookup latency. Instead of serial queries (FishBase → wait →
 # SeaLifeBase → wait → ...), all queries run concurrently.
@@ -96,6 +100,7 @@ shutdown_parallel_lookup <- function() {
       message("Parallel processing shutdown (was: ", current_plan, ")")
     }
   }, error = function(e) {
+    # swallow-ok: latent code with no callers (F31); falls back to a sequential plan
     # Force sequential on any error
     suppressWarnings(plan(sequential))
   })
@@ -133,6 +138,7 @@ parallel_worker_status <- function() {
 
     return(status)
   }, error = function(e) {
+    # swallow-ok: latent code with no callers (F31); status probe reports unknown
     list(
       plan = "unknown",
       is_parallel = FALSE,

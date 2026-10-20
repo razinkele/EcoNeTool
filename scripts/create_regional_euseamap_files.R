@@ -167,7 +167,7 @@ for (region in names(results)) {
     sf::st_read(result$path, quiet = TRUE)
   }, error = function(e) {
     cat(sprintf("   ✗ %s: Cannot read file - %s\n", toupper(region), conditionMessage(e)))
-    validation_ok <- FALSE
+    validation_ok <<- FALSE  # <<-: `<-` was lost, so validation always reported OK (F23b)
     return(NULL)
   })
 

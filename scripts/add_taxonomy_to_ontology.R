@@ -15,7 +15,7 @@ cat("ADD TAXONOMY TO ONTOLOGY DATABASE\n")
 cat("=============================================================================\n\n")
 
 # Load required functions
-source("R/functions/trait_lookup.R")
+source("R/functions/trait_lookup/load_all.R")  # trait_lookup.R was split into this package
 
 # Read current ontology
 ontology_file <- "data/ontology_traits.csv"

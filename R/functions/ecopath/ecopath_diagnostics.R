@@ -45,6 +45,7 @@ test_ecopath_import <- function(db_file = NULL) {
           cat("  (None found - but this is normal if using file-based connections)\n")
         }
       }, error = function(e) {
+        # swallow-ok: CLI diagnostic; the cat() output is the product
         cat("  Could not list drivers:", e$message, "\n")
       })
     } else {
@@ -97,6 +98,7 @@ test_ecopath_import <- function(db_file = NULL) {
       return(invisible(TRUE))
 
     }, error = function(e) {
+      # swallow-ok: CLI diagnostic; the cat() output is the product
       cat("\n✗ Error:", e$message, "\n")
       return(invisible(FALSE))
     })

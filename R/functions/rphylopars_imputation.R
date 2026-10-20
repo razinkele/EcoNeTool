@@ -54,7 +54,7 @@ build_taxonomy_tree <- function(taxonomy_df) {
     tree <- ape::as.phylo(hc)
     tree
   }, error = function(e) {
-    message("  [rphylopars] build_taxonomy_tree error: ", e$message)
+    warning(paste0("[rphylopars] build_taxonomy_tree error: ", conditionMessage(e)), call. = FALSE)
     NULL
   })
 }
@@ -110,7 +110,7 @@ impute_with_rphylopars <- function(trait_matrix, taxonomy_df) {
 
     list(imputed = imputed_mat, variances = var_mat, method = "rphylopars")
   }, error = function(e) {
-    message("  [Rphylopars] impute_with_rphylopars error: ", e$message)
+    warning(paste0("[Rphylopars] impute_with_rphylopars error: ", conditionMessage(e)), call. = FALSE)
     NULL
   })
 }
