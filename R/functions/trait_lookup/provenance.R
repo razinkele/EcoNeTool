@@ -67,9 +67,12 @@ TEXT_INPUT_SOURCES <- list(
     c("cefas", "mobility_info", "Cefas"), c("polytraits", "mobility_info", "PolyTraits"),
     c("emodnet", "mobility_info", "EMODnet")
   ),
+  # FishBase first: its per-species DemersPelag is more specific than WoRMS's
+  # coarse functional group (which fish rarely have anyway).
   habitat = list(
+    c("fishbase", "habitat", "FishBase"),
     c("worms", "habitat", "WoRMS"), c("worms", "functional_group", "WoRMS"),
-    c("fishbase", "habitat", "FishBase"), c("sealifebase", "habitat", "SeaLifeBase"),
+    c("sealifebase", "habitat", "SeaLifeBase"),
     c("biotic", "living_habit", "BIOTIC"), c("biotic", "substratum", "BIOTIC"),
     c("freshwater", "habitat", "freshwaterecology.info"), c("algaebase", "habitat", "AlgaeBase"),
     c("worms_attrs", "zone", "WoRMS_Traits")

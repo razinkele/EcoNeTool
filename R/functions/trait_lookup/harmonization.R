@@ -84,7 +84,9 @@ get_harm_config <- function() {
 #' 2L: C-6a (WoRMS body-size units, FishBase grams, NA ranks).
 #' 3L: C-8 (per-trait T_method / T_confidence, PR no longer defaults to a
 #'     "Taxonomy" PR0, scored imputed codes, 0.34 / 0.67 label bands).
-TRAIT_LOOKUP_REVISION <- 3L
+#' 4L: fish EP (order rules beat ambiguous "demersal" text; FishBase habitat
+#'     no longer dropped when WoRMS has a functional group).
+TRAIT_LOOKUP_REVISION <- 4L
 
 
 #' Hash of the effective harmonization config (trait-cache key, F72)
@@ -759,8 +761,15 @@ harmonize_mobility <- function(mobility_info = NULL, body_shape = NULL, taxonomi
 harmonize_environmental_detail <- function(depth_min = NULL, depth_max = NULL,
                                            habitat_info = NULL, taxonomic_info = NULL) {
 
-  # 1. Explicit habitat text, through the shared vocabulary patterns.
+  # 1. Explicit habitat text, through the shared vocabulary patterns. EP2 text
+  #    is "demersal" / "benthopelagic": on OR near the bottom, which cannot
+  #    separate EP2 from EP3, so an order rule that says otherwise (flatfish and
+  #    gobies EP3, Clupeiformes EP1) decides. Specific text still wins.
   code <- classify_by_patterns(habitat_info, "environmental")
+  if (identical(code, "EP2")) {
+    rule <- apply_taxon_rules(taxonomic_info, "environmental", text = habitat_info)
+    if (!is.na(rule) && rule != "EP2") return(harmonized_code(rule, "rule", "taxon"))
+  }
   if (!is.na(code)) return(harmonized_code(code, "observed", "text"))
 
   # 2. Pelagic taxa (phyto- and zooplankton, medusae) and infaunal bivalves.
