@@ -53,8 +53,20 @@ test_that("polychaeta invertebrate also flags polytraits", {
 
 test_that("zooplankton route (non-invert phylum) queries MAREDAT and SeaLifeBase", {
   # Chaetognatha phylum is NOT in the invertebrate-phyla list, so it reaches the
-  # zooplankton class branch. (Copepods are arthropoda and route as inverts -
-  # a pre-existing quirk this extraction deliberately preserves.)
+  # zooplankton class branch. (Copepods are arthropoda: they route as inverts
+  # and get MAREDAT added there - see the copepod test below.)
   f <- route_trait_databases("chaetognatha", "chaetognatha", TRUE, TRUE)
   expect_true(f$maredat && f$sealifebase)
+})
+
+test_that("copepods and ostracods (arthropoda) also query MAREDAT, keeping invert sources", {
+  # WoRMS classes copepods/ostracods under phylum Arthropoda, so the invertebrate
+  # branch matched first and MAREDAT (the zooplankton database) was never asked.
+  for (cls in c("copepoda", "ostracoda")) {
+    f <- route_trait_databases("arthropoda", cls, TRUE, TRUE)
+    expect_true(f$maredat, info = cls)
+    expect_true(f$sealifebase && f$biotic, info = cls)  # benthic species keep their sources
+  }
+  # Benthic arthropods are unchanged.
+  expect_false(route_trait_databases("arthropoda", "malacostraca", TRUE, TRUE)$maredat)
 })

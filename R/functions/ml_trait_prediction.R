@@ -80,7 +80,13 @@ load_ml_models <- function() {
     return(.ml_cache$models)
   }
 
-  models_file <- "models/trait_ml_models.rds"
+  # app_path() (validation_utils.R) resolves against the repo root, not getwd();
+  # a bare relative path is "not found" from any other wd (e.g. under testthat).
+  models_file <- if (exists("app_path", mode = "function")) {
+    app_path("models", "trait_ml_models.rds")
+  } else {
+    "models/trait_ml_models.rds"
+  }
 
   if (!file.exists(models_file)) {
     message("⚠️  ML models not found at: ", models_file)

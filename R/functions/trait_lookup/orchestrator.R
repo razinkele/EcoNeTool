@@ -262,6 +262,9 @@ route_trait_databases <- function(phylum, class, is_marine, worms_ok) {
     flags$emodnet <- TRUE
     if (class == "anthozoa") flags$coral <- TRUE
     if (class == "polychaeta") flags$polytraits <- TRUE
+    # Copepods and ostracods are arthropods in WoRMS, so they land here before
+    # the zooplankton branch below; ask MAREDAT too (benthic sources stay on).
+    if (class %in% zoo_classes) flags$maredat <- TRUE
   } else if (class %in% zoo_classes) {
     flags$maredat <- TRUE
     flags$sealifebase <- TRUE

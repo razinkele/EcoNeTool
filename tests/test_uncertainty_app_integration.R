@@ -19,10 +19,10 @@ suppressPackageStartupMessages({
 })
 
 # Load configuration and required functions
+source("R/functions/validation_utils.R")  # app_path(), %||% - before config.R, as in app.R
 source("R/config.R")
-source("R/functions/trait_lookup.R")
+source("R/functions/trait_lookup/load_all.R")  # trait_lookup.R was split into this package
 source("R/functions/uncertainty_quantification.R")
-source("R/functions/validation_utils.R")
 source("R/functions/trophic_levels.R")
 source("R/functions/network_visualization.R")
 
