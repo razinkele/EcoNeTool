@@ -183,6 +183,16 @@ TRAIT_VOCAB <- local({
              flag = "zooplankton_pelagic"),
         list(match = list(phylum = "^Cnidaria$", class = "^Hydrozoa$"), text = "medusa|pelagic", code = "EP1",
              flag = "zooplankton_pelagic"),
+        # Epifaunal bivalve families (byssally attached, cemented or lying on the
+        # bottom) are EP3, ahead of the all-Bivalvia EP4 rule: zebra mussels
+        # (Dreissenidae) are not in BIOTIC and were made endobenthic. The
+        # rock-boring date mussels are Mytilidae but live inside the rock: EP4.
+        list(match = list(phylum = "^Mollusca$", class = "^Bivalvia$", genus = "^(Lithophaga|Leiosolenus|Botula)$"),
+             code = "EP4", flag = "infaunal_bivalves"),
+        list(match = list(phylum = "^Mollusca$", class = "^Bivalvia$",
+                          family = paste0("^(Mytilidae|Dreissenidae|Ostreidae|Gryphaeidae|Pectinidae|Anomiidae|",
+                                          "Limidae|Arcidae|Pinnidae|Spondylidae|Chamidae)$")),
+             code = "EP3", flag = "infaunal_bivalves"),
         list(match = list(phylum = "^Mollusca$", class = "^Bivalvia$"), code = "EP4", flag = "infaunal_bivalves")
       ),
       environmental = list(
