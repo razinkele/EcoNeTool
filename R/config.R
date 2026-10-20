@@ -368,13 +368,13 @@ load_version_info <- function() {
 
   # Default version info (fallback)
   version_info <- list(
-    VERSION = "1.7.4",
-    VERSION_NAME = "Trait Routing",
+    VERSION = "1.7.5",
+    VERSION_NAME = "Zooplankton Orders",
     RELEASE_DATE = "2026-10-20",
     STATUS = "stable",
     MAJOR = 1,
     MINOR = 7,
-    PATCH = 4
+    PATCH = 5
   )
 
   # Try to read VERSION file
