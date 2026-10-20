@@ -368,13 +368,13 @@ load_version_info <- function() {
 
   # Default version info (fallback)
   version_info <- list(
-    VERSION = "1.7.7",
-    VERSION_NAME = "Epifaunal Bivalves",
+    VERSION = "1.7.8",
+    VERSION_NAME = "Spatial State",
     RELEASE_DATE = "2026-10-20",
     STATUS = "stable",
     MAJOR = 1,
     MINOR = 7,
-    PATCH = 7
+    PATCH = 8
   )
 
   # Try to read VERSION file
