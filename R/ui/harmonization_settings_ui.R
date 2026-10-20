@@ -30,7 +30,7 @@ CONSUMED_TAXONOMIC_RULES <- c(
   bivalves_sessile = "Bivalves -> MB1 (sessile)",
   phytoplankton_pelagic = "Phytoplankton -> EP1 (pelagic)",
   zooplankton_pelagic = "Zooplankton (copepods, cladocerans, salps, medusae) -> EP1 (pelagic)",
-  infaunal_bivalves = "Bivalves -> EP4 (endobenthic)",
+  infaunal_bivalves = "Bivalves -> EP4 (endobenthic; mussels, oysters, scallops EP3)",
   bivalves_hard_shell = "Bivalves -> PR6 (hard shell)",
   gastropods_hard_shell = "Gastropods -> PR6 (hard shell)",
   crustaceans_exoskeleton = "Malacostraca -> PR8 (armoured)",

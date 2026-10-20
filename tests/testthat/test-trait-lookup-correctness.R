@@ -533,6 +533,44 @@ test_that("an infaunal bivalve with only a shallow depth range is endobenthic (E
   })
 })
 
+test_that("epifaunal bivalve families stay epibenthic (EP3) without habitat text", {
+  # Zebra mussel and Conrad's false mussel (Dreissenidae) are byssally attached
+  # and not in BIOTIC, so with no habitat text the all-Bivalvia rule made them EP4.
+  biv <- function(order, family, genus) {
+    list(phylum = "Mollusca", class = "Bivalvia", order = order, family = family, genus = genus)
+  }
+  epifaunal <- list(biv("Myida", "Dreissenidae", "Dreissena"), biv("Myida", "Dreissenidae", "Mytilopsis"),
+                    biv("Mytilida", "Mytilidae", "Mytilus"), biv("Ostreida", "Ostreidae", "Ostrea"),
+                    biv("Pectinida", "Pectinidae", "Pecten"), biv("Pectinida", "Anomiidae", "Anomia"),
+                    biv("Limida", "Limidae", "Lima"), biv("Arcida", "Arcidae", "Arca"))
+  for (tx in epifaunal) {
+    expect_identical(harmonize_environmental_position(depth_min = 0, depth_max = 10, taxonomic_info = tx), "EP3",
+                     info = tx$genus)
+    expect_identical(harmonize_environmental_position(habitat_info = c("benthos", "benthic"), taxonomic_info = tx),
+                     "EP3", info = tx$genus)
+  }
+  # Infaunal bivalves and the rock-boring date mussel (a Mytilidae) stay EP4.
+  for (tx in list(biv("Myida", "Myidae", "Mya"), biv("Cardiida", "Tellinidae", "Macoma"),
+                  biv("Cardiida", "Cardiidae", "Cerastoderma"), biv("Mytilida", "Mytilidae", "Lithophaga"))) {
+    expect_identical(harmonize_environmental_position(depth_min = 0, depth_max = 10, taxonomic_info = tx), "EP4",
+                     info = tx$genus)
+  }
+  # Habitat text still wins over the family rule.
+  expect_identical(harmonize_environmental_position(habitat_info = "burrower",
+                                                    taxonomic_info = biv("Myida", "Dreissenidae", "Dreissena")), "EP4")
+  # Both bivalve EP rules sit behind the one infaunal_bivalves switch: off -> depth rule (EP3) for all.
+  cfg <- HARMONIZATION_CONFIG
+  cfg$taxonomic_rules$infaunal_bivalves <- FALSE
+  session <- shiny::MockShinySession$new()
+  on.exit(session$close(), add = TRUE)
+  session$userData$harm_config <- cfg
+  shiny::withReactiveDomain(session, {
+    expect_identical(harmonize_environmental_position(habitat_info = c("benthos", "benthic"),
+                                                      taxonomic_info = biv("Myida", "Dreissenidae", "Dreissena")),
+                     "EP3")
+  })
+})
+
 test_that("shallow and deep fish keep the depth rule before their order rules", {
   cod <- list(phylum = "Chordata", class = "Teleostei", order = "Gadiformes")
   herring <- list(phylum = "Chordata", class = "Teleostei", order = "Clupeiformes")
