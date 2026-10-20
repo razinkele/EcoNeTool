@@ -70,3 +70,40 @@ test_that("copepods and ostracods (arthropoda) also query MAREDAT, keeping inver
   # Benthic arthropods are unchanged.
   expect_false(route_trait_databases("arthropoda", "malacostraca", TRUE, TRUE)$maredat)
 })
+
+test_that("order-level zooplankton (water fleas, mysids, krill) also query MAREDAT", {
+  # WoRMS ranks these as orders, not classes: water fleas are Anomopoda / Ctenopoda /
+  # Onychopoda / Haplopoda (WoRMS has no "Cladocera" rank), mysids are Mysida and krill
+  # Euphausiacea, all inside Branchiopoda / Malacostraca. Classes alone cannot see them.
+  cases <- list(c("branchiopoda", "anomopoda"),   # Daphnia, Bosmina
+                c("branchiopoda", "ctenopoda"),   # Penilia
+                c("branchiopoda", "onychopoda"),  # Podon, Evadne, Cercopagis
+                c("branchiopoda", "haplopoda"),   # Leptodora
+                c("malacostraca", "mysida"),      # Neomysis
+                c("malacostraca", "euphausiacea"))  # Euphausia, Thysanoessa
+  for (cs in cases) {
+    f <- route_trait_databases("arthropoda", cs[1], TRUE, TRUE, order = cs[2])
+    expect_true(f$maredat, info = cs[2])
+    expect_true(f$sealifebase && f$biotic, info = cs[2])
+  }
+  # Order matching is case-insensitive (WoRMS returns "Mysida").
+  expect_true(route_trait_databases("Arthropoda", "Malacostraca", TRUE, TRUE, order = "Mysida")$maredat)
+  # Benthic orders in the same classes stay off MAREDAT; clam shrimps share the
+  # Diplostraca superorder with water fleas but are not plankton.
+  for (o in c("amphipoda", "decapoda", "isopoda", "spinicaudata")) {
+    expect_false(route_trait_databases("arthropoda", "malacostraca", TRUE, TRUE, order = o)$maredat, info = o)
+  }
+  # order is optional: existing callers and NA/NULL order are unaffected.
+  expect_false(route_trait_databases("arthropoda", "malacostraca", TRUE, TRUE)$maredat)
+  expect_false(route_trait_databases("arthropoda", "malacostraca", TRUE, TRUE, order = NA)$maredat)
+  expect_false(route_trait_databases("arthropoda", "malacostraca", TRUE, TRUE, order = NULL)$maredat)
+})
+
+test_that("lookup_species_traits passes the WoRMS order to the router", {
+  src <- readLines(app_path("R/functions/trait_lookup/orchestrator.R"), warn = FALSE)
+  call_at <- grep("route_trait_databases(", src, fixed = TRUE)
+  call_at <- call_at[!grepl("<- function", src[call_at], fixed = TRUE)]
+  expect_length(call_at, 1)
+  call_src <- paste(src[call_at:(call_at + 6)], collapse = "\n")
+  expect_true(grepl("order = raw_traits$worms$order", call_src, fixed = TRUE))
+})

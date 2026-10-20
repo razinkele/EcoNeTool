@@ -206,9 +206,11 @@ assign_trait_if_resolved <- function(result, trait, value, source, method = "obs
 #' @param class lowercase class string, or NULL/NA
 #' @param is_marine logical / NA / NULL from WoRMS
 #' @param worms_ok TRUE if the WoRMS classification lookup succeeded
+#' @param order lowercase order string, or NULL/NA (optional; lets order-ranked
+#'   zooplankton such as mysids, krill and water fleas reach MAREDAT)
 #' @return named list of logical query_* flags
 #' @export
-route_trait_databases <- function(phylum, class, is_marine, worms_ok) {
+route_trait_databases <- function(phylum, class, is_marine, worms_ok, order = NULL) {
   flags <- list(
     fishbase = FALSE, sealifebase = FALSE, biotic = FALSE, freshwater = FALSE,
     maredat = FALSE, ptdb = FALSE, algaebase = FALSE, species_enriched = FALSE,
@@ -219,6 +221,7 @@ route_trait_databases <- function(phylum, class, is_marine, worms_ok) {
 
   phylum <- if (length(phylum) == 1 && !is.na(phylum)) tolower(phylum) else ""
   class <- if (length(class) == 1 && !is.na(class)) tolower(class) else ""
+  order <- if (length(order) == 1 && !is.na(order)) tolower(order) else ""
 
   fallback <- function() {
     for (k in c("fishbase", "sealifebase", "biotic", "freshwater", "maredat",
@@ -241,6 +244,11 @@ route_trait_databases <- function(phylum, class, is_marine, worms_ok) {
                     "nemertea", "sipuncula")
   zoo_classes <- c("copepoda", "cladocera", "ostracoda", "mysida", "euphausiacea",
                    "chaetognatha", "appendicularia", "thaliacea")
+  # WoRMS ranks these as orders inside Branchiopoda / Malacostraca. It has no
+  # "Cladocera" rank: water fleas are the four orders below (superorder
+  # Diplostraca, which also holds the non-planktonic clam shrimps).
+  zoo_orders <- c("anomopoda", "ctenopoda", "onychopoda", "haplopoda",
+                  "mysida", "euphausiacea")
   phyto_phyla <- c("chlorophyta", "ochrophyta", "rhodophyta", "cyanobacteria",
                    "bacillariophyta", "dinoflagellata", "haptophyta", "cryptophyta",
                    "euglenozoa", "charophyta", "myzozoa", "miozoa")
@@ -264,7 +272,7 @@ route_trait_databases <- function(phylum, class, is_marine, worms_ok) {
     if (class == "polychaeta") flags$polytraits <- TRUE
     # Copepods and ostracods are arthropods in WoRMS, so they land here before
     # the zooplankton branch below; ask MAREDAT too (benthic sources stay on).
-    if (class %in% zoo_classes) flags$maredat <- TRUE
+    if (class %in% zoo_classes || order %in% zoo_orders) flags$maredat <- TRUE
   } else if (class %in% zoo_classes) {
     flags$maredat <- TRUE
     flags$sealifebase <- TRUE
@@ -585,7 +593,8 @@ lookup_species_traits <- function(species_name,
     phylum = raw_traits$worms$phylum,
     class = raw_traits$worms$class,
     is_marine = raw_traits$worms$isMarine,
-    worms_ok = worms_ok
+    worms_ok = worms_ok,
+    order = raw_traits$worms$order
   )
   query_fishbase <- route_flags$fishbase
   query_sealifebase <- route_flags$sealifebase
