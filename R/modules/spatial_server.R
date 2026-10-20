@@ -24,6 +24,85 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
   spatial_study_area <- reactiveVal(NULL)
   spatial_habitat_clipped <- reactiveVal(NULL)  # Clipped habitat data
   spatial_grid_with_habitat <- reactiveVal(NULL)  # Grid enriched with habitat
+  extraction_status <- reactiveVal(NULL)  # Text for output$spatial_extraction_info
+
+  # --- Session state invalidation (deep-analysis fix D1, F58) -----------------
+  # Changing an upstream input clears everything downstream of it, so a new
+  # grid or study area never shows the previous run's networks, metrics or
+  # habitat. The node sets live in spatial_invalidation_targets().
+  spatial_state <- list(
+    hex_grid = spatial_hex_grid, local_networks = spatial_local_networks,
+    metrics_data = spatial_metrics_data, habitat_clipped = spatial_habitat_clipped,
+    grid_with_habitat = spatial_grid_with_habitat
+  )
+  map_groups <- c(hex_grid = "Grid", habitat_clipped = "Habitat", metrics_data = "Metrics")
+
+  # leafletProxy() needs a real client; testServer sessions get NULL.
+  map_proxy <- function() {
+    if (inherits(session, "MockShinySession")) NULL else leafletProxy("spatial_map", session)
+  }
+
+  reset_spatial_downstream <- function(from) {
+    targets <- spatial_invalidation_targets(from)
+    for (node in targets) spatial_state[[node]](NULL)
+    if ("local_networks" %in% targets) extraction_status(NULL)
+    proxy <- map_proxy()
+    if (!is.null(proxy)) {
+      for (group in map_groups[intersect(names(map_groups), targets)]) proxy <- clearGroup(proxy, group)
+      if ("metrics_data" %in% targets) clearControls(proxy)
+    }
+    invisible(targets)
+  }
+
+  # The grid the habitat views and exports use: habitat-enriched if overlaid.
+  # Network extraction keeps the pristine spatial_hex_grid() (F63).
+  active_grid <- reactive(spatial_grid_with_habitat() %||% spatial_hex_grid())
+
+  # --- EUSeaMap habitat for the extent in use (F57) ---------------------------
+  # euseamap_data is shared with the Ecopath tab, so it is never cleared here:
+  # it is reloaded whenever it does not cover the study area / grid.
+  load_habitat_for_extent <- function(target_bbox) {
+    showNotification("Loading EUSeaMap habitat data for the study extent...",
+                     type = "message", duration = NULL, id = "spatial_emodnet_loading")
+    on.exit(removeNotification("spatial_emodnet_loading"), add = TRUE)
+    tryCatch({
+      euseamap <- load_regional_euseamap(custom_bbox = target_bbox,
+                                         path = app_path("data/EUSeaMap_2025/EUSeaMap_2025.gdb"))
+      euseamap_data(euseamap)
+      region <- attr(euseamap, "region") %||% "unknown"
+      showNotification(sprintf("EUSeaMap loaded: %d polygons (%s region)", nrow(euseamap), toupper(region)),
+                       type = "message", duration = 5)
+      TRUE
+    }, error = function(e) {
+      warning(sprintf("[spatial] EUSeaMap load failed: %s", conditionMessage(e)), call. = FALSE)
+      showNotification(paste("Failed to load EUSeaMap:", conditionMessage(e),
+                             "\nPlease ensure EUSeaMap_2025.gdb exists in data/ directory"),
+                       type = "error", duration = 10)
+      updateCheckboxInput(session, "spatial_enable_habitat", value = FALSE)
+      FALSE
+    })
+  }
+
+  # TRUE when euseamap_data() covers the study area / grid (loading it if not).
+  ensure_habitat_loaded <- function() {
+    target <- habitat_target_bbox(isolate(spatial_study_area()), isolate(spatial_hex_grid()))
+    if (is.null(target)) return(FALSE)
+    if (euseamap_covers(isolate(euseamap_data()), target)) return(TRUE)
+    load_habitat_for_extent(target)
+  }
+
+  # A new or cleared study area invalidates the grid and everything after it.
+  study_area_changed <- function() {
+    had_grid <- !is.null(isolate(spatial_hex_grid()))
+    reset_spatial_downstream("study_area")
+    if (had_grid) {
+      output$spatial_grid_info <- renderPrint(cat("Grid cleared: study area changed. Create a new grid."))
+      showNotification("Grid cleared: study area changed", type = "warning", duration = 6)
+    }
+    if (!is.null(isolate(spatial_study_area())) && isTRUE(isolate(input$spatial_enable_habitat))) {
+      ensure_habitat_loaded()
+    }
+  }
 
   # 0. Study Area Upload Handler (NEW)
   observeEvent(input$spatial_study_area, {
@@ -153,6 +232,7 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
 
       # Store in reactive value (this will trigger reactive outputs to update)
       spatial_study_area(study_area)
+      study_area_changed()
 
       # Reset BBT selector since custom file is being used
       updateSelectInput(session, "spatial_bbt_selector", selected = "")
@@ -247,82 +327,56 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
     }
 
     tryCatch({
-      # Load BBT.geojson file
-      bbt_file <- file.path("data", "BBT.geojson")
-
-      if (!file.exists(bbt_file)) {
-        showNotification(
-          "BBT.geojson file not found in data directory",
-          type = "error",
-          duration = 5
-        )
-        return()
-      }
-
-      # Read the entire BBT geojson
-      # Disable s2 to avoid geometry issues with 3D coordinates
-      sf::sf_use_s2(FALSE)
-      bbt_data <- sf::st_read(bbt_file, quiet = TRUE)
-
-      # Filter by selected BBT name
-      selected_bbt <- bbt_data[bbt_data$Name == input$spatial_bbt_selector, ]
-
-      if (nrow(selected_bbt) == 0) {
-        showNotification(
-          paste("BBT polygon not found:", input$spatial_bbt_selector),
-          type = "error",
-          duration = 5
-        )
-        sf::sf_use_s2(TRUE)
-        return()
-      }
-
-      # Drop Z/M coordinates if present
-      selected_bbt <- sf::st_zm(selected_bbt, drop = TRUE, what = "ZM")
-
-      # Check for invalid geometries
-      if (any(!sf::st_is_valid(selected_bbt))) {
-        selected_bbt <- sf::st_make_valid(selected_bbt)
-      }
-
-      # Ensure CRS is WGS84
-      crs_info <- sf::st_crs(selected_bbt)
-      if (is.na(crs_info$input)) {
-        sf::st_crs(selected_bbt) <- 4326
-      } else if (is.null(crs_info$epsg) || crs_info$epsg != 4326) {
-        selected_bbt <- sf::st_transform(selected_bbt, crs = 4326)
-      }
-
       # Keep BBT name for display
       bbt_name <- input$spatial_bbt_selector
 
-      # Dissolve to single boundary if needed
-      if (nrow(selected_bbt) > 1) {
-        selected_bbt <- sf::st_union(selected_bbt)
-        selected_bbt <- sf::st_sf(
-          Name = bbt_name,
-          geometry = selected_bbt
-        )
-      } else {
-        if (!"Name" %in% names(selected_bbt)) {
-          selected_bbt$Name <- bbt_name
+      # read_bbt_polygon() reads data/BBT.geojson (app_path, not the wd) with
+      # s2 off, drops Z/M and errors clearly on an unknown name (F60).
+      selected_bbt <- read_bbt_polygon(bbt_name)
+
+      # Planar geometry repair / dissolve / simplify; with_s2_disabled()
+      # restores the previous process-wide s2 setting even on error.
+      selected_bbt <- with_s2_disabled({
+        # Check for invalid geometries
+        if (any(!sf::st_is_valid(selected_bbt))) {
+          selected_bbt <- sf::st_make_valid(selected_bbt)
         }
-      }
 
-      # Simplify geometry if too complex (for leaflet rendering)
-      n_coords <- nrow(sf::st_coordinates(selected_bbt))
-      if (n_coords > 10000) {
-        cat("\nSimplifying geometry (", n_coords, " coordinates) for map display...\n")
-        selected_bbt <- sf::st_simplify(selected_bbt, dTolerance = 0.001, preserveTopology = TRUE)
-        n_coords_new <- nrow(sf::st_coordinates(selected_bbt))
-        cat("  Simplified to", n_coords_new, "coordinates\n")
-      }
+        # Ensure CRS is WGS84
+        crs_info <- sf::st_crs(selected_bbt)
+        if (is.na(crs_info$input)) {
+          sf::st_crs(selected_bbt) <- 4326
+        } else if (is.null(crs_info$epsg) || crs_info$epsg != 4326) {
+          selected_bbt <- sf::st_transform(selected_bbt, crs = 4326)
+        }
 
-      # Re-enable s2
-      sf::sf_use_s2(TRUE)
+        # Dissolve to single boundary if needed
+        if (nrow(selected_bbt) > 1) {
+          selected_bbt <- sf::st_union(selected_bbt)
+          selected_bbt <- sf::st_sf(
+            Name = bbt_name,
+            geometry = selected_bbt
+          )
+        } else {
+          if (!"Name" %in% names(selected_bbt)) {
+            selected_bbt$Name <- bbt_name
+          }
+        }
+
+        # Simplify geometry if too complex (for leaflet rendering)
+        n_coords <- nrow(sf::st_coordinates(selected_bbt))
+        if (n_coords > 10000) {
+          cat("\nSimplifying geometry (", n_coords, " coordinates) for map display...\n")
+          selected_bbt <- sf::st_simplify(selected_bbt, dTolerance = 0.001, preserveTopology = TRUE)
+          n_coords_new <- nrow(sf::st_coordinates(selected_bbt))
+          cat("  Simplified to", n_coords_new, "coordinates\n")
+        }
+        selected_bbt
+      })
 
       # Store in reactive value
       spatial_study_area(selected_bbt)
+      study_area_changed()
 
       # Auto-fill bounding box inputs
       bbox <- sf::st_bbox(selected_bbt)
@@ -422,19 +476,16 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
       )
 
     }, error = function(e) {
-      sf::sf_use_s2(TRUE)
-
       showNotification(
         HTML(paste0(
           "<strong>Error Loading BBT Polygon</strong><br><br>",
-          gsub("\n", "<br>", e$message)
+          gsub("\n", "<br>", htmltools::htmlEscape(conditionMessage(e)))
         )),
         type = "error",
         duration = 10
       )
 
-      cat("\nERROR loading BBT polygon:\n")
-      cat(e$message, "\n\n")
+      warning(sprintf("[spatial] BBT polygon load failed: %s", conditionMessage(e)), call. = FALSE)
     })
   })
 
@@ -580,14 +631,12 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
   # Clear Study Area Handler
   observeEvent(input$spatial_clear_study_area, {
     spatial_study_area(NULL)
-    spatial_habitat_clipped(NULL)
-    spatial_grid_with_habitat(NULL)
+    study_area_changed()
 
     updateSelectInput(session, "spatial_bbt_selector", selected = "")
 
-    leafletProxy("spatial_map") %>%
-      clearGroup("Study Area") %>%
-      clearGroup("Habitat")
+    proxy <- map_proxy()
+    if (!is.null(proxy)) clearGroup(proxy, "Study Area")
 
     showNotification("Study area cleared", type = "message", duration = 3)
   })
@@ -637,6 +686,9 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
         clipped <- TRUE
       }
 
+      # A new grid invalidates networks, metrics and the habitat overlay (F58):
+      # hex ids restart at HEX_0001, so stale metrics would repaint the new grid.
+      reset_spatial_downstream("grid")
       spatial_hex_grid(hex_grid)
 
       if (exists("log_debug_details")) {
@@ -771,117 +823,15 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
   # ============================================================================
 
   observeEvent(input$spatial_enable_habitat, {
-    if (input$spatial_enable_habitat && is.null(euseamap_data())) {
-      showNotification("Loading EUSeaMap habitat data (optimized regional loading)...",
-                       type = "message", duration = NULL, id = "spatial_emodnet_loading")
-
-      tryCatch({
-        bbt_name <- NULL
-        custom_bbox <- NULL
-        study_area_sf <- NULL
-
-        if (!is.null(input$spatial_bbt_selector) && input$spatial_bbt_selector != "") {
-          bbt_name <- input$spatial_bbt_selector
-          study_area_sf <- spatial_study_area()
-
-          if (is.null(study_area_sf)) {
-            cat("\nStudy area not loaded yet, loading BBT polygon directly...\n")
-            tryCatch({
-              sf::sf_use_s2(FALSE)
-              bbt_data <- sf::st_read("data/BBT.geojson", quiet = TRUE)
-              study_area_sf <- bbt_data[bbt_data$Name == bbt_name, ]
-              study_area_sf <- sf::st_zm(study_area_sf, drop = TRUE, what = "ZM")
-              sf::sf_use_s2(TRUE)
-              cat("BBT polygon loaded directly for habitat extraction\n")
-            }, error = function(e) {
-              cat("Failed to load BBT polygon:", conditionMessage(e), "\n")
-              study_area_sf <- NULL
-            })
-          }
-
-          cat("\nLoading habitat for BBT:", bbt_name, "\n")
-        } else if (!is.null(spatial_study_area())) {
-          bbox <- sf::st_bbox(spatial_study_area())
-          custom_bbox <- c(bbox["xmin"], bbox["ymin"], bbox["xmax"], bbox["ymax"])
-          study_area_sf <- spatial_study_area()
-          cat("\nLoading habitat for custom study area\n")
-        } else if (!is.null(spatial_hex_grid())) {
-          bbox <- sf::st_bbox(spatial_hex_grid())
-          custom_bbox <- c(bbox["xmin"], bbox["ymin"], bbox["xmax"], bbox["ymax"])
-          cat("\nLoading habitat for grid area\n")
-        }
-
-        if (is.null(custom_bbox) && is.null(study_area_sf)) {
-          cat("\nNo study area/grid defined yet, using default Baltic test area (1x1 deg)\n")
-          custom_bbox <- c(20, 55, 21, 56)
-        }
-
-        euseamap <- NULL
-
-        cat("  Loading habitat for the full study-area extent (via GDB wkt_filter)...\n")
-
-        minimal_bbox <- NULL
-
-        if (!is.null(study_area_sf)) {
-          bbox_full <- sf::st_bbox(study_area_sf)
-          minimal_bbox <- habitat_load_bbox(c(bbox_full["xmin"], bbox_full["ymin"],
-                                              bbox_full["xmax"], bbox_full["ymax"]))
-
-          cat(sprintf("  Loading full study-area extent: [%.2f, %.2f] to [%.2f, %.2f]\n",
-                      minimal_bbox[1], minimal_bbox[2], minimal_bbox[3], minimal_bbox[4]))
-
-        } else if (!is.null(custom_bbox)) {
-          minimal_bbox <- habitat_load_bbox(c(custom_bbox[1], custom_bbox[2],
-                                              custom_bbox[3], custom_bbox[4]))
-
-          cat(sprintf("  Loading full custom-bbox extent: [%.2f, %.2f] to [%.2f, %.2f]\n",
-                      minimal_bbox[1], minimal_bbox[2], minimal_bbox[3], minimal_bbox[4]))
-
-        } else {
-          region_test_areas <- list(
-            baltic = c(20, 55, 21, 56),
-            mediterranean = c(25, 35, 26, 36),
-            arctic = c(15, 78, 16, 79),
-            north_sea = c(3, 54, 4, 55),
-            atlantic = c(-10, 48, -9, 49)
-          )
-
-          test_region <- "baltic"
-          if (!is.null(bbt_name)) {
-            test_region <- tryCatch(get_region_for_bbt(bbt_name), error = function(e) "baltic")
-          }
-
-          minimal_bbox <- region_test_areas[[test_region]]
-          cat(sprintf("  Using %s test area: [%.1f, %.1f] to [%.1f, %.1f]\n",
-                      toupper(test_region), minimal_bbox[1], minimal_bbox[2],
-                      minimal_bbox[3], minimal_bbox[4]))
-        }
-
-        euseamap <- load_regional_euseamap(
-          custom_bbox = minimal_bbox,
-          path = "data/EUSeaMap_2025/EUSeaMap_2025.gdb"
-        )
-        euseamap_data(euseamap)
-
-        region <- attr(euseamap, "region") %||% "unknown"
-
-        removeNotification("spatial_emodnet_loading")
-        showNotification(
-          sprintf("EUSeaMap loaded: %d polygons (%s region)", nrow(euseamap), toupper(region)),
-          type = "message",
-          duration = 5
-        )
-      }, error = function(e) {
-        removeNotification("spatial_emodnet_loading")
-        showNotification(
-          paste("Failed to load EUSeaMap:", e$message,
-                "\nPlease ensure EUSeaMap_2025.gdb exists in data/ directory"),
-          type = "error",
-          duration = 10
-        )
-        updateCheckboxInput(session, "spatial_enable_habitat", value = FALSE)
-      })
+    if (!isTRUE(input$spatial_enable_habitat)) return()
+    # Load only for an extent that exists: there is no default box any more,
+    # which used to cache a fixed 1 x 1 degree Baltic tile (F57).
+    if (is.null(habitat_target_bbox(spatial_study_area(), spatial_hex_grid()))) {
+      showNotification("Define a study area or grid first", type = "warning", duration = 6)
+      updateCheckboxInput(session, "spatial_enable_habitat", value = FALSE)
+      return()
     }
+    ensure_habitat_loaded()
   })
 
   # Habitat status output
@@ -889,12 +839,12 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
     if (!isTRUE(input$spatial_enable_habitat)) {
       cat("Habitat analysis disabled\n\n")
       cat("Enable checkbox above to activate habitat integration")
-      return()
+      return(invisible())
     }
 
     if (is.null(euseamap_data())) {
       cat("Loading EUSeaMap data...\n")
-      return()
+      return(invisible())
     }
 
     cat("EUSeaMap loaded:", nrow(euseamap_data()), "polygons\n\n")
@@ -932,6 +882,9 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
       return()
     }
 
+    # The Ecopath tab shares euseamap_data and may have loaded another extent.
+    if (!ensure_habitat_loaded()) return()
+
     showNotification("Clipping habitat to study area...", type = "message",
                      duration = NULL, id = "habitat_clip_progress")
 
@@ -941,6 +894,7 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
         spatial_study_area()
       )
 
+      reset_spatial_downstream("habitat")
       spatial_habitat_clipped(clipped)
 
       if (exists("log_debug_details")) {
@@ -1021,7 +975,7 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
         spatial_habitat_clipped()
       )
 
-      spatial_hex_grid(grid_with_habitat)
+      # Keep spatial_hex_grid() pristine (F63); active_grid() serves this one.
       spatial_grid_with_habitat(grid_with_habitat)
 
       removeNotification("habitat_overlay_progress")
@@ -1081,14 +1035,20 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
     req(input$spatial_species_file)
 
     tryCatch({
-      species_data <- read.csv(input$spatial_species_file$datapath, stringsAsFactors = FALSE)
+      species_data <- read_species_upload(input$spatial_species_file$datapath)
 
-      required_cols <- c("lon", "lat", "species")
-      missing_cols <- setdiff(required_cols, colnames(species_data))
-
-      if (length(missing_cols) > 0) {
-        stop(paste("Missing required columns:", paste(missing_cols, collapse = ", "),
-                   "\nRequired: lon, lat, species\nOptional: biomass"))
+      # Required columns, ';' files, comma decimals and coordinate ranges
+      # (F61): non-numeric lon/lat used to reach addCircleMarkers() and kill
+      # the session.
+      target_bbox <- habitat_target_bbox(spatial_study_area(), spatial_hex_grid())
+      checked <- validate_species_occurrences(species_data, bbox = target_bbox)
+      species_data <- checked$data
+      if (checked$dropped > 0) {
+        warning(sprintf("[spatial] species upload: %d row(s) dropped (missing species or invalid lon/lat)",
+                        checked$dropped), call. = FALSE)
+      }
+      if (length(checked$messages) > 0) {
+        showNotification(paste(checked$messages, collapse = "; "), type = "warning", duration = 10)
       }
 
       spatial_species_data(species_data)
@@ -1119,6 +1079,8 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
   observe({
     req(spatial_species_data())
     species_data <- spatial_species_data()
+    proxy <- map_proxy()
+    req(proxy)
 
     unique_species <- unique(species_data$species)
     species_colors <- colorFactor(
@@ -1126,7 +1088,9 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
       domain = unique_species
     )
 
-    leafletProxy("spatial_map") %>%
+    # An error in an unguarded observe() ends the session (F61).
+    tryCatch(
+      proxy %>%
       clearGroup("Species") %>%
       addCircleMarkers(
         data = species_data,
@@ -1146,7 +1110,13 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
           if("biomass" %in% colnames(species_data)) paste0("<br>Biomass: ", biomass) else ""
         )
       ) %>%
-      showGroup("Species")
+      showGroup("Species"),
+      error = function(e) {
+        warning(sprintf("[spatial] species markers failed: %s", conditionMessage(e)), call. = FALSE)
+        showNotification(paste("Could not draw species points:", conditionMessage(e)),
+                         type = "error", duration = 8)
+      }
+    )
   })
 
   # 3. Extract Local Networks
@@ -1177,15 +1147,7 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
                                expected_names = c("species", "interactions", "metadata"))
       spatial_metaweb(metaweb)
 
-      output$spatial_extraction_info <- renderPrint({
-        cat("Assigning species to hexagons...\n")
-      })
-
       hex_species <- assign_species_to_hexagons(species_data, hex_grid)
-
-      output$spatial_extraction_info <- renderPrint({
-        cat("Extracting local food webs...\n")
-      })
 
       local_networks <- extract_local_networks(
         metaweb,
@@ -1194,19 +1156,21 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
         progress = FALSE
       )
 
+      # New networks invalidate the metrics computed from the old ones (F58).
+      reset_spatial_downstream("networks")
       spatial_local_networks(local_networks)
 
       n_networks <- length(local_networks)
       n_nonempty <- sum(sapply(local_networks, igraph::vcount) > 0)
 
-      output$spatial_extraction_info <- renderPrint({
-        cat("Network extraction complete!\n\n")
-        cat("Summary:\n")
-        cat("  Total hexagons:", n_networks, "\n")
-        cat("  With species:", n_nonempty, "\n")
-        cat("  Empty:", n_networks - n_nonempty, "\n\n")
-        cat("Metaweb used:", metaweb$metadata$region %||% input$spatial_metaweb, "\n")
-      })
+      extraction_status(paste0(
+        "Network extraction complete!\n\n",
+        "Summary:\n",
+        "  Total hexagons: ", n_networks, "\n",
+        "  With species: ", n_nonempty, "\n",
+        "  Empty: ", n_networks - n_nonempty, "\n\n",
+        "Metaweb used: ", metaweb$metadata$region %||% input$spatial_metaweb, "\n"
+      ))
 
       showNotification(
         paste("Extracted", n_nonempty, "local food webs"),
@@ -1214,12 +1178,15 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
         duration = 5
       )
     }, error = function(e) {
-      output$spatial_extraction_info <- renderPrint({
-        cat("ERROR extracting networks:\n")
-        cat(e$message, "\n")
-      })
+      extraction_status(paste0("ERROR extracting networks:\n", conditionMessage(e), "\n"))
       showNotification(paste("Error:", e$message), type = "error")
     })
+  })
+
+  # One top-level render, so a reset blanks it instead of leaving stale text.
+  output$spatial_extraction_info <- renderPrint({
+    status <- extraction_status()
+    if (is.null(status)) cat("No local networks extracted yet.\n") else cat(status)
   })
 
   # 4. Calculate Spatial Metrics
@@ -1265,21 +1232,6 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
 
       spatial_metrics_data(metrics)
 
-      output$spatial_metrics_table <- renderDT({
-        metrics_display <- metrics[metrics$S > 0, ]
-
-        datatable(
-          metrics_display,
-          options = list(
-            pageLength = 15,
-            scrollX = TRUE,
-            dom = 'tip'
-          ),
-          rownames = FALSE
-        ) %>%
-          formatRound(columns = selected_metrics, digits = 3)
-      })
-
       summary_stats <- aggregate_spatial_metrics(metrics, metric_cols = selected_metrics)
 
       showNotification(
@@ -1290,6 +1242,26 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
     }, error = function(e) {
       showNotification(paste("Error calculating metrics:", e$message), type = "error")
     })
+  })
+
+  # Top-level so a reset blanks the table. Rows are the non-empty hexagons,
+  # not metrics$S > 0, which emptied the table when S was unselected (F59).
+  output$spatial_metrics_table <- renderDT({
+    metrics <- spatial_metrics_data()
+    req(metrics)
+    metrics_display <- spatial_metrics_display(metrics, spatial_local_networks())
+    metric_cols <- intersect(c("S", "L", "C", "LD", "meanTL", "maxTL"), names(metrics_display))
+
+    datatable(
+      metrics_display,
+      options = list(
+        pageLength = 15,
+        scrollX = TRUE,
+        dom = "tip"
+      ),
+      rownames = FALSE
+    ) %>%
+      formatRound(columns = metric_cols, digits = 3)
   })
 
   # Reactive map update for metrics layer
@@ -1317,7 +1289,7 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
         all.x = TRUE
       )
     } else if (is_habitat) {
-      hex_grid_with_metrics <- hex_grid
+      hex_grid_with_metrics <- active_grid()
 
       if (!selected_metric %in% names(hex_grid_with_metrics)) {
         showNotification(
@@ -1325,9 +1297,8 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
           type = "warning",
           duration = 5
         )
-        leafletProxy("spatial_map") %>%
-          clearGroup("Metrics") %>%
-          clearControls()
+        proxy <- map_proxy()
+        if (!is.null(proxy)) clearControls(clearGroup(proxy, "Metrics"))
         return()
       }
     } else {
@@ -1474,7 +1445,7 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
           spatial_metrics_data(), spatial_metaweb())
 
       spatial_data <- create_spatial_foodweb_data(
-        hex_grid = spatial_hex_grid(),
+        hex_grid = active_grid(),
         hex_species = spatial_species_data(),
         metaweb = spatial_metaweb(),
         local_networks = spatial_local_networks(),
@@ -1501,4 +1472,7 @@ spatial_server <- function(input, output, session, net_reactive, info_reactive,
   outputOptions(output, "spatial_study_area_map", suspendWhenHidden = FALSE)
   outputOptions(output, "spatial_habitat_status", suspendWhenHidden = FALSE)
   outputOptions(output, "spatial_map", suspendWhenHidden = FALSE)
+
+  # The session state, for tests (app.R ignores the return value).
+  invisible(c(spatial_state, list(study_area = spatial_study_area, species_data = spatial_species_data)))
 }

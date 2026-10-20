@@ -1,0 +1,6 @@
+lon,lat,species,biomass
+20.5,55.2,Gadus morhua,10
+abc,55.3,Clupea harengus,5
+200,55.4,Sprattus sprattus,3
+"20,6",55.5,Platichthys flesus,"2,5"
+20.7,55.6,,4

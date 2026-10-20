@@ -92,6 +92,22 @@ read_bbt_polygon <- function(name, path = app_path("data/BBT.geojson")) {
   })
 }
 
+#' Read an uploaded species CSV, comma- or semicolon-separated (F61)
+#'
+#' Decided from the header line: a ';' file usually has decimal commas too,
+#' so read.csv() would split "Gadus morhua;20,5;55,1" at the commas.
+#'
+#' @param path File path.
+#' @return Data frame.
+read_species_upload <- function(path) {
+  header <- readLines(path, n = 1L, warn = FALSE)
+  if (length(header) == 1L && grepl(";", header, fixed = TRUE) && !grepl(",", header, fixed = TRUE)) {
+    utils::read.csv2(path, stringsAsFactors = FALSE)
+  } else {
+    utils::read.csv(path, stringsAsFactors = FALSE)
+  }
+}
+
 #' Clean an uploaded species occurrence table (F61)
 #'
 #' Only the column names used to be checked, so non-numeric or out-of-range
@@ -105,6 +121,12 @@ validate_species_occurrences <- function(df, bbox = NULL) {
   # A ';'-separated file read with read.csv() arrives as one column.
   if (ncol(df) == 1L && grepl(";", names(df)[1], fixed = TRUE)) {
     df <- utils::read.csv2(text = c(names(df)[1], as.character(df[[1]])), stringsAsFactors = FALSE)
+  }
+  # Checked after the re-read, or every ';' file fails as "missing columns".
+  missing_cols <- setdiff(c("lon", "lat", "species"), names(df))
+  if (length(missing_cols) > 0) {
+    stop(paste0("Missing required columns: ", paste(missing_cols, collapse = ", "),
+                "\nRequired: lon, lat, species\nOptional: biomass"), call. = FALSE)
   }
   num <- function(x) suppressWarnings(as.numeric(gsub(",", ".", as.character(x), fixed = TRUE)))
   df$lon <- num(df$lon)
@@ -132,4 +154,17 @@ validate_species_occurrences <- function(df, bbox = NULL) {
   }
   rownames(df) <- NULL
   list(data = df, dropped = as.integer(dropped), messages = messages)
+}
+
+#' Rows of the spatial metrics table (F59)
+#'
+#' The hexagons whose local network has species. Filtering on metrics$S
+#' emptied the table whenever S was not one of the selected metrics.
+#'
+#' @param metrics Data frame from calculate_spatial_metrics() (has hex_id).
+#' @param local_networks Named list of igraph networks (names are hex ids).
+#' @return `metrics` restricted to non-empty hexagons.
+spatial_metrics_display <- function(metrics, local_networks) {
+  sizes <- vapply(local_networks, igraph::vcount, numeric(1))
+  metrics[metrics$hex_id %in% names(local_networks)[sizes > 0], , drop = FALSE]
 }
