@@ -944,3 +944,62 @@ test_that("API lookups: transport and 5xx errors set result$error; 404 is not fo
     expect_false(res$success, info = nm)
   }
 })
+
+# ---------------------------------------------------------------------------
+# Fish EP: FishBase habitat text vs the order rules (2026-10-20)
+# ---------------------------------------------------------------------------
+
+fish_ep <- function(order, habitat, ...) {
+  res <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Chordata", "Teleostei", order, ...),
+    lookup_fishbase_traits = found(list(max_length_cm = 30, habitat = habitat, depth_min = 0, depth_max = 10))))
+  res[c("EP", "EP_source", "EP_method")]
+}
+
+test_that("FishBase 'demersal' does not override the bottom-dwelling order rule (flatfish, gobies)", {
+  # FishBase "demersal" = on OR near the bottom: it cannot separate EP2 from EP3,
+  # so the order rule that puts flatfish and gobies on the bottom decides.
+  for (o in c("Pleuronectiformes", "Gobiiformes", "Scorpaeniformes")) {
+    ep <- fish_ep(o, "demersal")
+    expect_identical(ep$EP, "EP3", info = o)
+    expect_identical(ep$EP_source, "Taxonomy", info = o)
+    expect_identical(ep$EP_method, "rule", info = o)
+  }
+})
+
+test_that("FishBase 'benthopelagic' herring follows the pelagic Clupeiformes rule", {
+  expect_identical(fish_ep("Clupeiformes", "benthopelagic")$EP, "EP1")
+})
+
+test_that("specific FishBase habitat text still decides, and agreeing text stays observed", {
+  # Cod: text and order rule agree on EP2, so the code stays FishBase-observed.
+  cod <- fish_ep("Gadiformes", "benthopelagic")
+  expect_identical(cod$EP, "EP2")
+  expect_identical(cod$EP_source, "FishBase")
+  expect_identical(cod$EP_method, "observed")
+  # A pelagic goby (Aphia minuta) is not forced onto the bottom by its order.
+  goby <- fish_ep("Gobiiformes", "pelagic-neritic")
+  expect_identical(goby$EP, "EP1")
+  expect_identical(goby$EP_source, "FishBase")
+  # Fish with no order rule keep the text code.
+  expect_identical(fish_ep(NA_character_, "demersal")$EP_source, "FishBase")
+})
+
+test_that("FishBase habitat is used and credited even when WoRMS supplies a functional group", {
+  # Used to be dropped: any WoRMS text made the FishBase habitat unreachable, so a
+  # shallow garfish fell through to the depth rule (EP3, epibenthic).
+  ep <- fish_ep("Beloniformes", "pelagic-oceanic", functional_group = "nekton")
+  expect_identical(ep$EP, "EP1")
+  expect_identical(ep$EP_source, "FishBase")
+  raw <- list(worms = list(functional_group = "nekton"), fishbase = list(habitat = "demersal"))
+  expect_identical(text_input_source(raw, "habitat"), "FishBase")
+})
+
+test_that("non-fish EP2 text is unaffected by the fish order rules", {
+  # Mysids are hyperbenthic (EP2); no fish order rule can match them.
+  res <- run_pipeline(list(
+    lookup_worms_traits = worms_taxon("Arthropoda", "Malacostraca", "Mysida"),
+    lookup_sealifebase_traits = found(list(habitat = "hyperbenthic"))))
+  expect_identical(res$EP, "EP2")
+  expect_identical(res$EP_source, "SeaLifeBase")
+})

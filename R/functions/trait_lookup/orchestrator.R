@@ -989,6 +989,9 @@ lookup_species_traits <- function(species_name,
       raw_traits$shark$habitat,
       raw_traits$algaebase$habitat
     )
+  } else if (length(raw_traits$fishbase$habitat) > 0) {
+    # WoRMS text got here first, but FishBase's habitat is the specific one.
+    habitat_info <- c(raw_traits$fishbase$habitat, habitat_info)
   }
 
   # Update protection_info if not collected yet
