@@ -128,6 +128,7 @@ source("R/functions/taxonomic_api_utils.R")  # Taxonomic database integration
 source("R/functions/shark_api_utils.R")  # SHARK4R integration (Swedish ocean archives)
 source("R/functions/emodnet_habitat_utils.R")  # EMODnet habitat integration
 source("R/functions/euseamap_regional_config.R")  # Regional optimization for EUSeaMap
+source("R/functions/spatial_state.R")  # Spatial tab session state helpers (fix D1)
 source("R/functions/trait_foodweb.R")  # Trait-based food web construction
 source("R/functions/trait_lookup/load_all.R")  # Automated trait lookup from databases
 # ML + phylogenetic imputation tiers — sourced at startup so the orchestrator's

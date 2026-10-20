@@ -4,7 +4,7 @@
 skip_if_not_installed("sf")
 app_root <- get_app_root()
 source(file.path(app_root, "R/functions/spatial_analysis.R"), local = FALSE)
-suppressPackageStartupMessages(library(sf))
+suppressWarnings(suppressPackageStartupMessages(library(sf)))
 source(file.path(app_root, "R/functions/emodnet_habitat_utils.R"), local = FALSE)
 
 square <- function(xmin, ymin, xmax, ymax, crs) {

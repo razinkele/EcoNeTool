@@ -704,7 +704,15 @@ overlay_habitat_with_grid <- function(grid_cells, habitat_layer) {
     )
   }))
 
-  # Merge with grid cells
+  habitat_cols <- c("dominant_eunis", "dominant_habitat", "dominant_substrate",
+                    "dominant_biozone", "dominant_energy")
+  numeric_cols <- c("n_habitats", "habitat_diversity", "habitat_area_km2",
+                    "substrate_sand_pct", "substrate_mud_pct", "substrate_rock_pct",
+                    "substrate_mixed_pct", "substrate_other_pct")
+
+  # Merge with grid cells. Drop habitat columns from an earlier overlay first:
+  # merging onto them gave .x/.y columns and "replacement has 0 rows" (F63).
+  grid_cells <- grid_cells[, setdiff(names(grid_cells), c(habitat_cols, numeric_cols))]
   grid_with_habitat <- merge(
     grid_cells,
     habitat_stats,
@@ -713,15 +721,10 @@ overlay_habitat_with_grid <- function(grid_cells, habitat_layer) {
   )
 
   # Fill NA values for cells with no habitat data
-  habitat_cols <- c("dominant_eunis", "dominant_habitat", "dominant_substrate",
-                    "dominant_biozone", "dominant_energy")
   for (col in habitat_cols) {
     grid_with_habitat[[col]][is.na(grid_with_habitat[[col]])] <- "No data"
   }
 
-  numeric_cols <- c("n_habitats", "habitat_diversity", "habitat_area_km2",
-                    "substrate_sand_pct", "substrate_mud_pct", "substrate_rock_pct",
-                    "substrate_mixed_pct", "substrate_other_pct")
   for (col in numeric_cols) {
     grid_with_habitat[[col]][is.na(grid_with_habitat[[col]])] <- 0
   }

@@ -180,11 +180,19 @@ assign_species_to_hexagons <- function(species_data, hex_grid) {
 
   # Aggregate by hexagon and species
   if ("biomass" %in% colnames(joined_df)) {
-    # Sum biomass per species per hexagon
+    # Sum biomass per species per hexagon. na.pass keeps occurrences with NA
+    # biomass: the formula's default na.omit dropped them, so the species
+    # vanished from the hexagon (F62). Presence never depends on biomass.
+    n_na <- sum(is.na(joined_df$biomass))
+    if (n_na > 0) {
+      warning(sprintf("[assign_species_to_hexagons] %d occurrences have NA biomass; kept for presence", n_na),
+              call. = FALSE)
+    }
     result <- aggregate(
       biomass ~ hex_id + species,
       data = joined_df,
-      FUN = sum
+      na.action = na.pass,
+      FUN = function(x) if (all(is.na(x))) NA_real_ else sum(x, na.rm = TRUE)
     )
     result$occurrence <- 1
   } else {
