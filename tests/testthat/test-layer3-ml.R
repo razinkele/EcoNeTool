@@ -77,3 +77,18 @@ test_that("orchestrator ML block checks RS/TT/ST and sets imputation_method", {
   expect_true(grepl("result$imputation_method <- aggregate_imputation_method(result)", orch_joined, fixed = TRUE),
               info = "imputation_method is the aggregate of the per-trait methods (C3.1)")
 })
+
+test_that("load_ml_models() finds the bundled models regardless of the working directory", {
+  # The path used to be wd-relative ("models/trait_ml_models.rds"): from any wd
+  # other than the repo root (testthat runs in tests/testthat) the file was
+  # "not found" and every ML-imputed trait silently disappeared.
+  skip_if_not_installed("randomForest")
+  skip_if(!file.exists(file.path(app_root, "models", "trait_ml_models.rds")),
+          "models/trait_ml_models.rds missing; run scripts/train_trait_models.R")
+  withr::local_options(econetool.app_root = app_root)
+  withr::local_dir(tempdir())
+  old <- .ml_cache$models
+  withr::defer(.ml_cache$models <- old)
+  .ml_cache$models <- NULL
+  expect_false(is.null(load_ml_models()))
+})
