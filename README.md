@@ -264,7 +264,7 @@ If you use EcoNeTool in your research, please cite:
   title = {EcoNeTool: Marine Food Web Network Analysis Tool},
   author = {MARBEFES Project Team},
   year = {2025},
-  version = {1.7.9},
+  version = {1.7.10},
   institution = {Klaipėda University},
   url = {https://github.com/razinkele/EcoNeTool},
   note = {Interactive R Shiny application for marine food web analysis}
@@ -303,10 +303,10 @@ This project is dual-licensed:
 
 ## Version Information
 
-**Current Version**: 1.7.9
+**Current Version**: 1.7.10
 **Last Updated**: 2026-10-21
 **Status**: Production Ready
 
-<!-- VERSION:1.7.9 -->
+<!-- VERSION:1.7.10 -->
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
