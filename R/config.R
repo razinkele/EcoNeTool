@@ -368,13 +368,13 @@ load_version_info <- function() {
 
   # Default version info (fallback)
   version_info <- list(
-    VERSION = "1.7.8",
-    VERSION_NAME = "Spatial State",
-    RELEASE_DATE = "2026-10-20",
+    VERSION = "1.7.9",
+    VERSION_NAME = "Conventions Guard",
+    RELEASE_DATE = "2026-10-21",
     STATUS = "stable",
     MAJOR = 1,
     MINOR = 7,
-    PATCH = 8
+    PATCH = 9
   )
 
   # Try to read VERSION file
