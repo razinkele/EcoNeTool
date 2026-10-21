@@ -564,3 +564,126 @@ test_that("fetch_sag_ssb reports its own 'no assessment' error, not 'object not 
   expect_false(res$success)
   expect_identical(res$error, "no SAG assessment for 'test.27.99'")
 })
+
+# --------------------------------------------------------------------------
+# F14 (D2b): DATRAS completeness. Timeouts were silent (on_timeout = NULL),
+# partial frames were cached for the process lifetime, and an all-timeout
+# run came back as "no DATRAS rows", which the UI shows as species absence.
+# --------------------------------------------------------------------------
+
+datras_row <- function(year, quarter) {
+  data.frame(Survey = "BITS", Year = year, Quarter = quarter, IndexArea = "BS_CodEast",
+             Age_0 = 1, Age_1 = 2, stringsAsFactors = FALSE)
+}
+
+test_that("an all-timeout DATRAS run is a failure, not 'no DATRAS rows', and is not cached (F14)", {
+  skip_if_not_installed("icesDatras")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  .ices_cache[["datras_126436_BITS_2022.2023_a0"]] <- NULL
+  testthat::local_mocked_bindings(
+    getSurveyYearQuarterList = function(survey, year) 1L,
+    getIndices = function(survey, year, quarter, species) stop("reached elapsed time limit"),
+    .package = "icesDatras"
+  )
+  expect_warning(res <- lookup_datras_indices(126436, surveys = "BITS", years = 2022:2023, timeout = 5),
+                 "timeout")
+  expect_false(res$success)
+  expect_false(res$complete)
+  expect_length(res$failures, 2L)
+  expect_match(res$error, "^DATRAS unavailable: 2 request")
+  expect_false(grepl("^no DATRAS rows", res$error))
+  expect_null(.ices_cache[["datras_126436_BITS_2022.2023_a0"]])
+})
+
+test_that("a partially timed-out DATRAS run succeeds as incomplete, warns, and is not cached (F14)", {
+  skip_if_not_installed("icesDatras")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  .ices_cache[["datras_126436_BITS_2022.2023_a0"]] <- NULL
+  testthat::local_mocked_bindings(
+    getSurveyYearQuarterList = function(survey, year) 1L,
+    getIndices = function(survey, year, quarter, species) {
+      if (year == 2022L) stop("reached elapsed time limit")
+      datras_row(year, quarter)
+    },
+    .package = "icesDatras"
+  )
+  expect_warning(res <- lookup_datras_indices(126436, surveys = "BITS", years = 2022:2023, timeout = 5),
+                 "incomplete")
+  expect_true(res$success)
+  expect_false(res$complete)
+  expect_identical(res$failures, "BITS 2022 Q1: timeout")
+  expect_identical(unique(res$data$year), 2023L)
+  expect_null(.ices_cache[["datras_126436_BITS_2022.2023_a0"]])
+})
+
+test_that("a complete DATRAS run is marked complete and cached (F14)", {
+  skip_if_not_installed("icesDatras")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  .ices_cache[["datras_126436_BITS_2022.2023_a0"]] <- NULL
+  withr::defer(.ices_cache[["datras_126436_BITS_2022.2023_a0"]] <- NULL)
+  testthat::local_mocked_bindings(
+    getSurveyYearQuarterList = function(survey, year) 1L,
+    getIndices = function(survey, year, quarter, species) datras_row(year, quarter),
+    .package = "icesDatras"
+  )
+  expect_no_warning(res <- lookup_datras_indices(126436, surveys = "BITS", years = 2022:2023, timeout = 5))
+  expect_true(res$success)
+  expect_true(res$complete)
+  expect_identical(res$failures, character())
+  expect_false(is.null(.ices_cache[["datras_126436_BITS_2022.2023_a0"]]))
+})
+
+test_that("a DATRAS service outage (year list FALSE) is a failure, not species absence (F14)", {
+  skip_if_not_installed("icesDatras")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  .ices_cache[["datras_126436_BITS_a0"]] <- NULL
+  # icesDatras returns a bare FALSE when checkDatrasWebserviceOK() fails.
+  testthat::local_mocked_bindings(
+    getSurveyYearList = function(survey) FALSE,
+    .package = "icesDatras"
+  )
+  expect_warning(res <- lookup_datras_indices(126436, surveys = "BITS", timeout = 5), "unavailable")
+  expect_false(res$success)
+  expect_match(res$error, "^DATRAS unavailable")
+  expect_identical(res$failures, "BITS year list: service unavailable")
+})
+
+test_that("an erroring quarter list counts as a failure (F14)", {
+  skip_if_not_installed("icesDatras")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  .ices_cache[["datras_126436_BITS_2023_a0"]] <- NULL
+  testthat::local_mocked_bindings(
+    getSurveyYearQuarterList = function(survey, year) stop("HTTP 500"),
+    .package = "icesDatras"
+  )
+  res <- suppressWarnings(lookup_datras_indices(126436, surveys = "BITS", years = 2023L, timeout = 5))
+  expect_false(res$success)
+  expect_identical(res$failures, "BITS 2023 quarter list: HTTP 500")
+  expect_match(res$error, "^DATRAS unavailable: 1 request")
+})
+
+test_that("fetch_sag_ssb reports a timeout as 'SAG timed out', not 'no SAG assessment' (F14)", {
+  skip_if_not_installed("icesSAG")
+  source(file.path(app_root, "R/functions/validation_utils.R"), local = TRUE)
+  source(file.path(app_root, "R/functions/ices_lookups.R"), local = TRUE)
+  with_timeout <- function(expr, timeout, on_timeout = NULL, ...) on_timeout
+  .ices_cache[["sag_ssb_test.27.99"]] <- NULL
+  res <- suppressWarnings(fetch_sag_ssb("test.27.99"))
+  expect_false(res$success)
+  expect_match(res$error, "^SAG timed out")
+  expect_null(.ices_cache[["sag_ssb_test.27.99"]])
+})
+
+test_that("both DATRAS consumers act on res$complete (F14)", {
+  # Survey trends exclude a partial series; the trait-research tab flags it.
+  rpath <- paste(readLines(file.path(app_root, "R/modules/rpath_server.R"), warn = FALSE), collapse = "\n")
+  expect_match(rpath, "!isTRUE(res$complete)", fixed = TRUE)
+  expect_match(rpath, "incomplete survey data (timeouts)", fixed = TRUE)
+  trait <- paste(readLines(file.path(app_root, "R/modules/trait_research_server.R"), warn = FALSE), collapse = "\n")
+  expect_match(trait, "DATRAS: partial data", fixed = TRUE)
+})
