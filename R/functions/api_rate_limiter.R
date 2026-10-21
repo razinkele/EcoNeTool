@@ -321,7 +321,6 @@ api_call_with_retry <- function(api_call,
 
     }, error = function(e) {
       # swallow-ok: latent code - only parallel_lookup.R calls this, and that has no callers (F13/F31)
-      # closure-ok: same; `delay <-` would need <<- if this retry loop is ever wired up (F13)
       error_msg <- as.character(e$message)
 
       # Check if rate limit error
@@ -351,7 +350,7 @@ api_call_with_retry <- function(api_call,
         message(sprintf("[%s] Retrying in %.1f seconds...", api_name, delay))
 
         Sys.sleep(delay)
-        delay <- delay * backoff_factor  # Exponential backoff
+        delay <<- delay * backoff_factor  # Exponential backoff; <<- so the next attempt sees it
 
         # Continue to next iteration (retry)
         return(NULL)  # Will be caught and retried

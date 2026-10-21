@@ -44,7 +44,9 @@ called_functions <- function(expr) {
 
 srcref_text <- function(src, sr) if (is.null(sr)) "" else paste(src[sr[1]:sr[3]], collapse = "\n")
 
-has_marker <- function(txt, tag) grepl(paste0("# ", tag, ": .{10,}"), txt)
+# The reason must sit on the marker's own line: [^\n], not `.`, which in TRE
+# also matches newlines.
+has_marker <- function(txt, tag) grepl(paste0("# ", tag, ":[ \t]*[^ \t\n][^\n]{9,}"), txt, perl = TRUE)
 
 parse_with_src <- function(f) {
   exprs <- tryCatch(parse(f, keep.source = TRUE), error = function(e) {
@@ -156,7 +158,8 @@ test_that("(a) no <<- in a tryCatch body to a name the enclosing frame assigns w
       if (is.null(s$body)) next
       hit <- intersect(assignments(s$body, "<<-"), s$locals)
       if (length(hit) > 0) {
-        offenders <- c(offenders, sprintf("%s:%s (%s)", rel(f), s$line %||% "?", paste(hit, collapse = ", ")))
+        line <- if (is.na(s$line)) "?" else s$line
+        offenders <- c(offenders, sprintf("%s:%s (%s)", rel(f), line, paste(hit, collapse = ", ")))
       }
     }
   }
@@ -207,4 +210,12 @@ test_that("the ML model path goes through ml_models_path() only (F39)", {
   src <- readLines(file.path(app_root, "R/functions/ml_trait_prediction.R"), warn = FALSE)
   expect_identical(sum(grepl("\"models/trait_ml_models.rds\"", src, fixed = TRUE)), 1L)
   expect_true(any(grepl("ml_models_path <- function()", src, fixed = TRUE)))
+})
+
+test_that("has_marker() needs the 10-character reason on the marker's own line", {
+  # TRE's `.` matches newlines, so `.{10,}` let the next code line count as the
+  # reason (PR #45 review).
+  expect_true(has_marker("  # swallow-ok: fallback is checked by the caller\n  NULL", "swallow-ok"))
+  expect_false(has_marker("  # swallow-ok:\n  some_longer_code_line()", "swallow-ok"))
+  expect_false(has_marker("  # swallow-ok: short\n  some_longer_code_line()", "swallow-ok"))
 })

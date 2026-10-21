@@ -541,8 +541,14 @@ apply_ml_fallback <- function(harmonized_traits, raw_traits, verbose = FALSE) {
     return(harmonized_traits)
   }
 
-  # Check if ML models are available
+  # Check if ML models are available. Warn once per process: this gate returns
+  # before load_ml_models() could report the missing file.
   if (!ml_models_available()) {
+    if (!isTRUE(.ml_cache$missing_warned)) {
+      .ml_cache$missing_warned <- TRUE
+      warning(sprintf("[ML] ML models not found at %s; ML gap-filling is off (run scripts/train_trait_models.R)",
+                      ml_models_path()), call. = FALSE)
+    }
     if (verbose) {
       message("    ⚠️  ML models not available")
     }

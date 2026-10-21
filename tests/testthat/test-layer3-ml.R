@@ -113,3 +113,17 @@ test_that("missing ML models warn instead of a message production never shows", 
   .ml_cache$models <- NULL
   expect_warning(expect_null(load_ml_models()), "ML models not found")
 })
+
+test_that("apply_ml_fallback() warns once per process when the models are missing", {
+  # The availability gate returned before load_ml_models() could warn, so the
+  # normal pipeline path still switched ML off invisibly (PR #45 review).
+  withr::local_options(econetool.app_root = withr::local_tempdir())
+  old <- .ml_cache$missing_warned
+  withr::defer(.ml_cache$missing_warned <- old)
+  .ml_cache$missing_warned <- NULL
+  raw <- list(worms = list(phylum = "Chordata", class = "Actinopteri"))
+  harm <- list(MS = "MS5")
+  expect_warning(out <- apply_ml_fallback(harm, raw), "ML models not found")
+  expect_identical(out, harm)
+  expect_no_warning(apply_ml_fallback(harm, raw))
+})
