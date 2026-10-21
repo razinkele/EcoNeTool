@@ -1972,6 +1972,15 @@ remotes::install_github('noaa-edab/Rpath', build_vignettes = TRUE)</pre>
             data.frame(group = g, reason = "no survey data", stringsAsFactors = FALSE)
           next
         }
+        if (!isTRUE(res$complete)) {
+          # Some years timed out or failed: a trend fitted on the rest would be
+          # biased, so exclude the group rather than use a partial series (F14).
+          warning(sprintf("[survey_trends] incomplete survey data for '%s': %s",
+                          g, paste(res$failures, collapse = "; ")), call. = FALSE)
+          excluded_map[[length(excluded_map) + 1L]] <-
+            data.frame(group = g, reason = "incomplete survey data (timeouts)", stringsAsFactors = FALSE)
+          next
+        }
         ser <- aggregate_survey_series(res$data, quarter = quarter, areas = NULL)
         if (nrow(ser) == 0) {
           # Fetched ok but no rows after the quarter filter (e.g. data only in

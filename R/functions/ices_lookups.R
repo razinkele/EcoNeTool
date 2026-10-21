@@ -21,6 +21,11 @@
 # already-wrapped result lists; callers don't see this directly.
 .ices_cache <- new.env(parent = emptyenv())
 
+# with_timeout() returns `on_timeout` on a timeout. NULL made a timeout look
+# like "no data"; this sentinel lets callers count it as a failure (F14).
+# It is a zero-length list, so test inherits() before any is.null()/length().
+.ices_timeout <- structure(list(), class = "ices_timeout")
+
 # Official ICES Areas layer (gis.ices.dk GeoServer WFS, GeoJSON output).
 # outputFormat=application/json is REQUIRED: that output is lon/lat with a
 # null CRS (-> WGS84); the GML output is lat/lon (axis-swapped). Never add an
@@ -229,14 +234,19 @@ get_ices_area_detail <- function(code, timeout = 30) {
 #' @param min_age Integer; sum only Age_k columns with k >= min_age. Default
 #'   0L sums every age (current behavior). The R2 demersal trend passes 2L to
 #'   drop age-0/1 recruitment noise.
-#' @return list(success, source = "DATRAS", data, error). On success
-#'   `data` is a data.frame with columns survey / year / quarter /
+#' @return list(success, complete, failures, source = "DATRAS", data, error).
+#'   On success `data` is a data.frame with columns survey / year / quarter /
 #'   index_area / abundance_index. `abundance_index` is the sum across
 #'   the Age_k columns getIndices() returns with k >= `min_age`
 #'   (total numbers-per-hour, abundance NOT biomass); one row per
 #'   (survey, year, quarter, IndexArea) so stock-area structure
 #'   (e.g. East/West Baltic cod) is preserved.
-#'   Failures populate `error` and warning() so the failure mode is visible.
+#'   `failures` lists the requests that timed out, errored or found the
+#'   service down ("BITS 2022 Q1: timeout"); `complete` is TRUE when there
+#'   are none. Only complete results are cached. Rows plus failures is a
+#'   success with `complete = FALSE` and a warning(); no rows plus failures is
+#'   a failure whose `error` starts "DATRAS unavailable", never "no DATRAS
+#'   rows" - that string means the species is genuinely absent (F14).
 #' @export
 lookup_datras_indices <- function(aphia_id,
                                   surveys = c("BITS", "NS-IBTS", "BTS"),
@@ -244,10 +254,12 @@ lookup_datras_indices <- function(aphia_id,
                                   timeout = 30,
                                   min_age = 0L) {
   result <- list(
-    success = FALSE,
-    source  = "DATRAS",
-    data    = NULL,
-    error   = NA_character_
+    success  = FALSE,
+    complete = FALSE,
+    failures = character(),
+    source   = "DATRAS",
+    data     = NULL,
+    error    = NA_character_
   )
 
   if (is.null(aphia_id) || !is.numeric(aphia_id) || aphia_id <= 0) {
@@ -272,6 +284,19 @@ lookup_datras_indices <- function(aphia_id,
   # scan back through the whole time series.
   max_year_lookback <- 3L
 
+  # Error handlers warn and return an "ices_failure"; failure_reason() turns
+  # that or the timeout sentinel into the text recorded in `failures`.
+  call_failed <- function(e) structure(list(msg = conditionMessage(e)), class = "ices_failure")
+  failure_reason <- function(x) {
+    if (inherits(x, "ices_timeout")) return("timeout")
+    if (inherits(x, "ices_failure")) return(x$msg)
+    # getSurveyYearList / getSurveyYearQuarterList return a bare FALSE when
+    # checkDatrasWebserviceOK() fails.
+    if (isFALSE(x)) return("service unavailable")
+    NULL
+  }
+
+  failures <- character()
   rows <- list()
   for (svy in surveys) {
     survey_years <- if (!is.null(years)) {
@@ -279,11 +304,17 @@ lookup_datras_indices <- function(aphia_id,
     } else {
       yl <- tryCatch(with_timeout(
         icesDatras::getSurveyYearList(svy),
-        timeout = timeout, on_timeout = NULL
+        timeout = timeout, on_timeout = .ices_timeout
       ), error = function(e) {
-        # swallow-ok: a NULL year list is reported by the warning() just below (reworked in D2b)
-        NULL
+        warning(sprintf("[lookup_datras_indices] year list for '%s' failed: %s", svy, conditionMessage(e)),
+                call. = FALSE)
+        call_failed(e)
       })
+      why <- failure_reason(yl)
+      if (!is.null(why)) {
+        failures <- c(failures, sprintf("%s year list: %s", svy, why))
+        next
+      }
       if (is.null(yl) || length(yl) == 0) {
         warning(sprintf("[lookup_datras_indices] no year list for survey '%s'", svy),
                 call. = FALSE)
@@ -302,11 +333,17 @@ lookup_datras_indices <- function(aphia_id,
       # bare FALSE); resolve the survey-year's actual quarters first.
       quarters <- tryCatch(with_timeout(
         icesDatras::getSurveyYearQuarterList(svy, yr),
-        timeout = timeout, on_timeout = NULL
+        timeout = timeout, on_timeout = .ices_timeout
       ), error = function(e) {
-        # swallow-ok: a NULL quarter list is reported by the warning() just below (reworked in D2b)
-        NULL
+        warning(sprintf("[lookup_datras_indices] quarter list for %s %d failed: %s", svy, yr, conditionMessage(e)),
+                call. = FALSE)
+        call_failed(e)
       })
+      why <- failure_reason(quarters)
+      if (!is.null(why)) {
+        failures <- c(failures, sprintf("%s %d quarter list: %s", svy, yr, why))
+        next
+      }
       if (is.null(quarters) || length(quarters) == 0) {
         warning(sprintf("[lookup_datras_indices] no quarter list for %s %d", svy, yr),
                 call. = FALSE)
@@ -319,12 +356,18 @@ lookup_datras_indices <- function(aphia_id,
         # Age_0..Age_N columns - reshaped by .datras_reshape_indices.)
         idx <- tryCatch(with_timeout(
           icesDatras::getIndices(svy, yr, quarter = q, species = aphia_id),
-          timeout = timeout, on_timeout = NULL
+          timeout = timeout, on_timeout = .ices_timeout
         ), error = function(e) {
           warning(sprintf("[lookup_datras_indices] %s %d Q%s failed: %s",
                           svy, yr, q, conditionMessage(e)), call. = FALSE)
-          NULL
+          call_failed(e)
         })
+        # A bare FALSE here is ambiguous (getIndices also returns it for an
+        # unavailable survey/year/quarter), so only timeouts and errors count.
+        if (inherits(idx, c("ices_timeout", "ices_failure"))) {
+          failures <- c(failures, sprintf("%s %d Q%s: %s", svy, yr, q, failure_reason(idx)))
+          next
+        }
 
         # Guard the nrow() check: getIndices returns a bare FALSE (logical)
         # for an unavailable quarter, and nrow(FALSE) is NULL -> `if (NULL == 0)`
@@ -344,15 +387,30 @@ lookup_datras_indices <- function(aphia_id,
     }
   }
 
+  result$failures <- failures
+  result$complete <- length(failures) == 0L
+
   if (length(rows) == 0) {
-    result$error <- sprintf("no DATRAS rows for AphiaID %s in surveys [%s]",
-                            aphia_id, paste(surveys, collapse = ", "))
+    if (length(failures) > 0) {
+      result$error <- sprintf("DATRAS unavailable: %d request(s) failed or timed out", length(failures))
+      warning(sprintf("[lookup_datras_indices] AphiaID %s: %s (%s)",
+                      aphia_id, result$error, paste(failures, collapse = "; ")), call. = FALSE)
+    } else {
+      result$error <- sprintf("no DATRAS rows for AphiaID %s in surveys [%s]",
+                              aphia_id, paste(surveys, collapse = ", "))
+    }
     return(result)
   }
 
   result$data    <- do.call(rbind, rows)
   result$success <- TRUE
-  .ices_cache[[cache_key]] <- result
+  if (result$complete) {
+    .ices_cache[[cache_key]] <- result
+  } else {
+    # Not cached: a partial series must not be reused for every later caller.
+    warning(sprintf("[lookup_datras_indices] AphiaID %s: incomplete, %d request(s) failed or timed out (%s)",
+                    aphia_id, length(failures), paste(failures, collapse = "; ")), call. = FALSE)
+  }
   result
 }
 
@@ -388,15 +446,27 @@ fetch_sag_ssb <- function(stock_key, timeout = 60) {
   if (!is.null(.ices_cache[[cache_key]])) return(.ices_cache[[cache_key]])
 
   tryCatch({
+    # A timeout returns the sentinel, so it reports "SAG timed out" rather
+    # than "no SAG assessment" (F14). Check it before is.null()/length().
     keys <- with_timeout(icesSAG::findAssessmentKey(stock_key),
-                         timeout = timeout, on_timeout = NULL)
+                         timeout = timeout, on_timeout = .ices_timeout)
+    if (inherits(keys, "ices_timeout")) {
+      result$error <- sprintf("SAG timed out finding the assessment for '%s'", stock_key)
+      warning(sprintf("[fetch_sag_ssb] %s", result$error), call. = FALSE)
+      return(result)
+    }
     if (is.null(keys) || length(keys) == 0) {
       result$error <- sprintf("no SAG assessment for '%s'", stock_key)
       return(result)
     }
     key <- max(as.integer(keys), na.rm = TRUE)  # latest assessment
     ss <- with_timeout(icesSAG::getSummaryTable(key),
-                       timeout = timeout, on_timeout = NULL)
+                       timeout = timeout, on_timeout = .ices_timeout)
+    if (inherits(ss, "ices_timeout")) {
+      result$error <- sprintf("SAG timed out fetching the summary table for '%s'", stock_key)
+      warning(sprintf("[fetch_sag_ssb] %s", result$error), call. = FALSE)
+      return(result)
+    }
     if (is.list(ss) && !is.data.frame(ss)) ss <- ss[[1]]
     if (!is.data.frame(ss) || nrow(ss) == 0) {
       result$error <- sprintf("SAG returned no summary table for '%s'", stock_key)

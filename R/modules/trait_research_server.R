@@ -674,10 +674,16 @@ trait_research_server <- function(input, output, session, shared_data) {
 
     if (!isTRUE(res$success)) {
       # Distinguish a legitimate "no data" (informational) from an API fault.
+      # Timeouts report "DATRAS unavailable", never "no DATRAS rows" (F14).
       is_no_data <- grepl("^no DATRAS rows", as.character(res$error))
       showNotification(
         paste("DATRAS:", res$error),
         type = if (is_no_data) "message" else "warning"
+      )
+    } else if (!isTRUE(res$complete)) {
+      showNotification(
+        sprintf("DATRAS: partial data (%d request(s) failed or timed out)", length(res$failures)),
+        type = "warning"
       )
     }
   })
@@ -690,10 +696,12 @@ trait_research_server <- function(input, output, session, shared_data) {
     }
     if (isTRUE(res$success)) {
       n_surveys <- length(unique(res$data$survey))
+      partial <- !isTRUE(res$complete)
       tags$span(
-        class = "text-success",
-        icon("check-circle"),
-        sprintf(" %d row(s) across %d survey(s)", nrow(res$data), n_surveys)
+        class = if (partial) "text-warning" else "text-success",
+        icon(if (partial) "triangle-exclamation" else "check-circle"),
+        sprintf(" %d row(s) across %d survey(s)%s", nrow(res$data), n_surveys,
+                if (partial) sprintf(" (partial: %d request(s) failed)", length(res$failures)) else "")
       )
     } else {
       tags$span(class = "text-warning",
