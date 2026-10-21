@@ -294,6 +294,7 @@ construct_trait_foodweb <- function(species_data, threshold = 0.05, return_probs
       prob <- tryCatch(
         calc_interaction_probability(consumer_traits, resource_traits),
         error = function(e) {
+          # swallow-ok: counted; one aggregate warning() is emitted after the loop
           n_errors <<- n_errors + 1L
           if (is.null(first_error)) first_error <<- conditionMessage(e)
           0

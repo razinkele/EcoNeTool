@@ -74,7 +74,7 @@ query_worms_vernacular <- function(common_name, fuzzy = TRUE) {
     return(NULL)
 
   }, error = function(e) {
-    message(sprintf("      ✗ WoRMS (vernacular) query error: %s", conditionMessage(e)))
+    warning(sprintf("[taxonomy] WoRMS (vernacular) query error: %s", conditionMessage(e)), call. = FALSE)
     return(NULL)
   })
 }
@@ -163,7 +163,7 @@ query_worms_vernacular_single <- function(common_name, fuzzy = TRUE) {
 
     return(worms_data)
   }, error = function(e) {
-    message(sprintf("      ✗ WoRMS (vernacular) query error: %s", conditionMessage(e)))
+    warning(sprintf("[taxonomy] WoRMS (vernacular) query error: %s", conditionMessage(e)), call. = FALSE)
     return(NULL)
   })
 }
@@ -277,7 +277,7 @@ query_worms <- function(species_name, fuzzy = TRUE, try_vernacular = TRUE) {
     }
 
   }, error = function(e) {
-    message(sprintf("      ✗ WoRMS query error: %s", conditionMessage(e)))
+    warning(sprintf("[taxonomy] WoRMS query error: %s", conditionMessage(e)), call. = FALSE)
     return(NULL)
   })
 }
@@ -452,6 +452,7 @@ query_fishbase <- function(species_name, geographic_region = NULL, progress_call
     message(msg)
     if (!is.null(progress_callback)) {
       tryCatch(progress_callback(msg), error = function(e) {
+        # swallow-ok: a failing progress callback is cosmetic and must not abort the lookup
         message("Progress callback failed: ", e$message)
       })
     }
@@ -500,6 +501,8 @@ query_fishbase <- function(species_name, geographic_region = NULL, progress_call
       rfishbase::ecology(valid_name)
     }, error = function(e) {
       update_progress(sprintf("      ⚠ FishBase: Ecology data unavailable"))
+      warning(sprintf("[taxonomy] FishBase ecology lookup failed for '%s': %s", valid_name, conditionMessage(e)),
+              call. = FALSE)
       NULL
     })
 
@@ -585,6 +588,7 @@ query_fishbase <- function(species_name, geographic_region = NULL, progress_call
         NA
       }
     }, error = function(e) {
+      # swallow-ok: non-numeric weight becomes NA by design
       NA
     })
 
@@ -768,7 +772,7 @@ query_obis <- function(species_name, aphia_id = NULL) {
 
     return(obis_data)
   }, error = function(e) {
-    message(sprintf("      ✗ OBIS query error: %s", conditionMessage(e)))
+    warning(sprintf("[taxonomy] OBIS query error: %s", conditionMessage(e)), call. = FALSE)
     return(NULL)
   })
 }

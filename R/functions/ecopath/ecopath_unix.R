@@ -84,7 +84,7 @@ parse_ecopath_native_linux <- function(db_file) {
         group_table <- tryCatch({
           Hmisc::mdb.get(db_file, tables = tname)
         }, error = function(e) {
-          message("  → Warning: Could not read ", tname, ": ", e$message)
+          warning(paste0("[ecopath] could not read ", tname, ": ", conditionMessage(e)), call. = FALSE)
           NULL
         })
         if (!is.null(group_table)) {
@@ -105,7 +105,7 @@ parse_ecopath_native_linux <- function(db_file) {
         diet_table <- tryCatch({
           Hmisc::mdb.get(db_file, tables = tname)
         }, error = function(e) {
-          message("  → Warning: Could not read ", tname, ": ", e$message)
+          warning(paste0("[ecopath] could not read ", tname, ": ", conditionMessage(e)), call. = FALSE)
           NULL
         })
         if (!is.null(diet_table)) {
@@ -130,7 +130,10 @@ parse_ecopath_native_linux <- function(db_file) {
     if ("EcopathModel" %in% tables) {
       model_info <- tryCatch({
         Hmisc::mdb.get(db_file, tables = "EcopathModel")
-      }, error = function(e) NULL)
+      }, error = function(e) {
+        warning(paste0("[ecopath] could not read EcopathModel: ", conditionMessage(e)), call. = FALSE)
+        NULL
+      })
       if (!is.null(model_info) && nrow(model_info) > 0) {
         metadata$model_name <- model_info$Name[1]
         metadata$description <- model_info$Description[1]

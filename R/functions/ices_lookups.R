@@ -280,7 +280,10 @@ lookup_datras_indices <- function(aphia_id,
       yl <- tryCatch(with_timeout(
         icesDatras::getSurveyYearList(svy),
         timeout = timeout, on_timeout = NULL
-      ), error = function(e) NULL)
+      ), error = function(e) {
+        # swallow-ok: a NULL year list is reported by the warning() just below (reworked in D2b)
+        NULL
+      })
       if (is.null(yl) || length(yl) == 0) {
         warning(sprintf("[lookup_datras_indices] no year list for survey '%s'", svy),
                 call. = FALSE)
@@ -300,7 +303,10 @@ lookup_datras_indices <- function(aphia_id,
       quarters <- tryCatch(with_timeout(
         icesDatras::getSurveyYearQuarterList(svy, yr),
         timeout = timeout, on_timeout = NULL
-      ), error = function(e) NULL)
+      ), error = function(e) {
+        # swallow-ok: a NULL quarter list is reported by the warning() just below (reworked in D2b)
+        NULL
+      })
       if (is.null(quarters) || length(quarters) == 0) {
         warning(sprintf("[lookup_datras_indices] no quarter list for %s %d", svy, yr),
                 call. = FALSE)
@@ -385,7 +391,7 @@ fetch_sag_ssb <- function(stock_key, timeout = 60) {
     keys <- with_timeout(icesSAG::findAssessmentKey(stock_key),
                          timeout = timeout, on_timeout = NULL)
     if (is.null(keys) || length(keys) == 0) {
-      result$error <<- sprintf("no SAG assessment for '%s'", stock_key)
+      result$error <- sprintf("no SAG assessment for '%s'", stock_key)
       return(result)
     }
     key <- max(as.integer(keys), na.rm = TRUE)  # latest assessment
@@ -393,14 +399,14 @@ fetch_sag_ssb <- function(stock_key, timeout = 60) {
                        timeout = timeout, on_timeout = NULL)
     if (is.list(ss) && !is.data.frame(ss)) ss <- ss[[1]]
     if (!is.data.frame(ss) || nrow(ss) == 0) {
-      result$error <<- sprintf("SAG returned no summary table for '%s'", stock_key)
+      result$error <- sprintf("SAG returned no summary table for '%s'", stock_key)
       return(result)
     }
     # aggregate_sag_ssb() lives in R/functions/rpath/survey_validation.R, sourced
     # at app start; reshape Year/SSB -> year/survey_value, dropping NA SSB.
     ser <- aggregate_sag_ssb(ss)
     if (nrow(ser) == 0) {
-      result$error <<- sprintf("no non-NA SSB for '%s'", stock_key)
+      result$error <- sprintf("no non-NA SSB for '%s'", stock_key)
       return(result)
     }
     result$data    <- ser

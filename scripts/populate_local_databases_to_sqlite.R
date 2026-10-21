@@ -22,7 +22,7 @@ cat("\n")
 # Load required modules
 source("R/functions/local_trait_databases.R")
 source("R/functions/cache_sqlite.R")
-source("R/functions/trait_lookup.R")  # For harmonize_size_class
+source("R/functions/trait_lookup/load_all.R")  # trait_lookup.R was split into this package
 
 # Configuration
 SQLITE_DB_PATH <- "cache/taxonomy.db"
@@ -97,7 +97,7 @@ if (!is.null(bvol_db)) {
       }
 
     }, error = function(e) {
-      bvol_errors <- bvol_errors + 1
+      bvol_errors <<- bvol_errors + 1  # <<-: `<-` only changed the handler copy (F23)
       if (bvol_errors < 10) {  # Show first 10 errors
         cat(sprintf("  ✗ Error with AphiaID %d: %s\n", aphia_id, e$message))
       }
@@ -174,7 +174,7 @@ if (!is.null(species_db)) {
       }
 
     }, error = function(e) {
-      species_errors <- species_errors + 1
+      species_errors <<- species_errors + 1  # <<-: `<-` only changed the handler copy (F23)
       if (species_errors < 10) {  # Show first 10 errors
         cat(sprintf("  ✗ Error with AphiaID %d: %s\n", aphia_id, e$message))
       }

@@ -330,8 +330,14 @@ query_algaebase <- function(species_name, use_cache = TRUE, cache_dir = app_path
   fail <- function(msg) list(status = "error", data = NULL, message = msg, total = 0L)
   if (!check_shark4r_available()) return(fail(SHARK4R_MISSING_MESSAGE))
 
-  start <- tryCatch(as.Date(start_date), error = function(e) as.Date(NA))
-  end <- tryCatch(as.Date(end_date), error = function(e) as.Date(NA))
+  start <- tryCatch(as.Date(start_date), error = function(e) {
+    # swallow-ok: unparseable date becomes NA and is rejected just below
+    as.Date(NA)
+  })
+  end <- tryCatch(as.Date(end_date), error = function(e) {
+    # swallow-ok: unparseable date becomes NA and is rejected just below
+    as.Date(NA)
+  })
   if (length(start) != 1 || length(end) != 1 || is.na(start) || is.na(end) || start > end) {
     return(fail("Invalid date range"))
   }

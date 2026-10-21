@@ -89,6 +89,7 @@ log_error <- function(source,
                  col.names = FALSE,
                  quote = TRUE)
     }, error = function(e) {
+      # swallow-ok: the error logger must not recurse into warning()/itself
       # If append fails, print to console
       message("[LOG ERROR] Could not write to log file: ", e$message)
     })
@@ -97,6 +98,7 @@ log_error <- function(source,
     tryCatch({
       write.csv(log_entry, log_file, row.names = FALSE)
     }, error = function(e) {
+      # swallow-ok: the error logger must not recurse into warning()/itself
       message("[LOG ERROR] Could not create log file: ", e$message)
     })
   }
@@ -239,6 +241,7 @@ analyze_error_log <- function(log_file = "logs/trait_lookup_errors.csv",
   errors <- tryCatch({
     read.csv(log_file, stringsAsFactors = FALSE)
   }, error = function(e) {
+    # swallow-ok: reading the error log is best-effort; NULL means no log yet
     message("Could not read error log: ", e$message)
     return(NULL)
   })

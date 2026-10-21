@@ -134,7 +134,10 @@ safe_get <- function(data, key, default = NULL) {
     } else {
       NULL
     }
-  }, error = function(e) NULL)
+  }, error = function(e) {
+    # swallow-ok: safe_get() returns the caller default by contract
+    NULL
+  })
 
   if (is_valid_value(value)) value else default
 }

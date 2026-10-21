@@ -149,6 +149,7 @@ lookup_fishbase_traits <- function(species_name, timeout = 20) {
   }, error = function(e) {
     # <<- so the error surfaces on the returned result; `<-` would only
     # mutate the closure-local copy and silently drop the failure.
+    warning(sprintf("[lookup_fishbase_traits] %s: %s", species_name, conditionMessage(e)), call. = FALSE)
     result$error <<- conditionMessage(e)
   })
 
@@ -254,6 +255,7 @@ lookup_sealifebase_traits <- function(species_name, timeout = 20) {
   }, error = function(e) {
     # <<- so the error actually surfaces on the returned result; previous
     # `<-` only mutated the local copy in the closure and was silently lost.
+    warning(sprintf("[lookup_sealifebase_traits] %s: %s", species_name, conditionMessage(e)), call. = FALSE)
     result$error <<- conditionMessage(e)
   })
 
@@ -405,6 +407,7 @@ lookup_shark_traits <- function(species_name) {
   }, error = function(e) {
     # <<- so the error surfaces on the returned result; `<-` would only
     # mutate the closure-local copy and silently drop the failure.
+    warning(sprintf("[lookup_shark_traits] %s: %s", species_name, conditionMessage(e)), call. = FALSE)
     result$error <<- conditionMessage(e)
   })
 
@@ -587,6 +590,7 @@ lookup_biotic_traits <- function(species_name, biotic_file = NULL) {
   }, error = function(e) {
     # <<- so the error surfaces on the returned result; `<-` would only
     # mutate the closure-local copy and silently drop the failure.
+    warning(sprintf("[lookup_biotic_traits] %s: %s", species_name, conditionMessage(e)), call. = FALSE)
     result$error <<- conditionMessage(e)
   })
 
@@ -665,6 +669,7 @@ lookup_maredat_traits <- function(species_name, maredat_file = NULL) {
   }, error = function(e) {
     # <<- so the error surfaces on the returned result; `<-` would only
     # mutate the closure-local copy and silently drop the failure.
+    warning(sprintf("[lookup_maredat_traits] %s: %s", species_name, conditionMessage(e)), call. = FALSE)
     result$error <<- conditionMessage(e)
   })
 
@@ -825,6 +830,7 @@ lookup_ptdb_traits <- function(species_name, ptdb_file = NULL) {
   }, error = function(e) {
     # <<- so the error surfaces on the returned result; `<-` would only
     # mutate the closure-local copy and silently drop the failure.
+    warning(sprintf("[lookup_ptdb_traits] %s: %s", species_name, conditionMessage(e)), call. = FALSE)
     result$error <<- conditionMessage(e)
   })
 
@@ -850,12 +856,24 @@ worms_records_by_name_http <- function(name, fuzzy = FALSE, marine_only = FALSE,
               query = list(like = tolower(as.character(fuzzy)),
                            marine_only = tolower(as.character(marine_only))),
               httr::timeout(timeout_sec)),
-    error = function(e) NULL
+    error = function(e) {
+      # A curl timeout is the expected slow-WoRMS failure (the caller counts it);
+      # anything else is a real network error.
+      if (!grepl("timeout|timed out", conditionMessage(e), ignore.case = TRUE)) {
+        warning(sprintf("[worms] AphiaRecordsByName request failed for '%s': %s", name, conditionMessage(e)),
+                call. = FALSE)
+      }
+      NULL
+    }
   )
   if (is.null(resp) || httr::status_code(resp) != 200) return(NULL)
   res <- tryCatch(
     jsonlite::fromJSON(httr::content(resp, as = "text", encoding = "UTF-8"), flatten = TRUE),
-    error = function(e) NULL
+    error = function(e) {
+      warning(sprintf("[worms] unreadable AphiaRecordsByName response for '%s': %s", name, conditionMessage(e)),
+              call. = FALSE)
+      NULL
+    }
   )
   if (is.null(res) || !is.data.frame(res) || nrow(res) == 0) return(NULL)
   res
@@ -1066,6 +1084,9 @@ lookup_worms_traits <- function(species_name, timeout = 10) {
     }, error = function(e) {
       if (grepl("timeout|time limit|elapsed", e$message, ignore.case = TRUE)) {
         timeout_count <<- timeout_count + 1
+      } else {
+        warning(sprintf("[worms] %s lookup failed for '%s': %s", attempt$label, attempt$name, conditionMessage(e)),
+                call. = FALSE)
       }
       NULL
     })
@@ -1137,7 +1158,14 @@ lookup_worms_traits <- function(species_name, timeout = 10) {
         timeout = timeout,
         on_timeout = NULL
       ),
-      error = function(e) NULL
+      error = function(e) {
+        # worrms raises "(204) No Content" for a taxon without attributes: absence, not failure.
+        if (!grepl("204|No Content", conditionMessage(e), ignore.case = TRUE)) {
+          warning(sprintf("[worms] attribute lookup failed for AphiaID %s: %s", aphia_id, conditionMessage(e)),
+                  call. = FALSE)
+        }
+        NULL
+      }
     )
 
     if (!is.null(attributes) && nrow(attributes) > 0) {
@@ -1293,6 +1321,8 @@ lookup_ontology_traits <- function(species_name = NULL, aphia_id = NULL,
   }, error = function(e) {
     # <<- so the error surfaces on the returned result; `<-` would only
     # mutate the closure-local copy.
+    warning(sprintf("[lookup_ontology_traits] %s: %s", species_name %||% aphia_id %||% "?", conditionMessage(e)),
+            call. = FALSE)
     result$error <<- paste("Error reading ontology traits:", conditionMessage(e))
   })
 

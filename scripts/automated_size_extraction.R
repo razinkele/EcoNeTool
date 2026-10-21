@@ -23,7 +23,7 @@ if (!requireNamespace("rfishbase", quietly = TRUE)) {
 library(rfishbase)
 
 # Load trait lookup functions (for WoRMS)
-source("R/functions/trait_lookup.R")
+source("R/functions/trait_lookup/load_all.R")  # trait_lookup.R was split into this package
 
 # =============================================================================
 # STEP 1: READ ONTOLOGY SPECIES LIST

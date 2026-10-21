@@ -202,7 +202,7 @@ parse_ecopath_native_windows <- function(db_file) {
           message("  → Extracted metadata: ", metadata$name)
         }
       }, error = function(e) {
-        message("  → Could not read metadata: ", e$message)
+        warning(paste0("[ecopath] could not read metadata: ", conditionMessage(e)), call. = FALSE)
       })
     }
 
@@ -215,7 +215,7 @@ parse_ecopath_native_windows <- function(db_file) {
         message("  → Loaded ", nrow(stanza_params), " multistanza groups")
         message("  → Columns: ", paste(colnames(stanza_params), collapse = ", "))
       }, error = function(e) {
-        message("  → Could not read Stanza table: ", e$message)
+        warning(paste0("[ecopath] could not read Stanza table: ", conditionMessage(e)), call. = FALSE)
       })
     }
 
@@ -230,7 +230,7 @@ parse_ecopath_native_windows <- function(db_file) {
           message("  → Fleet names: ", paste(fleet_data$FleetName, collapse = ", "))
         }
       }, error = function(e) {
-        message("  → Could not read EcopathFleet table: ", e$message)
+        warning(paste0("[ecopath] could not read EcopathFleet table: ", conditionMessage(e)), call. = FALSE)
       })
     }
 
@@ -242,7 +242,7 @@ parse_ecopath_native_windows <- function(db_file) {
         discard_fate <- RODBC::sqlFetch(con, "EcopathDiscardFate", stringsAsFactors = FALSE)
         message("  → Loaded ", nrow(discard_fate), " discard fate entries")
       }, error = function(e) {
-        message("  → Could not read EcopathDiscardFate table: ", e$message)
+        warning(paste0("[ecopath] could not read EcopathDiscardFate table: ", conditionMessage(e)), call. = FALSE)
       })
     }
 
@@ -258,7 +258,7 @@ parse_ecopath_native_windows <- function(db_file) {
           message("  → Variables tracked: ", paste(unique_vars, collapse = ", "))
         }
       }, error = function(e) {
-        message("  → Could not read EcopathGroupPedigree table: ", e$message)
+        warning(paste0("[ecopath] could not read EcopathGroupPedigree table: ", conditionMessage(e)), call. = FALSE)
       })
     }
 
@@ -270,7 +270,7 @@ parse_ecopath_native_windows <- function(db_file) {
         pedigree_levels <- RODBC::sqlFetch(con, "Pedigree", stringsAsFactors = FALSE)
         message("  → Loaded ", nrow(pedigree_levels), " pedigree confidence levels")
       }, error = function(e) {
-        message("  → Could not read Pedigree table: ", e$message)
+        warning(paste0("[ecopath] could not read Pedigree table: ", conditionMessage(e)), call. = FALSE)
       })
     }
 
@@ -288,7 +288,7 @@ parse_ecopath_native_windows <- function(db_file) {
           message("  → ", non_empty_remarks, " entries with remarks/comments")
         }
       }, error = function(e) {
-        message("  → Could not read Auxillary table: ", e$message)
+        warning(paste0("[ecopath] could not read Auxillary table: ", conditionMessage(e)), call. = FALSE)
       })
     }
 
@@ -366,7 +366,7 @@ parse_ecopath_native_windows <- function(db_file) {
           }
         }
       }, error = function(e) {
-        message("  → Could not read ECOSIM scenarios: ", e$message)
+        warning(paste0("[ecopath] could not read ECOSIM scenarios: ", conditionMessage(e)), call. = FALSE)
       })
     }
 
