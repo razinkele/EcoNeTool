@@ -112,8 +112,11 @@ comparison_server <- function(input, output, session, net_reactive, info_reactiv
 
   output$cmp_box_shared_species <- renderValueBox({
     cmp <- tryCatch(comparison(), error = function(e) {
-      warning(sprintf("[comparison_server] shared-species comparison failed: %s",
-                      conditionMessage(e)), call. = FALSE)
+      warning(sprintf(
+        "[comparison_server] shared-species comparison failed in compare_networks(): %s (class: %s, line: %s)",
+        conditionMessage(e), class(e)[1], 
+        if (!is.null(attr(e, "srcref"))) paste0("~", attr(e, "srcref")[1]) else "unknown"
+      ), call. = FALSE)
       NULL
     })
     if (is.null(cmp)) return(empty_box("Shared species", "handshake", "primary"))
@@ -124,8 +127,10 @@ comparison_server <- function(input, output, session, net_reactive, info_reactiv
 
   output$cmp_box_only_a <- renderValueBox({
     cmp <- tryCatch(comparison(), error = function(e) {
-      warning(sprintf("[comparison_server] only-A comparison failed: %s",
-                      conditionMessage(e)), call. = FALSE)
+      warning(sprintf(
+        "[comparison_server] only-A comparison failed in compare_networks(): %s (class: %s)",
+        conditionMessage(e), class(e)[1]
+      ), call. = FALSE)
       NULL
     })
     if (is.null(cmp)) return(empty_box("Only in A", "arrow-left", "info"))
@@ -135,8 +140,10 @@ comparison_server <- function(input, output, session, net_reactive, info_reactiv
 
   output$cmp_box_only_b <- renderValueBox({
     cmp <- tryCatch(comparison(), error = function(e) {
-      warning(sprintf("[comparison_server] only-B comparison failed: %s",
-                      conditionMessage(e)), call. = FALSE)
+      warning(sprintf(
+        "[comparison_server] only-B comparison failed in compare_networks(): %s (class: %s)",
+        conditionMessage(e), class(e)[1]
+      ), call. = FALSE)
       NULL
     })
     if (is.null(cmp)) return(empty_box("Only in B", "arrow-right", "warning"))
@@ -146,8 +153,10 @@ comparison_server <- function(input, output, session, net_reactive, info_reactiv
 
   output$cmp_box_link_jaccard <- renderValueBox({
     cmp <- tryCatch(comparison(), error = function(e) {
-      warning(sprintf("[comparison_server] link-jaccard comparison failed: %s",
-                      conditionMessage(e)), call. = FALSE)
+      warning(sprintf(
+        "[comparison_server] link-jaccard comparison failed in compare_networks(): %s (class: %s)",
+        conditionMessage(e), class(e)[1]
+      ), call. = FALSE)
       NULL
     })
     if (is.null(cmp)) return(empty_box("Link similarity", "link", "success"))

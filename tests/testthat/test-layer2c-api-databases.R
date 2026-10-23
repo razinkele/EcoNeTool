@@ -73,6 +73,7 @@ test_that("lookup_worms_traits_api live lookup for AphiaID 126436 (Gadus morhua)
 # =============================================================================
 test_that("lookup_polytraits returns correct structure", {
   skip_if_no_live_tests()
+  skip_if_polytraits_unavailable()
   res <- with_timeout(lookup_polytraits("XXXXXXNONEXISTENT_SPECIES_ZZZZ", timeout = 2),
                       timeout = LIVE_TIMEOUT)
   skip_if(is.null(res), "PolyTraits did not answer within 15 s")
@@ -85,6 +86,7 @@ test_that("lookup_polytraits returns correct structure", {
 
 test_that("lookup_polytraits species field matches input", {
   skip_if_no_live_tests()
+  skip_if_polytraits_unavailable()
   res <- with_timeout(lookup_polytraits("Hediste diversicolor", timeout = 1), timeout = LIVE_TIMEOUT)
   skip_if(is.null(res), "PolyTraits did not answer within 15 s")
   expect_equal(res$species, "Hediste diversicolor")
@@ -92,6 +94,7 @@ test_that("lookup_polytraits species field matches input", {
 
 test_that("lookup_polytraits live lookup for a known polychaete", {
   skip_if_no_live_tests()
+  skip_if_polytraits_unavailable()
   skip_if_offline()
   skip_if_not_installed("httr")
   skip_if_not_installed("jsonlite")
@@ -207,6 +210,7 @@ test_that("lookup_traitbank live lookup for Abra alba", {
 # =============================================================================
 test_that("all functions always return the four required list fields", {
   skip_if_no_live_tests()
+  skip_if_polytraits_unavailable()
   required_fields <- c("species", "source", "success", "traits")
 
   results <- with_timeout(list(

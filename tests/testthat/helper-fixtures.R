@@ -86,6 +86,13 @@ skip_if_no_live_tests <- function() {
   }
 }
 
+skip_if_polytraits_unavailable <- function() {
+  skip_if_no_live_tests()
+  if (!identical(Sys.getenv("POLYTRAITS_AVAILABLE"), "true")) {
+    skip("PolyTraits service unavailable (set POLYTRAITS_AVAILABLE=true if service is up)")
+  }
+}
+
 skip_if_no_ecobase <- function() {
   skip_if_no_live_tests()
   tryCatch(

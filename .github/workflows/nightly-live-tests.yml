@@ -37,6 +37,7 @@ jobs:
     env:
       RUN_LIVE_TESTS: "true"
       ECONETOOL_TEST_OBIS_LIVE: "true"
+      POLYTRAITS_AVAILABLE: "true"  # Will be set to false if service is down
 
     steps:
       - name: Checkout
@@ -74,16 +75,22 @@ jobs:
       # Diagnostic only: since 2026-09-28 the ICES WFS answers this runner with
       # HTTP 400 while it answers other hosts with 200. Print what it returns,
       # with curl's and R's user agents, so a failing live test can be triaged.
-      - name: Probe ICES WFS (diagnostic)
+      - name: Probe external API services (diagnostic + skip-gate)
         continue-on-error: true
         run: |
+          # ICES WFS
           url='https://gis.ices.dk/geoserver/ows?service=WFS&version=2.0.0&request=GetFeature&typeNames=ices_eg:ICES_AREAS_VISA_SIMPLE_5KM&outputFormat=application/json'
-          curl -s -o /tmp/ices_curl -w 'curl UA: HTTP %{http_code} %{size_download}B\n' --max-time 120 "$url" || true
+          curl -s -o /tmp/ices_curl -w 'ICES WFS: HTTP %{http_code} %{size_download}B\n' --max-time 120 "$url" || true
           head -c 1000 /tmp/ices_curl; echo
           Rscript -e 'cat("R UA:", getOption("HTTPUserAgent"), "\n")'
-          curl -s -o /tmp/ices_r -A "$(Rscript -e 'cat(getOption("HTTPUserAgent"))')" \
-            -w 'R UA: HTTP %{http_code} %{size_download}B\n' --max-time 120 "$url" || true
-          head -c 1000 /tmp/ices_r; echo
+          
+          # PolyTraits API (primary concern for nightly failures)
+          echo "Testing PolyTraits service..."
+          polytraits_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 'http://polytraits.lifewatchgreece.eu/taxon/Mytilus%20edulis/json/' || echo "000")
+          echo "PolyTraits API: HTTP $polytraits_code"
+          
+          # Store results for conditional skip
+          echo "POLYTRAITS_AVAILABLE=$([ "$polytraits_code" = "200" ] && echo "true" || echo "false")" >> $GITHUB_ENV
 
       # Must stay a superset of the testthat-offline job's list in ci.yml
       # (guarded by tests/testthat/test-ci-workflows.R): this job runs the
