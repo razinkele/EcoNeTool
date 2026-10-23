@@ -19,10 +19,11 @@
 
 EcoNeTool is an interactive R Shiny dashboard for analyzing trophic interactions, biomass distributions, and energy fluxes in marine food webs. It combines qualitative and quantitative network analysis with trait enrichment, spatial habitat integration, and Rpath/Ecosim modeling in a single reproducible workflow. Developed as part of the HORIZON EUROPE [MARBEFES project](https://cordis.europa.eu/project/id/101060937) at Klaipėda University, the tool supports marine biodiversity and ecosystem functioning research across European regional seas. It bridges the gap between food web datasets (EwE, CSV, RData) and publication-ready network analyses.
 
-## Live Demo
+## Live Demo & Documentation
 
 > [!NOTE]
-> A live instance is hosted at **[http://laguna.ku.lt:3838/EcoNeTool/](http://laguna.ku.lt:3838/EcoNeTool/)** — try it without installing anything locally.
+> **Live Instance:** [http://laguna.ku.lt:3838/EcoNeTool/](http://laguna.ku.lt:3838/EcoNeTool/) — try without installing  
+> **Documentation Hub:** [https://razinkele.github.io/EcoNeTool/](https://razinkele.github.io/EcoNeTool/) — User Manual, API Reference, Training Slides
 
 ## Key Features
 
