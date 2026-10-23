@@ -104,3 +104,5 @@ docs/superpowers/plans/
 feedback_dev.db
 feedback_dev.db-wal
 feedback_dev.db-shm
+~$*.pptx
+.~lock*
