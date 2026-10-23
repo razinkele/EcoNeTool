@@ -83,12 +83,12 @@ jobs:
           curl -s -o /tmp/ices_curl -w 'ICES WFS: HTTP %{http_code} %{size_download}B\n' --max-time 120 "$url" || true
           head -c 1000 /tmp/ices_curl; echo
           Rscript -e 'cat("R UA:", getOption("HTTPUserAgent"), "\n")'
-          
+
           # PolyTraits API (primary concern for nightly failures)
           echo "Testing PolyTraits service..."
           polytraits_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 'http://polytraits.lifewatchgreece.eu/taxon/Mytilus%20edulis/json/' || echo "000")
           echo "PolyTraits API: HTTP $polytraits_code"
-          
+
           # Store results for conditional skip
           echo "POLYTRAITS_AVAILABLE=$([ "$polytraits_code" = "200" ] && echo "true" || echo "false")" >> $GITHUB_ENV
 

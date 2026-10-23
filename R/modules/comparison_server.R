@@ -114,7 +114,7 @@ comparison_server <- function(input, output, session, net_reactive, info_reactiv
     cmp <- tryCatch(comparison(), error = function(e) {
       warning(sprintf(
         "[comparison_server] shared-species comparison failed in compare_networks(): %s (class: %s, line: %s)",
-        conditionMessage(e), class(e)[1], 
+        conditionMessage(e), class(e)[1],
         if (!is.null(attr(e, "srcref"))) paste0("~", attr(e, "srcref")[1]) else "unknown"
       ), call. = FALSE)
       NULL
