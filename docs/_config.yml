@@ -1,0 +1,69 @@
+title: EcoNeTool Documentation
+description: Marine Food Web Network Analysis Tool
+theme: jekyll-theme-minimal
+show_downloads: false
+logo: null
+
+# Site settings
+url: "https://razinkele.github.io/EcoNeTool"
+baseurl: "/EcoNeTool"
+
+# Navigation
+navigation:
+  - title: "Home"
+    url: "/"
+  - title: "User Manual"
+    url: "/manuals/USER_MANUAL.md"
+  - title: "API Manual"
+    url: "/manuals/API_MANUAL.md"
+  - title: "GitHub"
+    url: "https://github.com/razinkele/EcoNeTool"
+
+# Markdown processing
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+# Include files
+include:
+  - _pages
+
+# Exclude from site
+exclude:
+  - .gitignore
+  - README.md
+  - .github
+  - tests
+  - R
+  - www
+
+# Front matter defaults
+defaults:
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: "default"
+
+# Gems/Plugins
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+  - jemoji
+
+# SEO
+twitter:
+  username: razinkele
+author:
+  name: MARBEFES Project Team
+  url: https://cordis.europa.eu/project/id/101060937
+
+# Analytics (optional)
+google_analytics: null
+
+# Algolia search (optional)
+algolia:
+  application_id: null
+  index_name: null
+  search_only_api_key: null
